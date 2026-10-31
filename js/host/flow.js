@@ -5,7 +5,7 @@
 //   intro -> race -> results -> shop -> intro (next floor) ... -> final
 
 import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM } from '../game/sim.js';
-import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, finalStandings, SHOP_MS } from '../game/rules.js';
+import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, finalStandings, SHOP_MS, legOf, RACES_PER_FLOOR } from '../game/rules.js';
 import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js';
 import { UPGRADES } from '../shared/upgrades.js';
 import { colorFor } from '../shared/colors.js';
@@ -67,7 +67,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
 
     renderer.setFloor(floor);
     renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
-    hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat) })));
+    hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat) })), `Race ${legOf(match)}/${RACES_PER_FLOOR}`);
 
     const ms = match.round === 0 ? INTRO_FIRST_MS : INTRO_MS;
     startsAt = Date.now() + ms;
@@ -75,7 +75,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     broadcastPhase();
     sfx.elevator();
     hud.showIntro({
-      floor, round: match.round, rounds: match.floors.length,
+      floor, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: RACES_PER_FLOOR,
       players: raceSeats.map(seat => ({ seat, name: nameOf(seat) })), startsAt: () => startsAt,
     }, label => (label === 'GO' ? sfx.go() : sfx.tick()));
     hud.setHint(match.round > 0 ? 'Enter to skip' : '');
@@ -222,9 +222,9 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     const f = currentFloor(match);
     const next = match.floors[match.round + 1];
     broadcast('phase', {
-      phase, round: match.round, rounds: match.floors.length,
+      phase, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: RACES_PER_FLOOR,
       floor: { number: f.number, name: f.name, stakes: f.stakes },
-      next: next ? { number: next.number, name: next.name } : null,
+      next: next ? { number: next.number, name: next.name, leg: legOf(match, match.round + 1) } : null,
       inMs: Math.max(0, startsAt - Date.now()),
       players: raceSeats.map(seat => ({ seat, name: nameOf(seat) })),
       rows: phase === 'results' ? lastRows : phase === 'final' ? finalRows : null,
@@ -238,7 +238,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     lastRows = rows;
     setPhase('results');
     sfx.fanfare();
-    hud.results(rows, currentFloor(match), isLastRound(match));
+    hud.results(rows, currentFloor(match), isLastRound(match), legOf(match), RACES_PER_FLOOR);
     hud.setHint('Enter to skip');
     broadcastPhase();
     sendMeAll();
@@ -271,7 +271,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   function renderShop() {
     const next = match.floors[match.round + 1];
     hud.shop({
-      next,
+      next, nextLeg: legOf(match, match.round + 1), legs: RACES_PER_FLOOR,
       players: raceSeats.map(seat => {
         const pl = match.players[seat];
         return { seat, name: pl.name, clips: pl.clips, owned: pl.owned, done: shopDone.has(seat) };

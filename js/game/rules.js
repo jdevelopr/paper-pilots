@@ -7,8 +7,13 @@ export const PLACE_CLIPS = [8, 5, 3, 1];
 export const PLACE_POINTS = [10, 6, 3, 1];
 export const SHOP_MS = 40000;
 
+export const RACES_PER_FLOOR = 3;
+
+// `rounds` is the number of floors. Each floor is raced RACES_PER_FLOOR times,
+// so match.floors holds one entry per race.
 export function createMatch(rounds = 5) {
-  const floors = rounds >= 5 ? FLOORS.slice() : [FLOORS[0], FLOORS[2], FLOORS[4]];
+  const picked = rounds >= 5 ? FLOORS.slice() : [FLOORS[0], FLOORS[2], FLOORS[4]];
+  const floors = picked.flatMap(f => Array(RACES_PER_FLOOR).fill(f));
   return { round: 0, floors, players: {} };
 }
 
@@ -23,6 +28,8 @@ export function addPlayer(match, seat, name, bot = false) {
 
 export const currentFloor = m => m.floors[m.round];
 export const isLastRound = m => m.round >= m.floors.length - 1;
+// Which race on the current floor this is (1-based), and of how many.
+export const legOf = (m, round = m.round) => (round % RACES_PER_FLOOR) + 1;
 
 // Turn race standings into clips and points. Returns rows in finishing order.
 export function payout(match, standings) {

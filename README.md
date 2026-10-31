@@ -2,7 +2,7 @@
 
 A party game where up to 4 players race paper airplanes through an office building. One screen (a laptop or TV) shows the race. Everyone else plays on their phone by scanning a QR code.
 
-Each floor of the building is one race:
+Each floor of the building is raced **3 times** before the elevator goes up:
 
 1. Lobby
 2. Cubicle Farm
@@ -12,7 +12,7 @@ Each floor of the building is one race:
 
 You throw your plane from the launch desk, then glide it the rest of the way. Paper planes can't fly forever, so you want to land in the best landing zone you can reach. Zones farther away pay more paper clips. Along the way you can grab clips floating in the air, ride the floor vents to gain height, stay away from the ceiling fans that push you down, and avoid crashing into the furniture.
 
-After each floor, players spend their paper clips in the **Supply closet**. Points from race placings decide the overall winner, the **Employee of the month**.
+After every race, players spend their paper clips in the **Supply closet**. Points from race placings decide the overall winner, the **Employee of the month**.
 
 ## How to play
 
@@ -27,7 +27,7 @@ On the host screen, **Enter** (or Space) skips the floor intro and the results s
 
 **Flying tips:** Diving builds speed. Climbing turns that speed back into height. If you climb too hard you'll stall and drop. Floor vents (the round grates with streaks rising out of them) lift you up. Hitting the ceiling or furniture costs durability, and at zero durability your plane crumples into a ball and earns no zone payout. Zones painted on top of desks, tables, the fridge and so on only count if you land on the top surface.
 
-**Payouts each floor:** you get the landing zone's value (3 / 6 / 10 / 15 / 24 clips), plus 8 / 5 / 3 / 1 clips for placing 1st to 4th, plus any clips you picked up. Placings also give 10 / 6 / 3 / 1 points toward the overall win. A plane that crumples gets no zone or placement reward.
+**Payouts each race:** you get the landing zone's value (3 / 6 / 10 / 15 / 24 clips), plus 8 / 5 / 3 / 1 clips for placing 1st to 4th, plus any clips you picked up. Placings also give 10 / 6 / 3 / 1 points toward the overall win. A plane that crumples gets no zone or placement reward.
 
 **Ranking within a race:** the best zone wins. Ties go to whoever flew farther. Missing every zone ranks below any zone landing, and crumpling ranks last.
 
@@ -49,7 +49,7 @@ Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nos
 
 ## Solo flight (no phone needed)
 
-On the home screen, click **Solo flight**. Pick 0–3 computer rivals and either 3 or 5 floors. The phone controller appears as a panel in the corner of the screen, and you can use it with the mouse or the keyboard. This is the quickest way to try out the gameplay.
+On the home screen, click **Solo flight**. Pick 0–3 computer rivals and either 3 or 5 floors (9 or 15 races). The phone controller appears as a panel in the corner of the screen, and you can use it with the mouse or the keyboard. This is the quickest way to try out the gameplay.
 
 ## Run it locally
 
@@ -120,6 +120,6 @@ To tune the game, edit:
 - `js/game/sim.js` for flight physics (`SIM` constants)
 - `js/game/floors.js` for level layouts, vents, fans, zones and clip placement
 - `js/shared/upgrades.js` for upgrade costs and stats
-- `js/game/rules.js` for payouts
+- `js/game/rules.js` for payouts and `RACES_PER_FLOOR` (races on each floor)
 
 The rendering style is a custom post-process in `js/host/ink.js`. It draws ink outlines from depth and normal edges, adds pencil crosshatching in the shadows, and puts paper grain over everything, with lines that "boil" at 6 fps like a hand-drawn animation.
