@@ -2,7 +2,9 @@
 
 A party game where up to 4 players race paper airplanes through an office building. One screen (a laptop or TV) shows the race. Everyone else plays on their phone by scanning a QR code.
 
-Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips:
+Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips. Floor 1 is twice as long as a short office hallway, and each floor above it is 25% longer again (400 → 500 → 625 → 781 → 977). Planes fly faster and glide farther on longer floors, so a race takes about 1.4× as long rather than 2×.
+
+From Floor 2 up there are **moving obstacles**: office chairs and the mail cart scooting across the Cubicle Farm, the snack trolley and a bouncing ball in the Break Room, a patrolling maintenance robot and a cable lift in the Server Room, and sliding glass doors and the CEO's camera drone in the Executive Suite.
 
 1. Lobby
 2. Cubicle Farm

@@ -78,7 +78,7 @@ export function createHud(root) {
 
   function update(raceState, project, players) {
     if (!raceState || !floor) return;
-    const left = Math.max(0, SIM.raceTime - raceState.t);
+    const left = Math.max(0, (raceState.timeLimit ?? SIM.raceTime) - raceState.t);
     timerEl.textContent = raceState.over ? '' : `${Math.ceil(left)}`;
     timerEl.hidden = raceState.over;
     timerEl.classList.toggle('low', left < 8 && !raceState.over);

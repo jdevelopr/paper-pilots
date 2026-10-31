@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { createInk } from './ink.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM } from '../game/sim.js';
+import { moverAt } from '../game/floors.js';
 
 const INK = '#2c2416';
 const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -316,6 +317,92 @@ function buildObject(o) {
   return g;
 }
 
+// Meshes for moving obstacles. Origin at the bottom centre of the collision box.
+function buildMover(m) {
+  const g = new THREE.Group();
+  const spin = [];
+  switch (m.type) {
+    case 'chair': {
+      g.add(boxMesh(1.8, 0.4, 1.8, '#3d4b5c', 0, 1.5, 0));                 // seat
+      g.add(boxMesh(1.8, 1.5, 0.3, '#3d4b5c', 0, 1.9, 0.75));              // back
+      g.add(boxMesh(0.2, 1.2, 0.2, '#5b6266', 0, 0.3, 0));                 // gas lift
+      const base = new THREE.Group();
+      for (let i = 0; i < 5; i++) {
+        const leg = boxMesh(1.1, 0.15, 0.2, '#2c2c2c', 0.55, 0.15, 0);
+        const arm = new THREE.Group(); arm.rotation.y = i * Math.PI * 2 / 5; arm.add(leg); base.add(arm);
+      }
+      g.add(base); spin.push({ o: base, axis: 'y', rate: 2 });
+      break;
+    }
+    case 'mailcart':
+      g.add(boxMesh(3.2, 1.6, 2, '#8a8f93', 0, 0.6, 0));
+      for (let i = 0; i < 6; i++) g.add(boxMesh(0.35, 0.9, 1.6, i % 2 ? '#f6efdc' : '#e9dcbc', -1.3 + i * 0.5, 2.2, 0));
+      for (const sx of [-1.4, 1.4]) for (const sz of [-0.8, 0.8]) g.add(boxMesh(0.3, 0.6, 0.3, '#2c2c2c', sx, 0, sz));
+      break;
+    case 'trolley':
+      g.add(boxMesh(3.4, 0.2, 2, '#b98a55', 0, 1.2, 0));
+      g.add(boxMesh(3.4, 0.2, 2, '#b98a55', 0, 3.0, 0));
+      for (const sx of [-1.6, 1.6]) for (const sz of [-0.9, 0.9]) g.add(boxMesh(0.15, 3.2, 0.15, '#6b5440', sx, 0, sz));
+      for (let i = 0; i < 4; i++) {
+        const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.5, 7), M(['#f6efdc', '#c1440e', '#1e4d6b', '#e0a526'][i]));
+        cup.position.set(-1.2 + i * 0.8, 3.45, 0.2); g.add(cup);
+      }
+      break;
+    case 'ball': {
+      const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.8, 1), M('#f08a3c'));
+      ball.position.y = 0.8; g.add(ball);
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.07, 4, 16), M('#f6efdc'));
+      band.position.y = 0.8; g.add(band);
+      spin.push({ o: ball, axis: 'x', rate: 3 });
+      break;
+    }
+    case 'robot': {
+      g.add(boxMesh(2.2, 2.6, 2.2, '#c9ced2', 0, 0.3, 0));
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), M('#8fb3d9'));
+      head.position.y = 2.9; g.add(head);
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.25, 0.1), new THREE.MeshBasicMaterial({ color: '#6fe08a' }));
+      eye.position.set(0, 2.2, -1.12); g.add(eye);
+      g.add(boxMesh(0.12, 0.9, 0.12, '#5b6266', 0, 3.6, 0));
+      for (const sx of [-0.8, 0.8]) g.add(boxMesh(0.4, 0.4, 2.4, '#2c2c2c', sx, 0, 0));
+      break;
+    }
+    case 'lift': {
+      g.add(boxMesh(m.w, m.h, m.d, '#e0a526'));
+      for (let i = 0; i < 5; i++) g.add(boxMesh(0.5, 0.05, m.d + 0.02, '#2c2416', -m.w / 2 + 0.7 + i * (m.w - 1.4) / 4, m.h, 0));
+      // Cables up to the ceiling
+      for (const sx of [-m.w / 2 + 0.3, m.w / 2 - 0.3]) {
+        const c = boxMesh(0.06, 30, 0.06, '#2c2c2c', sx, m.h, 0); c.layers.set(1); g.add(c);
+      }
+      break;
+    }
+    case 'slidedoor': {
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(m.w, m.h, m.d),
+        new THREE.MeshLambertMaterial({ color: '#bfe0ea', transparent: true, opacity: 0.35, depthWrite: false }));
+      glass.position.y = m.h / 2; glass.layers.set(1); g.add(glass);
+      g.add(boxMesh(m.w, 0.3, m.d + 0.1, '#5b6266', 0, 0, 0));
+      g.add(boxMesh(m.w, 0.3, m.d + 0.1, '#5b6266', 0, m.h - 0.3, 0));
+      for (const sx of [-1, 1]) g.add(boxMesh(0.2, m.h, m.d + 0.1, '#5b6266', sx * (m.w / 2 - 0.1), 0, 0));
+      g.add(boxMesh(0.15, 1.6, 0.25, '#c9a97a', m.w / 2 - 0.6, m.h * 0.35, 0));
+      break;
+    }
+    case 'drone': {
+      g.add(boxMesh(0.9, 0.35, 0.9, '#2f3338', 0, 0.15, 0));
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 4), new THREE.MeshBasicMaterial({ color: '#c1440e' }));
+      eye.position.set(0, 0.2, -0.5); g.add(eye);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        g.add(boxMesh(0.7, 0.08, 0.1, '#2f3338', sx * 0.45, 0.35, sz * 0.45));
+        const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.04, 0.12), M('#d9d6cf'));
+        rotor.position.set(sx * 0.8, 0.5, sz * 0.8); g.add(rotor);
+        spin.push({ o: rotor, axis: 'y', rate: 30 });
+      }
+      break;
+    }
+    default:
+      g.add(boxMesh(m.w, m.h, m.d, '#999999'));
+  }
+  return { g, spin };
+}
+
 function clipGeometry() {
   const pts = [
     [-0.12, -0.2], [-0.12, 0.25], [-0.06, 0.33], [0.06, 0.33], [0.12, 0.25], [0.12, -0.36],
@@ -353,7 +440,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   scene.add(planeLayer);
 
   let floor = null;
-  const anims = { fans: [], vents: [], blowers: [], clips: [], signs: [], leds: [] };
+  const anims = { fans: [], vents: [], blowers: [], clips: [], signs: [], leds: [], movers: [] };
   const planes = new Map();   // seat -> { root, shadow, trail, trailPts, aim }
   const TRAIL_N = 26;
   const dotGeo = new THREE.SphereGeometry(0.07, 5, 4);
@@ -394,6 +481,9 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   /* ------------------------------------------------------------ floor --- */
   function setFloor(f) {
     floor = f;
+    // Long floors: see all the way to the far wall.
+    camera.far = f.length + 120;
+    camera.updateProjectionMatrix();
     scene.remove(env);
     env.traverse(o => { if (o.geometry && o.geometry !== clipGeo) o.geometry.dispose(); });
     env = new THREE.Group();
@@ -556,6 +646,13 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       sign.scale.setScalar(0.8 + zn.tier * 0.12);
       env.add(sign);
       anims.signs.push(sign);
+    }
+
+    // Moving obstacles
+    for (const m of f.movers || []) {
+      const { g, spin } = buildMover(m);
+      env.add(g);
+      anims.movers.push({ m, g, spin });
     }
 
     // Paper clip pickups
@@ -749,6 +846,13 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       }
     }
     for (const l of anims.leds) l.m.visible = Math.sin(time * 3 + l.ph * 5) > -0.6;
+    // Movers follow race time, so they're exactly where the sim says they are.
+    const rt = race ? race.t : 0;
+    for (const a of anims.movers) {
+      const c = moverAt(a.m, rt);
+      a.g.position.set(c.x, c.y, -c.z);
+      for (const sp of a.spin) sp.o.rotation[sp.axis] += sp.rate * dt;
+    }
     for (const c of anims.clips) {
       const taken = race && race.clips[c.i] && race.clips[c.i].taken >= 0;
       if (taken) c.gone = Math.min(1, c.gone + dt * 5); else c.gone = 0;

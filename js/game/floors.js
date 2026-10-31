@@ -17,7 +17,11 @@
 
 export const ZONE_PAY = [3, 6, 10, 15, 24];
 
-// Distance bands per tier [zMin, zMax] for the zone centre.
+// Floor 1 is 400 long; each floor above it is 25% longer than the one below.
+const BASE_LENGTH = 400, GROWTH = 1.25;
+
+// Distance bands per tier [zMin, zMax] for the zone centre, on a 200-long
+// reference floor. They stretch with the floor.
 const TIER_BANDS = [[100, 116], [120, 134], [138, 152], [156, 170], [176, 191]];
 const LANE_HALF = 3.6;     // half-width of the guaranteed-clear corridor
 const TALL = 3.2;          // anything taller than this may not sit in the lane
@@ -63,6 +67,42 @@ function boxesFor(o) {
 const topOf = o => (o.y || 0) + o.h + (o.mon ? 1.4 : 0);
 const overlapsRect = (o, x0, x1, z0, z1) =>
   o.x + o.w / 2 > x0 && o.x - o.w / 2 < x1 && o.z + o.d / 2 > z0 && o.z - o.d / 2 < z1;
+
+/* ------------------------------------------------------ moving things --- */
+
+// A mover glides back and forth along one axis with an ease-in-out swing.
+// Its position is a pure function of race time, so the host, the bots'
+// look-ahead and the renderer all agree on where it is.
+export function moverAt(m, t) {
+  const u = 0.5 - 0.5 * Math.cos(2 * Math.PI * (t / m.period + m.phase));
+  const off = m.from + (m.to - m.from) * u;
+  return { x: m.x + (m.axis === 'x' ? off : 0), y: m.y + (m.axis === 'y' ? off : 0), z: m.z + (m.axis === 'z' ? off : 0) };
+}
+export function moverBox(m, t) {
+  const c = moverAt(m, t);
+  return { x0: c.x - m.w / 2, x1: c.x + m.w / 2, z0: c.z - m.d / 2, z1: c.z + m.d / 2, y0: c.y, y1: c.y + m.h, mover: true };
+}
+// The whole volume a mover can sweep through, for placement checks.
+function moverSweep(m) {
+  const a = moverAt({ ...m, phase: 0 }, 0), b = moverAt({ ...m, phase: 0.5 }, 0);
+  return { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, w: Math.abs(a.x - b.x) + m.w, d: Math.abs(a.z - b.z) + m.d };
+}
+
+// On-theme moving obstacles. Each returns a mover centred on (x, z).
+const M = {
+  // Cubicle Farm: office chairs scooting between desks, the mail cart doing its rounds
+  chair: (x, z, T) => ({ type: 'chair', x, z, y: 0, w: 2.2, d: 2.2, h: 3.4, axis: 'x', from: -T.r(7, 11), to: T.r(7, 11), period: T.r(3.5, 5.5) }),
+  mailcart: (x, z, T) => ({ type: 'mailcart', x, z, y: 0, w: 3.4, d: 2.2, h: 3.2, axis: 'x', from: -T.r(9, 13), to: T.r(9, 13), period: T.r(6, 8) }),
+  // Break Room: the snack trolley, and a bouncy ball someone kicked
+  trolley: (x, z, T) => ({ type: 'trolley', x, z, y: 0, w: 3.6, d: 2.2, h: 3.4, axis: 'x', from: -T.r(8, 12), to: T.r(8, 12), period: T.r(5, 7) }),
+  ball: (x, z, T) => ({ type: 'ball', x, z, y: 0.2, w: 1.6, d: 1.6, h: 1.6, axis: 'y', from: 0, to: T.r(6, 9), period: T.r(1.6, 2.4) }),
+  // Server Room: a maintenance robot patrolling an aisle, a cable lift going up and down
+  robot: (x, z, T) => ({ type: 'robot', x, z, y: 0, w: 2.4, d: 2.4, h: 4, axis: 'z', from: -T.r(8, 12), to: T.r(8, 12), period: T.r(5, 7) }),
+  lift: (x, z, T) => ({ type: 'lift', x, z, y: 0.5, w: T.r(6, 8), d: 3, h: 0.6, axis: 'y', from: 0, to: T.r(8, 10), period: T.r(4, 6) }),
+  // Executive Suite: automatic sliding glass doors, and the CEO's camera drone
+  slidedoor: (x, z, T, H) => ({ type: 'slidedoor', x, z, y: 0, w: T.r(6, 8), d: 0.4, h: H, axis: 'x', from: -T.r(5, 8), to: T.r(5, 8), period: T.r(4, 6) }),
+  drone: (x, z, T) => ({ type: 'drone', x, z, y: T.r(5, 9), w: 2.2, d: 2.2, h: 0.7, axis: 'x', from: -T.r(9, 14), to: T.r(9, 14), period: T.r(3.5, 5) }),
+};
 
 /* -------------------------------------------------------------- themes --- */
 
@@ -124,7 +164,7 @@ export const THEMES = [
       (z, W, T) => [F.couch(T.r(-16, -8), z, T), F.couch(T.r(8, 16), z, T), F.table(0, z + T.r(-2, 2), T)],
       (z, W, T) => scatter(z, W, T, [F.plant, F.cooler, F.pillar], T.ri(2, 4)),
     ],
-    vents: [3, 4], fans: [0, 1], blowers: [0, 0],
+    vents: [3, 4], fans: [0, 1], blowers: [0, 0], movers: [],
   },
   {
     id: 'cubicles', number: 2, name: 'Cubicle Farm',
@@ -141,6 +181,7 @@ export const THEMES = [
       (z, W, T) => [{ type: 'cubicle', x: T.r(-12, 12), z: z + 6, w: 0.5, d: T.r(12, 22), h: 4.5 }, ...scatter(z, W, T, [F.desk], 2)],
     ],
     vents: [3, 5], fans: [0, 0], blowers: [0, 0],
+    movers: [M.chair, M.chair, M.mailcart], moverCount: [2, 3],
   },
   {
     id: 'breakroom', number: 3, name: 'Break Room',
@@ -158,6 +199,7 @@ export const THEMES = [
       (z, W, T) => [F.fridge(T.r(-14, 14), z), ...scatter(z, W, T, [F.table], 1)],
     ],
     vents: [3, 4], fans: [2, 3], blowers: [0, 0],
+    movers: [M.trolley, M.ball, M.ball], moverCount: [2, 3],
   },
   {
     id: 'servers', number: 4, name: 'Server Room',
@@ -180,6 +222,7 @@ export const THEMES = [
     ],
     rowGap: [26, 34],
     vents: [4, 6], fans: [0, 0], blowers: [1, 2],
+    movers: [M.robot, M.robot, M.lift], moverCount: [2, 3],
   },
   {
     id: 'executive', number: 5, name: 'Executive Suite',
@@ -196,8 +239,11 @@ export const THEMES = [
       (z, W, T) => [F.shelf(T.pick([-1, 1]) * T.r(12, 17), z, T), F.plant(T.r(-10, 10), z), F.couch(T.r(-12, 12), z + 5, T)],
     ],
     vents: [3, 4], fans: [1, 2], blowers: [0, 0],
+    movers: [M.slidedoor, M.drone, M.drone], moverCount: [2, 3],
   },
 ];
+
+for (const t of THEMES) t.length = Math.round(BASE_LENGTH * GROWTH ** (t.number - 1));
 
 // rules.js picks the floors for a match from this list.
 export const FLOORS = THEMES;
@@ -207,10 +253,16 @@ export const FLOORS = THEMES;
 export function generateFloor(theme, seed = 1) {
   const rng = mulberry32(seed);
   const T = tools(rng);
-  const W = 44, H = theme.height, L = 200;
+  const W = 44, H = theme.height, L = theme.length || 200;
+  const k = L / 200, sk = Math.sqrt(k);   // stretch relative to the reference floor
+  const many = ([a, b]) => T.ri(Math.round(a * k), Math.round(b * k));
 
   // The clear lane: random control points, linear in between.
-  const ctrl = [[0, 0], [40, T.r(-10, 10)], [80, T.r(-14, 14)], [120, T.r(-14, 14)], [160, T.r(-14, 14)], [L, T.r(-12, 12)]];
+  const ctrl = [[0, 0]];
+  const nCtrl = Math.max(5, Math.round(5 * k));
+  for (let i = 1; i < nCtrl; i++) ctrl.push([L * i / nCtrl, T.r(-14, 14)]);
+  ctrl[1][1] = T.r(-10, 10);
+  ctrl.push([L, T.r(-12, 12)]);
   const laneX = z => {
     for (let i = 1; i < ctrl.length; i++) {
       if (z <= ctrl[i][0]) {
@@ -231,7 +283,7 @@ export function generateFloor(theme, seed = 1) {
   /* Landing zones, one per tier */
   const zones = [];
   for (let tier = 0; tier < 5; tier++) {
-    const [b0, b1] = TIER_BANDS[tier];
+    const [b0, b1] = TIER_BANDS[tier].map(z => z * k);
     const hosts = theme.perches.filter(p => (p.tiers || [3, 4]).includes(tier));
     const usePerch = tier >= 3 && hosts.length > 0 && T.chance(tier === 4 ? 0.5 : 0.6);
     for (let attempt = 0; attempt < 30; attempt++) {
@@ -243,8 +295,9 @@ export function generateFloor(theme, seed = 1) {
         o.x = T.r(-W / 2 + o.w / 2 + 2, W / 2 - o.w / 2 - 2);
         zn = { tier, label: host.name, x: o.x, z: o.z, w: o.w, d: o.d, y: o.h, pay: ZONE_PAY[tier], host: o };
       } else {
-        const w = tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier;
-        const d = tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5;
+        // Mats grow a little on longer floors, where planes arrive faster.
+        const w = Math.min(W - 6, (tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier) * Math.pow(k, 0.25));
+        const d = (tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5) * sk;
         zn = { tier, label: T.pick(theme.zoneNames[tier]), x: T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: 0, pay: ZONE_PAY[tier] };
       }
       const clash = zones.some(o => Math.abs(o.x - zn.x) < (o.w + zn.w) / 2 + 1.5 && Math.abs(o.z - zn.z) < (o.d + zn.d) / 2 + 1.5);
@@ -257,7 +310,7 @@ export function generateFloor(theme, seed = 1) {
   /* Furniture rows down the floor */
   let objects = [];
   const [g0, g1] = theme.rowGap || [17, 25];
-  for (let z = T.r(20, 28); z < 186; z += T.r(g0, g1)) objects.push(...T.pick(theme.rows)(z, W, T));
+  for (let z = T.r(20, 28); z < L - 14; z += T.r(g0, g1)) objects.push(...T.pick(theme.rows)(z, W, T));
   // Along-the-wall decor
   for (let z = T.r(8, 20); z < L - 6; z += T.r(18, 32)) {
     const o = T.pick([F.plant, F.cabinet, F.shelf, F.cooler])(0, z, T);
@@ -286,32 +339,53 @@ export function generateFloor(theme, seed = 1) {
 
   /* Air currents */
   const vents = [];
-  const nVents = T.ri(...theme.vents);
+  const nVents = many(theme.vents);
   for (let tries = 0; vents.length < nVents && tries < 300; tries++) {
     // The first two vents hug the lane so a good line always has lift on it.
-    const z = T.r(30, 150);
-    const x = vents.length < 2 ? laneX(z) + T.r(-2.5, 2.5) : T.r(-W / 2 + 4, W / 2 - 4);
-    const r = T.r(3, 4);
+    const z = T.r(30, L * 0.75);
+    const x = vents.length < 2 * k ? laneX(z) + T.r(-2.5, 2.5) : T.r(-W / 2 + 4, W / 2 - 4);
+    const r = T.r(3, 4) * Math.pow(k, 0.25);
     if (Math.abs(x) > W / 2 - r - 0.5 || !freeAt(x, z, r + 0.5)) continue;
     if (vents.some(v => Math.hypot(v.x - x, v.z - z) < 14)) continue;
     if (zones.some(zn => Math.abs(zn.x - x) < zn.w / 2 + r && Math.abs(zn.z - z) < zn.d / 2 + r)) continue;
-    vents.push({ x, z, r, s: T.r(6.5, 9) });
+    vents.push({ x, z, r, s: T.r(6.5, 9) * sk });
   }
   vents.sort((a, b) => a.z - b.z);
 
   const fans = [];
-  const nFans = T.ri(...theme.fans);
+  const nFans = many(theme.fans);
   for (let tries = 0; fans.length < nFans && tries < 100; tries++) {
-    const z = T.r(35, 160), x = T.r(-W / 2 + 6, W / 2 - 6);
+    const z = T.r(35, L * 0.8), x = T.r(-W / 2 + 6, W / 2 - 6);
     if (fans.some(f => Math.hypot(f.x - x, f.z - z) < 20) || vents.some(v => Math.hypot(v.x - x, v.z - z) < 10)) continue;
     fans.push({ x, z, r: T.r(4.5, 5.5), s: T.r(4, 5.5) });
   }
 
   const blowers = [];
-  const nBlowers = T.ri(...theme.blowers);
+  const nBlowers = many(theme.blowers);
   for (let i = 0; i < nBlowers; i++) {
-    const z = T.r(30, 140), lx = laneX(z);
+    const z = T.r(30, L * 0.7), lx = laneX(z);
     blowers.push({ x0: lx - 6, x1: lx + 6, z0: z, z1: z + 6, y1: 9, dir: T.pick([-1, 1]), s: 4 });
+  }
+
+  /* Moving obstacles (floor 2 and up): placed across the clear lane so they matter */
+  const movers = [];
+  if (theme.movers?.length) {
+    const want = many(theme.moverCount);
+    for (let tries = 0; movers.length < want && tries < 200; tries++) {
+      const z = T.r(30, L * 0.85);
+      const m = T.pick(theme.movers)(laneX(z) + T.r(-2, 2), z, T, H);
+      m.phase = rng();
+      const sw = moverSweep(m);
+      if (Math.abs(sw.x) + sw.w / 2 > W / 2 - 0.5) { m.x -= Math.sign(sw.x) * (Math.abs(sw.x) + sw.w / 2 - W / 2 + 0.5); }
+      const s2 = moverSweep(m);
+      const clear = boxes.every(b => b.x1 < s2.x - s2.w / 2 || b.x0 > s2.x + s2.w / 2 || b.z1 < s2.z - s2.d / 2 || b.z0 > s2.z + s2.d / 2
+        || b.y0 > m.y + m.h + (m.axis === 'y' ? m.to : 0) || b.y1 < m.y);
+      if (!clear) continue;
+      if (zones.some(zn => overlapsRect(s2, zn.x - zn.w / 2 - 2, zn.x + zn.w / 2 + 2, zn.z - zn.d / 2 - 2, zn.z + zn.d / 2 + 2))) continue;
+      if (movers.some(o => Math.abs(o.z - m.z) < 18)) continue;
+      if (vents.some(v => Math.hypot(v.x - s2.x, v.z - s2.z) < v.r + 3 && m.axis !== 'y')) continue;
+      movers.push(m);
+    }
   }
 
   /* Paper clips: columns over vents, runs along the lane, one bonus box */
@@ -321,20 +395,23 @@ export function generateFloor(theme, seed = 1) {
     clips.push({ x, y, z, ...extra });
   };
   for (const v of vents) for (let i = 0; i < 3; i++) addClip(v.x, 7 + i * 2, v.z);
-  const runs = T.ri(2, 3);
+  const runs = many([2, 3]);
   for (let k = 0; k < runs; k++) {
-    const z0 = T.r(10, 95), n = T.ri(3, 5), y = T.r(5, 7.5);
+    const z0 = T.r(10, L * 0.48), n = T.ri(3, 5), y = T.r(5, 7.5);
     for (let i = 0; i < n; i++) addClip(laneX(z0 + i * 3), y - i * 0.2, z0 + i * 3);
   }
-  const bz = T.r(60, 140);
-  addClip(laneX(bz) + T.pick([-1, 1]) * T.r(4, 9), T.r(9, H - 2.5), bz, { n: 5, big: true });
+  for (let i = 0; i < Math.round(k); i++) {
+    const bz = T.r(60, L * 0.7);
+    addClip(laneX(bz) + T.pick([-1, 1]) * T.r(4, 9), T.r(9, H - 2.5), bz, { n: 5, big: true });
+  }
 
   const tier4 = zones.find(z => z.tier === 4);
   return {
     id: theme.id, number: theme.number, name: theme.name,
     carpet: theme.carpet, wall: theme.wall, accent: theme.accent,
-    width: W, height: H, length: L, seed,
+    width: W, height: H, length: L, scale: k, seed,
     stakes: `${tier4.label} pays ${tier4.pay}`,
-    objects, boxes, vents, fans, blowers, zones, clips,
+    objects, boxes, vents, fans, blowers, zones, clips, movers,
+    lane: ctrl,   // the guaranteed-clear path, as [z, x] control points (bots follow it)
   };
 }

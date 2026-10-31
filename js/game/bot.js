@@ -4,10 +4,21 @@
 // Pure: given race state, it returns stick input. `rng` is passed in.
 
 import { stepPlane, SIM } from './sim.js';
+import { moverBox } from './floors.js';
 import { nextCost } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+
+// x of the floor's clear lane at distance z (falls back to the centre line).
+export function laneX(floor, z) {
+  const c = floor.lane;
+  if (!c) return 0;
+  for (let i = 1; i < c.length; i++) {
+    if (z <= c[i][0]) { const [z0, x0] = c[i - 1], [z1, x1] = c[i]; return x0 + (x1 - x0) * (z - z0) / (z1 - z0); }
+  }
+  return c[c.length - 1][1];
+}
 
 export function createBot(seat, skill, rng) {
   return { seat, skill, rng, target: null, ways: [], thrown: false, throwAt: 0.6 + rng() * 2.2, wobble: rng() * 10 };
@@ -20,14 +31,14 @@ function plan(bot, floor, p) {
   const reach = clamp(Math.round(bot.skill * 4 + (r - 0.5) * 2 + (p.st.sink < 0.9 ? 1 : 0)), 0, 4);
   bot.target = floor.zones.find(z => z.tier === reach) || floor.zones[0];
   bot.ways = floor.vents
-    .filter(v => v.z > 8 && v.z < bot.target.z - 18 && bot.rng() < 0.35 + bot.skill * 0.6)
+    .filter(v => v.z > 8 && v.z < bot.target.z - 18 && Math.abs(v.x - laneX(floor, v.z)) < 8 && bot.rng() < 0.35 + bot.skill * 0.6)
     .sort((a, b) => a.z - b.z)
     .map(v => ({ x: v.x, z: v.z, vent: v }));
 }
 
 export function botAim(bot, floor, p) {
   plan(bot, floor, p);
-  const first = bot.ways[0] || bot.target;
+  const first = { x: laneX(floor, 20), z: 20 };
   const yaw = clamp(Math.atan2(first.x - p.x, first.z - p.z), -0.45, 0.45);
   const sloppy = (1 - bot.skill) * 0.25;
   return {
@@ -37,9 +48,10 @@ export function botAim(bot, floor, p) {
   };
 }
 
-function blocked(floor, x, y, z) {
+function blocked(floor, x, y, z, t = 0) {
   if (x < -floor.width / 2 + 1 || x > floor.width / 2 - 1 || y > floor.height - 0.8) return true;
-  for (const b of floor.boxes) {
+  const all = floor.movers?.length ? floor.boxes.concat(floor.movers.map(m => moverBox(m, t))) : floor.boxes;
+  for (const b of all) {
     if (x > b.x0 - 0.9 && x < b.x1 + 0.9 && z > b.z0 - 0.9 && z < b.z1 + 0.9 && y > b.y0 - 0.9 && y < b.y1 + 0.6) return b;
   }
   return false;
@@ -54,9 +66,9 @@ function steerToward(q, tx, tz) {
 // Fly a copy of the plane forward with a fixed stick and see where it lands.
 function predict(race, p, yCmd, tx, tz) {
   const q = { ...p };
-  const fake = { floor: race.floor, t: race.t, planes: [q], clips: [], events: [] };
+  const fake = { floor: race.floor, k: race.k, sk: race.sk, timeLimit: race.timeLimit, t: race.t, planes: [q], clips: [], events: [] };
   const dt = 1 / 30;
-  for (let i = 0; i < 600 && q.state !== 'landed'; i++) {
+  for (let i = 0; i < 1500 && q.state !== 'landed'; i++) {
     fake.t += dt;
     q.inX = steerToward(q, tx, tz);
     q.inY = yCmd;
@@ -79,14 +91,21 @@ export function botSteer(bot, race, p) {
   if (!tg) return { x: 0, y: 0 };
 
   // Drop vent waypoints we've passed or ridden high enough in.
-  while (bot.ways.length && (p.z > bot.ways[0].z + 1 || Math.hypot(bot.ways[0].z - p.z, bot.ways[0].x - p.x) > (p.y + Math.max(0, p.v - 11) * 0.6) * 8.5 + 6 || (p.y > f.height * 0.72 && p.z > bot.ways[0].z - 3))) bot.ways.shift();
+  while (bot.ways.length && (p.z > bot.ways[0].z + 1 || Math.hypot(bot.ways[0].z - p.z, bot.ways[0].x - p.x) > (p.y + Math.max(0, p.v / (race.sk ?? 1) - 11) * 0.6) * 8.5 * (race.k ?? 1) + 6 || (p.y > f.height * 0.72 && p.z > bot.ways[0].z - 3))) bot.ways.shift();
   const way = bot.ways[0];
 
   let x, y;
   if (way) {
     // Cruise to the vent at an efficient speed.
-    x = steerToward(p, way.x, way.z);
-    y = clamp((p.v - (Math.hypot(way.x - p.x, way.z - p.z) < way.vent.r ? 9 : 11.5)) * 0.28, -1, 1);
+    // Head for the vent, but via the lane while it's still far ahead.
+    const ahead = p.z + 12 * (race.sk ?? 1);
+    x = way.z - p.z > 15 ? steerToward(p, laneX(f, ahead), ahead) : steerToward(p, way.x, way.z);
+    y = clamp((p.v / (race.sk ?? 1) - (Math.hypot(way.x - p.x, way.z - p.z) < way.vent.r ? 9 : 11.5)) * 0.28, -1, 1);
+  } else if (tg.z - p.z > 45 * (race.sk ?? 1)) {
+    // Far from the target: follow the clear lane at an efficient speed.
+    const ahead = p.z + 12 * (race.sk ?? 1);
+    x = steerToward(p, laneX(f, ahead), ahead);
+    y = clamp((p.v / (race.sk ?? 1) - 11.5) * 0.28, -1, 1);
   } else {
     x = steerToward(p, tg.x, tg.z);
     const every = 0.25 + (1 - bot.skill) * 0.45;
@@ -109,14 +128,14 @@ export function botSteer(bot, race, p) {
   }
 
   // Look ahead along the heading and swerve around tall things.
-  for (const s of [3, 6, 9]) {
+  for (const s of [3, 6, 9].map(d => d * (race.sk ?? 1))) {
     const hx = p.x + Math.sin(p.yaw) * s, hz = p.z + Math.cos(p.yaw) * s;
     const hy = p.y + Math.sin(p.pitch) * s;
-    const b = blocked(f, hx, hy, hz);
+    const b = blocked(f, hx, hy, hz, race.t + s / Math.max(p.v, 1));
     if (!b) continue;
-    if (b.y1 && b.y1 < p.y + 1.2 && p.v > 10) { y = Math.max(y, 0.6); break; }
-    const l = blocked(f, p.x + Math.sin(p.yaw - 0.6) * s, hy, p.z + Math.cos(p.yaw - 0.6) * s);
-    const r = blocked(f, p.x + Math.sin(p.yaw + 0.6) * s, hy, p.z + Math.cos(p.yaw + 0.6) * s);
+    if (b.y1 && b.y1 < p.y + 1.2 && p.v > 10 * (race.sk ?? 1)) { y = Math.max(y, 0.6); break; }
+    const l = blocked(f, p.x + Math.sin(p.yaw - 0.6) * s, hy, p.z + Math.cos(p.yaw - 0.6) * s, race.t);
+    const r = blocked(f, p.x + Math.sin(p.yaw + 0.6) * s, hy, p.z + Math.cos(p.yaw + 0.6) * s, race.t);
     x = !r ? 1 : !l ? -1 : (tg.x > p.x ? 1 : -1);
     break;
   }
