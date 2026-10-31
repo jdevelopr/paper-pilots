@@ -7,7 +7,7 @@
 
 import { esc, clipIcon, planeIcon, vibrate, keepAwake } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
-import { statBars } from '../shared/upgrades.js';
+import { statBars, levelOf, MAX_LEVEL } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -290,18 +290,22 @@ export function mountController(root, link, { solo = false } = {}) {
         el.dataset.id = u.id;
         el.style.setProperty('--i', i);
         el.onclick = () => {
-          if (el.disabled || me.owned.includes(u.id)) return;
+          if (el.disabled || levelOf(me.owned, u.id) >= MAX_LEVEL) return;
           vibrate(10);
           link.input({ k: 'buy', id: u.id });
         };
         list.appendChild(el);
       }
-      const owned = me.owned.includes(u.id);
-      const afford = me.clips >= u.cost;
-      el.classList.toggle('owned', owned);
-      el.disabled = !owned && !afford;
-      el.innerHTML = `<span class="un">${esc(u.name)}</span>
-        <span class="uc">${owned ? '<svg aria-hidden="true"><use href="#i-check"/></svg>' : `${u.cost}${clipIcon}`}</span>
+      const lv = levelOf(me.owned, u.id);
+      const maxed = lv >= MAX_LEVEL;
+      const cost = maxed ? null : u.costs[lv];
+      const afford = !maxed && me.clips >= cost;
+      el.classList.toggle('owned', maxed);
+      el.disabled = !maxed && !afford;
+      const pips = Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('');
+      el.setAttribute('aria-label', `${u.name}, level ${lv} of ${MAX_LEVEL}`);
+      el.innerHTML = `<span class="un">${esc(u.name)}<span class="pips">${pips}</span></span>
+        <span class="uc">${maxed ? '<svg aria-hidden="true"><use href="#i-check"/></svg>' : `${cost}${clipIcon}`}</span>
         <span class="ud"><b>${esc(u.pro)}</b>${u.con ? ` · <em>${esc(u.con)}</em>` : ''}</span>`;
     });
   }

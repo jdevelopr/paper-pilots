@@ -1,13 +1,49 @@
-// floors.js: the five levels, one per floor of the office building.
-// Pure data plus a builder that turns furniture into collision boxes.
+// floors.js: the five office floors and the layout generator.
+//
+// Each floor is a *theme* (name, colours, ceiling height, what furniture lives
+// there, what the landing zones are called). generateFloor(theme, seed) builds
+// a fresh random layout from that theme for every race. The layout is plain
+// data: the sim collides with `boxes`, and the renderer builds meshes from
+// `objects`, so what you see is exactly what you hit.
+//
+// Playability guarantees:
+//   - a winding "lane" from the launch desk to the far wall is kept clear of
+//     anything taller than a desk, so there is always a way through;
+//   - nothing spawns on the launch area or on top of a landing zone;
+//   - landing zones sit in fixed distance bands, so farther really is harder.
+//
 // Units: sim space (see sim.js). Width spans x = -W/2..W/2, z runs 0..length.
-// The renderer reads the same `objects` list to build meshes, so what you see is
-// exactly what you collide with.
+// Pure: no DOM, no Math.random (the seed is passed in).
 
 export const ZONE_PAY = [3, 6, 10, 15, 24];
 
-// Furniture types that are solid from the floor up. Everything else is listed in
-// boxesFor() with its own shape.
+// Distance bands per tier [zMin, zMax] for the zone centre.
+const TIER_BANDS = [[100, 116], [120, 134], [138, 152], [156, 170], [176, 191]];
+const LANE_HALF = 3.6;     // half-width of the guaranteed-clear corridor
+const TALL = 3.2;          // anything taller than this may not sit in the lane
+
+/* ----------------------------------------------------------------- rng --- */
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function tools(rng) {
+  const r = (a, b) => a + (b - a) * rng();
+  const ri = (a, b) => Math.floor(r(a, b + 1));
+  const pick = arr => arr[Math.floor(rng() * arr.length)];
+  const chance = p => rng() < p;
+  return { r, ri, pick, chance };
+}
+
+/* --------------------------------------------------------- collisions --- */
+
 const SOLID = new Set(['counter', 'cubicle', 'pillar', 'plant', 'cabinet', 'couch', 'cooler',
   'printer', 'vending', 'fridge', 'rack', 'shelf', 'glass', 'crate', 'copier', 'tv']);
 
@@ -24,262 +60,281 @@ function boxesFor(o) {
   return [];
 }
 
-// A line of paper clips from a to b, n of them.
-function line(a, b, n, extra = {}) {
+const topOf = o => (o.y || 0) + o.h + (o.mon ? 1.4 : 0);
+const overlapsRect = (o, x0, x1, z0, z1) =>
+  o.x + o.w / 2 > x0 && o.x - o.w / 2 < x1 && o.z + o.d / 2 > z0 && o.z - o.d / 2 < z1;
+
+/* -------------------------------------------------------------- themes --- */
+
+// Furniture presets. w is across the floor, d along it, h is height.
+const F = {
+  desk: (x, z, T) => ({ type: 'desk', x, z, w: T.r(6, 8), d: T.r(3, 3.8), h: 3, mon: T.chance(0.7) }),
+  table: (x, z, T) => ({ type: 'table', x, z, w: T.r(5, 8), d: T.r(4, 6), h: T.r(2.6, 3) }),
+  counter: (x, z, T) => ({ type: 'counter', x, z, w: T.r(6, 12), d: T.r(3, 4), h: 3.6 }),
+  pillar: (x, z) => ({ type: 'pillar', x, z, w: 2.4, d: 2.4, h: 99 }),
+  plant: (x, z) => ({ type: 'plant', x, z, w: 1.8, d: 1.8, h: 4.5 }),
+  couch: (x, z, T) => ({ type: 'couch', x, z, w: T.r(6, 9), d: 3, h: 2.2 }),
+  cooler: (x, z) => ({ type: 'cooler', x, z, w: 1.6, d: 1.6, h: 4.4 }),
+  cabinet: (x, z, T) => ({ type: 'cabinet', x, z, w: T.r(2.4, 5), d: 3, h: T.pick([4.4, 6]) }),
+  printer: (x, z) => ({ type: 'printer', x, z, w: 3, d: 2.4, h: 3.4 }),
+  vending: (x, z) => ({ type: 'vending', x, z, w: 4, d: 3, h: 7.5 }),
+  fridge: (x, z) => ({ type: 'fridge', x, z, w: 5, d: 4, h: 7.5 }),
+  shelf: (x, z, T) => ({ type: 'shelf', x, z, w: T.r(6, 9), d: 2, h: T.pick([5, 6, 7]) }),
+  crate: (x, z, T) => ({ type: 'crate', x, z, w: T.r(2.5, 4.5), d: T.r(2.5, 3.5), h: T.r(1.8, 3) }),
+  rack: (x, z, T, d) => ({ type: 'rack', x, z, w: 3, d: d ?? T.r(16, 30), h: 9 }),
+};
+
+// A partition or glass wall across the floor with 1-2 random doorways.
+function wallRow(type, h, z, W, T) {
+  const gaps = [];
+  const nGaps = T.ri(1, 2);
+  for (let i = 0; i < nGaps; i++) {
+    const gw = T.r(7, 11);
+    const gx = T.r(-W / 2 + gw / 2 + 1, W / 2 - gw / 2 - 1);
+    gaps.push([gx - gw / 2, gx + gw / 2]);
+  }
+  gaps.sort((a, b) => a[0] - b[0]);
   const out = [];
-  for (let i = 0; i < n; i++) {
-    const t = n === 1 ? 0 : i / (n - 1);
-    out.push({ x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t, z: a[2] + (b[2] - a[2]) * t, ...extra });
+  let x = -W / 2;
+  for (const [g0, g1] of [...gaps, [W / 2, W / 2]]) {
+    if (g0 - x > 1.5) out.push({ type, x: (x + g0) / 2, z, w: g0 - x, d: type === 'glass' ? 0.4 : 0.5, h });
+    x = Math.max(x, g1);
   }
   return out;
 }
-const box = (x, y, z) => ({ x, y, z, n: 5, big: true });
 
-function zone(tier, label, x, z, w, d, y = 0) {
-  return { tier, label, x, z, w, d, y, pay: ZONE_PAY[tier] };
+function scatter(z, W, T, makers, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(T.pick(makers)(T.r(-W / 2 + 3, W / 2 - 3), z + T.r(-4, 4), T));
+  return out;
 }
 
-function build(f) {
-  f.width ??= 44; f.height ??= 16; f.length ??= 200;
-  f.vents ??= []; f.fans ??= []; f.blowers ??= [];
-  // Launch desk is the same on every floor.
-  f.objects.unshift({ type: 'desk', x: 0, z: -2.6, w: 13, d: 3, h: 4.2, launch: true });
-  f.boxes = f.objects.flatMap(boxesFor);
-  return f;
-}
-
-export const FLOORS = [
-  build({
+export const THEMES = [
+  {
     id: 'lobby', number: 1, name: 'Lobby',
     carpet: '#c9b48a', wall: '#e9e1cf', accent: '#c1440e', height: 16,
-    stakes: 'Elevator pays 24',
-    objects: [
-      { type: 'counter', x: 0, z: 36, w: 14, d: 3, h: 3.6 },
-      { type: 'pillar', x: -12, z: 58, w: 2.4, d: 2.4, h: 16 },
-      { type: 'pillar', x: 12, z: 58, w: 2.4, d: 2.4, h: 16 },
-      { type: 'pillar', x: -12, z: 112, w: 2.4, d: 2.4, h: 16 },
-      { type: 'pillar', x: 12, z: 112, w: 2.4, d: 2.4, h: 16 },
-      { type: 'plant', x: -19, z: 20, w: 1.8, d: 1.8, h: 4.5 },
-      { type: 'plant', x: 19, z: 20, w: 1.8, d: 1.8, h: 4.5 },
-      { type: 'plant', x: -19, z: 86, w: 1.8, d: 1.8, h: 4.5 },
-      { type: 'plant', x: 19, z: 86, w: 1.8, d: 1.8, h: 4.5 },
-      { type: 'couch', x: -16, z: 74, w: 8, d: 3, h: 2.2 },
-      { type: 'couch', x: 16, z: 74, w: 8, d: 3, h: 2.2 },
-      { type: 'table', x: 0, z: 80, w: 6, d: 4, h: 1.6 },
-      { type: 'desk', x: -7, z: 160, w: 8, d: 4, h: 3, mon: true },
-      { type: 'cooler', x: 18, z: 150, w: 1.6, d: 1.6, h: 4.4 },
-      { type: 'plant', x: -19, z: 176, w: 1.8, d: 1.8, h: 4.5 },
-      { type: 'plant', x: 19, z: 176, w: 1.8, d: 1.8, h: 4.5 },
+    zoneNames: [['Welcome Mat', 'Doormat'], ['Lobby Rug', 'Waiting Area'], ['Mail Cart', 'Coat Rack'], ['Visitor Sofa', 'Fountain Ledge'], ['Elevator', 'Revolving Door']],
+    perches: [
+      { name: 'Security Desk', make: (x, z, T) => ({ ...F.desk(x, z, T), mon: false }) },
+      { name: 'Reception', make: (x, z, T) => F.counter(x, z, T) },
     ],
-    vents: [
-      { x: 0, z: 60, r: 4, s: 7 },
-      { x: 10, z: 98, r: 3.2, s: 6 },
-      { x: -9, z: 124, r: 3.2, s: 6 },
+    rows: [
+      (z, W, T) => [F.pillar(T.r(-14, -6), z), F.pillar(T.r(6, 14), z)],
+      (z, W, T) => [F.counter(T.r(-8, 8), z, T), ...scatter(z, W, T, [F.plant], 2)],
+      (z, W, T) => [F.couch(T.r(-16, -8), z, T), F.couch(T.r(8, 16), z, T), F.table(0, z + T.r(-2, 2), T)],
+      (z, W, T) => scatter(z, W, T, [F.plant, F.cooler, F.pillar], T.ri(2, 4)),
     ],
-    zones: [
-      zone(0, 'Welcome Mat', 0, 100, 18, 14),
-      zone(1, 'Lobby Rug', -9, 128, 13, 10),
-      zone(2, 'Mail Cart', 10, 142, 8, 8),
-      zone(3, 'Security Desk', -7, 160, 8, 4, 3),
-      zone(4, 'Elevator', 0, 192, 9, 8),
-    ],
-    clips: [
-      ...line([0, 6.5, 14], [0, 6.5, 30], 5),
-      ...line([0, 9, 56], [0, 13, 64], 4),
-      box(0, 14, 70),
-      ...line([10, 8, 92], [10, 11, 104], 4),
-      ...line([-9, 7, 118], [-9, 10, 130], 4),
-      ...line([-4, 4, 170], [0, 2, 186], 4),
-    ],
-  }),
-
-  build({
+    vents: [3, 4], fans: [0, 1], blowers: [0, 0],
+  },
+  {
     id: 'cubicles', number: 2, name: 'Cubicle Farm',
     carpet: '#8f9aa3', wall: '#dfe3e2', accent: '#1e4d6b', height: 13,
-    stakes: 'Window Seat pays 24',
-    objects: [
-      // Partition rows across the floor with gaps to thread
-      { type: 'cubicle', x: -15, z: 32, w: 14, d: 0.5, h: 5 },
-      { type: 'cubicle', x: 7, z: 32, w: 18, d: 0.5, h: 5 },
-      { type: 'cubicle', x: -8, z: 56, w: 24, d: 0.5, h: 5.5 },
-      { type: 'cubicle', x: 18, z: 56, w: 8, d: 0.5, h: 5.5 },
-      { type: 'cubicle', x: -18, z: 80, w: 8, d: 0.5, h: 5.5 },
-      { type: 'cubicle', x: 8, z: 80, w: 24, d: 0.5, h: 5.5 },
-      { type: 'cubicle', x: -12, z: 104, w: 20, d: 0.5, h: 5 },
-      { type: 'cubicle', x: 14, z: 104, w: 16, d: 0.5, h: 5 },
-      // Lengthwise partitions making cubicles near the end
-      { type: 'cubicle', x: -6, z: 140, w: 0.5, d: 22, h: 4.5 },
-      { type: 'cubicle', x: 8, z: 150, w: 0.5, d: 26, h: 4.5 },
-      { type: 'desk', x: -14, z: 44, w: 7, d: 3, h: 3, mon: true },
-      { type: 'desk', x: 12, z: 44, w: 7, d: 3, h: 3, mon: true },
-      { type: 'desk', x: -2, z: 68, w: 7, d: 3, h: 3, mon: true },
-      { type: 'desk', x: 15, z: 92, w: 7, d: 3, h: 3, mon: true },
-      { type: 'desk', x: -15, z: 92, w: 7, d: 3, h: 3, mon: true },
-      { type: 'printer', x: 0, z: 118, w: 3, d: 2.4, h: 3.4 },
-      { type: 'cabinet', x: -20, z: 132, w: 2.4, d: 3, h: 4.4 },
-      { type: 'desk', x: -14, z: 150, w: 8, d: 3.5, h: 3, mon: true },
-      { type: 'desk', x: 15, z: 168, w: 7, d: 3.5, h: 3, mon: true },
-      { type: 'plant', x: 20, z: 120, w: 1.8, d: 1.8, h: 4.5 },
+    zoneNames: [['Hallway', 'Copier Nook'], ['Cubicle 4B', 'Hot Desk'], ['Break Corner', 'Supply Shelf'], ['Team Lead Desk', 'Huddle Room'], ['Window Seat', 'Corner Cubicle']],
+    perches: [
+      { name: "Manager's Desk", make: (x, z, T) => ({ ...F.desk(x, z, T), mon: false }) },
+      { name: 'Filing Cabinet', make: (x, z, T) => ({ ...F.cabinet(x, z, T), w: 5, h: 4.4 }) },
     ],
-    vents: [
-      { x: -1, z: 44, r: 3.4, s: 7 },
-      { x: -12, z: 66, r: 3, s: 6.5 },
-      { x: 2, z: 96, r: 3.4, s: 7 },
-      { x: 0, z: 134, r: 3, s: 5 },
+    rows: [
+      (z, W, T) => wallRow('cubicle', T.r(4.8, 5.6), z, W, T),
+      (z, W, T) => wallRow('cubicle', T.r(4.8, 5.6), z, W, T),
+      (z, W, T) => scatter(z, W, T, [F.desk, F.desk, F.printer, F.cabinet], T.ri(2, 4)),
+      (z, W, T) => [{ type: 'cubicle', x: T.r(-12, 12), z: z + 6, w: 0.5, d: T.r(12, 22), h: 4.5 }, ...scatter(z, W, T, [F.desk], 2)],
     ],
-    zones: [
-      zone(0, 'Hallway', 0, 120, 10, 12),
-      zone(1, 'Intern Desk', -14, 150, 8, 3.5, 3),
-      zone(2, 'Cubicle 4B', 1, 156, 11, 12),
-      zone(3, "Manager's Desk", 15, 168, 7, 3.5, 3),
-      zone(4, 'Window Seat', -12, 190, 10, 8),
-    ],
-    clips: [
-      ...line([-6, 6.5, 26], [-6, 6.5, 38], 4),
-      ...line([-1, 8, 42], [-1, 11, 48], 3),
-      ...line([12, 6.5, 52], [12, 6.5, 60], 3),
-      ...line([-12, 8, 62], [-12, 10, 70], 3),
-      box(-12, 7, 80),
-      ...line([2, 9, 92], [2, 11, 100], 3),
-      ...line([2, 7, 104], [-6, 6, 116], 4),
-      box(0, 2, 160),
-    ],
-  }),
-
-  build({
+    vents: [3, 5], fans: [0, 0], blowers: [0, 0],
+  },
+  {
     id: 'breakroom', number: 3, name: 'Break Room',
     carpet: '#b9c9b2', wall: '#efe4c8', accent: '#3d6b52', height: 15,
-    stakes: 'Top of the fridge pays 24',
-    objects: [
-      { type: 'counter', x: -17, z: 30, w: 8, d: 16, h: 3.6 },
-      { type: 'vending', x: 19, z: 30, w: 4, d: 3, h: 7.5 },
-      { type: 'vending', x: 19, z: 36, w: 4, d: 3, h: 7.5 },
-      { type: 'table', x: -6, z: 58, w: 7, d: 5, h: 2.8 },
-      { type: 'table', x: 8, z: 66, w: 7, d: 5, h: 2.8 },
-      { type: 'table', x: -8, z: 86, w: 7, d: 5, h: 2.8 },
-      { type: 'couch', x: 15, z: 92, w: 9, d: 3, h: 2.2 },
-      { type: 'tv', x: 15, z: 100, w: 8, d: 0.6, h: 5, y: 3 },
-      { type: 'cooler', x: -19, z: 104, w: 1.6, d: 1.6, h: 4.4 },
-      { type: 'table', x: 0, z: 128, w: 10, d: 6, h: 2.6 },
-      { type: 'counter', x: 17, z: 150, w: 10, d: 4, h: 3.6 },
-      { type: 'fridge', x: -16, z: 178, w: 5, d: 4, h: 7.5 },
-      { type: 'shelf', x: 17, z: 186, w: 8, d: 2, h: 5 },
+    zoneNames: [['Sink Mat', 'Recycling Bins'], ['Coffee Corner', 'Bean Bag'], ['Snack Drawer', 'Water Cooler'], ['Ping-pong Corner', 'Microwave Line'], ['Nap Pod', 'Birthday Cake']],
+    perches: [
+      { name: 'Lunch Table', make: (x, z, T) => F.table(x, z, T) },
+      { name: 'Snack Counter', make: (x, z, T) => F.counter(x, z, T) },
+      { name: 'Fridge Top', make: (x, z) => F.fridge(x, z), tiers: [4] },
     ],
-    fans: [
-      { x: 0, z: 46, r: 5, s: 5 },
-      { x: -2, z: 110, r: 5.5, s: 5.5 },
-      { x: 10, z: 140, r: 4.5, s: 5 },
+    rows: [
+      (z, W, T) => scatter(z, W, T, [F.table, F.table, F.couch], T.ri(2, 3)),
+      (z, W, T) => [F.vending(T.pick([-1, 1]) * T.r(12, 18), z), F.vending(T.r(-6, 6), z + 6)],
+      (z, W, T) => [F.counter(T.pick([-1, 1]) * T.r(10, 16), z, T), F.cooler(T.r(-8, 8), z)],
+      (z, W, T) => [F.fridge(T.r(-14, 14), z), ...scatter(z, W, T, [F.table], 1)],
     ],
-    vents: [
-      { x: -17, z: 30, r: 3, s: 8, steam: true },
-      { x: 4, z: 76, r: 3.4, s: 7 },
-      { x: -12, z: 132, r: 3.4, s: 7.5 },
-    ],
-    zones: [
-      zone(0, 'Sink Mat', 0, 112, 14, 10),
-      zone(1, 'Lunch Table', 0, 128, 10, 6, 2.6),
-      zone(2, 'Snack Counter', 17, 150, 10, 4, 3.6),
-      zone(3, 'Ping-pong Corner', 4, 176, 12, 10),
-      zone(4, 'Fridge Top', -16, 178, 5, 4, 7.5),
-    ],
-    clips: [
-      ...line([-17, 7, 24], [-17, 11, 36], 4),
-      ...line([0, 7, 52], [8, 6, 62], 4),
-      ...line([4, 8, 72], [4, 12, 80], 3),
-      box(-6, 4.2, 58),
-      ...line([-12, 8, 126], [-12, 12, 136], 3),
-      ...line([-14, 9, 150], [-16, 9, 168], 4),
-    ],
-  }),
-
-  build({
+    vents: [3, 4], fans: [2, 3], blowers: [0, 0],
+  },
+  {
     id: 'servers', number: 4, name: 'Server Room',
     carpet: '#7b8794', wall: '#c9d1d8', accent: '#1e4d6b', height: 14,
-    stakes: 'Root Access pays 24',
-    objects: [
-      // Rows of racks running lengthwise, making aisles
-      { type: 'rack', x: -13, z: 48, w: 3, d: 34, h: 9 },
-      { type: 'rack', x: 0, z: 40, w: 3, d: 26, h: 9 },
-      { type: 'rack', x: 13, z: 48, w: 3, d: 34, h: 9 },
-      { type: 'rack', x: -7, z: 98, w: 3, d: 30, h: 9 },
-      { type: 'rack', x: 7, z: 98, w: 3, d: 30, h: 9 },
-      { type: 'rack', x: -19, z: 106, w: 3, d: 18, h: 9 },
-      { type: 'rack', x: 19, z: 106, w: 3, d: 18, h: 9 },
-      { type: 'crate', x: 0, z: 72, w: 4, d: 3, h: 2.5 },
-      { type: 'desk', x: 12, z: 146, w: 8, d: 3.5, h: 3, mon: true },
-      { type: 'cabinet', x: -14, z: 150, w: 6, d: 3, h: 6 },
-      { type: 'rack', x: 0, z: 186, w: 4, d: 3, h: 7 },
+    zoneNames: [['Cable Tray', 'Loading Dock'], ['Cold Aisle', 'Patch Panel'], ['Hot Aisle', 'Spare Parts'], ['Admin Desk', 'UPS Bank'], ['Root Access', 'Mainframe']],
+    perches: [
+      { name: 'Admin Desk', make: (x, z, T) => ({ ...F.desk(x, z, T), mon: false }) },
+      { name: 'Tape Library', make: (x, z, T) => ({ ...F.cabinet(x, z, T), w: 5, h: 6 }) },
+      { name: 'Root Access', make: (x, z, T) => ({ ...F.rack(x, z, T, 3), w: 4, h: 7 }), tiers: [4] },
     ],
-    vents: [
-      { x: -6.5, z: 46, r: 3, s: 9 },
-      { x: 6.5, z: 46, r: 3, s: 9 },
-      { x: 0, z: 98, r: 3.2, s: 9 },
-      { x: -13, z: 98, r: 2.6, s: 8 },
-      { x: 13, z: 98, r: 2.6, s: 8 },
+    rows: [
+      // Racks running lengthwise make aisles
+      (z, W, T) => {
+        const n = T.ri(2, 4), out = [];
+        const span = W - 8, step = span / n;
+        for (let i = 0; i < n; i++) out.push(F.rack(-span / 2 + step * (i + 0.5) + T.r(-1.5, 1.5), z + 8, T));
+        return out;
+      },
+      (z, W, T) => scatter(z, W, T, [F.crate, F.crate, F.cabinet], T.ri(2, 3)),
     ],
-    blowers: [
-      { x0: -11.5, x1: -1.5, z0: 58, z1: 64, y1: 9, dir: 1, s: 4 },
-      { x0: 1.5, x1: 11.5, z0: 26, z1: 32, y1: 9, dir: -1, s: 4 },
-    ],
-    zones: [
-      zone(0, 'Cable Tray', 0, 126, 14, 10),
-      zone(1, 'Cold Aisle', -2, 150, 8, 10),
-      zone(2, 'Admin Desk', 12, 146, 8, 3.5, 3),
-      zone(3, 'Tape Library', -14, 150, 6, 3, 6),
-      zone(4, 'Root Access', 0, 186, 4, 3, 7),
-    ],
-    clips: [
-      ...line([-6.5, 6, 30], [-6.5, 11, 50], 5),
-      ...line([6.5, 6, 30], [6.5, 11, 50], 5),
-      box(0, 10.5, 46),
-      ...line([0, 9, 86], [0, 12, 100], 4),
-      ...line([0, 9, 120], [0, 8, 140], 4),
-      ...line([0, 8.5, 172], [0, 8, 182], 3),
-    ],
-  }),
-
-  build({
+    rowGap: [26, 34],
+    vents: [4, 6], fans: [0, 0], blowers: [1, 2],
+  },
+  {
     id: 'executive', number: 5, name: 'Executive Suite',
     carpet: '#8b3a2e', wall: '#efe6d6', accent: '#c1440e', height: 16,
-    stakes: 'Corner Office pays 24',
-    objects: [
-      { type: 'glass', x: -14, z: 40, w: 16, d: 0.4, h: 16 },
-      { type: 'glass', x: 14, z: 40, w: 16, d: 0.4, h: 16 },
-      { type: 'table', x: 0, z: 70, w: 8, d: 22, h: 3.2 },
-      { type: 'shelf', x: -20, z: 70, w: 2, d: 14, h: 7 },
-      { type: 'plant', x: 18, z: 60, w: 1.8, d: 1.8, h: 4.5 },
-      { type: 'glass', x: -16, z: 100, w: 12, d: 0.4, h: 16 },
-      { type: 'glass', x: 4, z: 100, w: 12, d: 0.4, h: 16 },
-      { type: 'couch', x: 14, z: 122, w: 8, d: 3, h: 2.2 },
-      { type: 'shelf', x: -18, z: 150, w: 8, d: 2, h: 6 },
-      { type: 'counter', x: 17, z: 160, w: 6, d: 3, h: 3.8 },
-      { type: 'desk', x: -10, z: 186, w: 10, d: 5, h: 3.2, mon: true },
-      { type: 'plant', x: 19, z: 194, w: 1.8, d: 1.8, h: 4.5 },
+    zoneNames: [['Visitor Chair', 'Coat Closet'], ['Lounge Rug', 'Fish Tank'], ['Mini Bar', 'Trophy Case'], ['Executive Rug', 'Golf Green'], ['Corner Office', 'CEO Chair']],
+    perches: [
+      { name: 'Boardroom Table', make: (x, z, T) => ({ ...F.table(x, z, T), w: T.r(7, 9), d: T.r(10, 16), h: 3.2 }) },
+      { name: 'Bookshelf', make: (x, z, T) => ({ ...F.shelf(x, z, T), h: 6 }) },
+      { name: 'Corner Office', make: (x, z) => ({ type: 'desk', x, z, w: 10, d: 5, h: 3.2, mon: false }), tiers: [4] },
     ],
-    vents: [
-      { x: 0, z: 30, r: 3, s: 7 },
-      { x: 13, z: 84, r: 3.4, s: 8 },
-      { x: -3, z: 130, r: 3, s: 7 },
+    rows: [
+      (z, W, T) => wallRow('glass', 16, z, W, T),
+      (z, W, T) => [{ ...F.table(T.r(-8, 8), z + 6, T), w: T.r(7, 9), d: T.r(14, 22), h: 3.2 }],
+      (z, W, T) => [F.shelf(T.pick([-1, 1]) * T.r(12, 17), z, T), F.plant(T.r(-10, 10), z), F.couch(T.r(-12, 12), z + 5, T)],
     ],
-    fans: [
-      { x: 0, z: 70, r: 5, s: 4 },
-    ],
-    zones: [
-      zone(0, 'Visitor Chair', 2, 136, 12, 10),
-      zone(1, 'Bookshelf', -18, 150, 8, 2, 6),
-      zone(2, 'Mini Bar', 17, 160, 6, 3, 3.8),
-      zone(3, 'Executive Rug', 4, 178, 12, 10),
-      zone(4, 'Corner Office', -10, 186, 10, 5, 3.2),
-    ],
-    clips: [
-      ...line([0, 7, 22], [0, 10, 36], 4),
-      ...line([-4, 7, 42], [-4, 7, 50], 3),
-      ...line([13, 8, 78], [13, 12, 90], 4),
-      box(-10, 6, 100),
-      ...line([-3, 7, 124], [-3, 10, 136], 3),
-      ...line([-6, 6, 170], [-9, 4.5, 182], 3),
-    ],
-  }),
+    vents: [3, 4], fans: [1, 2], blowers: [0, 0],
+  },
 ];
 
-export const FLOOR_BY_ID = Object.fromEntries(FLOORS.map(f => [f.id, f]));
+// rules.js picks the floors for a match from this list.
+export const FLOORS = THEMES;
+
+/* ----------------------------------------------------------- generator --- */
+
+export function generateFloor(theme, seed = 1) {
+  const rng = mulberry32(seed);
+  const T = tools(rng);
+  const W = 44, H = theme.height, L = 200;
+
+  // The clear lane: random control points, linear in between.
+  const ctrl = [[0, 0], [40, T.r(-10, 10)], [80, T.r(-14, 14)], [120, T.r(-14, 14)], [160, T.r(-14, 14)], [L, T.r(-12, 12)]];
+  const laneX = z => {
+    for (let i = 1; i < ctrl.length; i++) {
+      if (z <= ctrl[i][0]) {
+        const [z0, x0] = ctrl[i - 1], [z1, x1] = ctrl[i];
+        return x0 + (x1 - x0) * (z - z0) / (z1 - z0);
+      }
+    }
+    return ctrl[ctrl.length - 1][1];
+  };
+  const inLane = o => {
+    for (let z = o.z - o.d / 2; z <= o.z + o.d / 2 + 0.01; z += 1.5) {
+      const lx = laneX(z);
+      if (o.x + o.w / 2 > lx - LANE_HALF && o.x - o.w / 2 < lx + LANE_HALF) return true;
+    }
+    return false;
+  };
+
+  /* Landing zones, one per tier */
+  const zones = [];
+  for (let tier = 0; tier < 5; tier++) {
+    const [b0, b1] = TIER_BANDS[tier];
+    const hosts = theme.perches.filter(p => (p.tiers || [3, 4]).includes(tier));
+    const usePerch = tier >= 3 && hosts.length > 0 && T.chance(tier === 4 ? 0.5 : 0.6);
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const z = T.r(b0, b1);
+      let zn;
+      if (usePerch) {
+        const host = T.pick(hosts);
+        const o = host.make(0, z, T);
+        o.x = T.r(-W / 2 + o.w / 2 + 2, W / 2 - o.w / 2 - 2);
+        zn = { tier, label: host.name, x: o.x, z: o.z, w: o.w, d: o.d, y: o.h, pay: ZONE_PAY[tier], host: o };
+      } else {
+        const w = tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier;
+        const d = tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5;
+        zn = { tier, label: T.pick(theme.zoneNames[tier]), x: T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: 0, pay: ZONE_PAY[tier] };
+      }
+      const clash = zones.some(o => Math.abs(o.x - zn.x) < (o.w + zn.w) / 2 + 1.5 && Math.abs(o.z - zn.z) < (o.d + zn.d) / 2 + 1.5);
+      if (!clash || attempt === 29) { zones.push(zn); break; }
+    }
+  }
+  const perched = [];
+  for (const zn of zones) if (zn.host) { perched.push(zn.host); delete zn.host; }
+
+  /* Furniture rows down the floor */
+  let objects = [];
+  const [g0, g1] = theme.rowGap || [17, 25];
+  for (let z = T.r(20, 28); z < 186; z += T.r(g0, g1)) objects.push(...T.pick(theme.rows)(z, W, T));
+  // Along-the-wall decor
+  for (let z = T.r(8, 20); z < L - 6; z += T.r(18, 32)) {
+    const o = T.pick([F.plant, F.cabinet, F.shelf, F.cooler])(0, z, T);
+    if (o.type === 'shelf') { o.w = 2; o.d = T.r(6, 10); }
+    o.x = T.pick([-1, 1]) * (W / 2 - o.w / 2 - 0.3);
+    objects.push(o);
+  }
+
+  // Keep things inside the room, off the launch area, out of the lane (if
+  // tall), and off the landing zones.
+  objects = objects.filter(o => {
+    o.x = Math.max(-W / 2 + o.w / 2, Math.min(W / 2 - o.w / 2, o.x));
+    o.z = Math.max(o.d / 2 + 1, Math.min(L - o.d / 2 - 1, o.z));
+    if (o.h > H) o.h = H;
+    if (o.z - o.d / 2 < 16) return false;
+    if (topOf(o) > TALL && inLane(o)) return false;
+    for (const zn of zones) if (overlapsRect(o, zn.x - zn.w / 2 - 1, zn.x + zn.w / 2 + 1, zn.z - zn.d / 2 - 1, zn.z + zn.d / 2 + 1)) return false;
+    return true;
+  });
+  objects.push(...perched);
+  objects.unshift({ type: 'desk', x: 0, z: -2.6, w: 13, d: 3, h: 4.2, launch: true });
+  const boxes = objects.flatMap(boxesFor);
+
+  const freeAt = (x, z, r) => boxes.every(b => x + r < b.x0 || x - r > b.x1 || z + r < b.z0 || z - r > b.z1);
+  const solidAt = (x, y, z) => boxes.some(b => x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6 && y > b.y0 - 0.6 && y < b.y1 + 0.6);
+
+  /* Air currents */
+  const vents = [];
+  const nVents = T.ri(...theme.vents);
+  for (let tries = 0; vents.length < nVents && tries < 300; tries++) {
+    // The first two vents hug the lane so a good line always has lift on it.
+    const z = T.r(30, 150);
+    const x = vents.length < 2 ? laneX(z) + T.r(-2.5, 2.5) : T.r(-W / 2 + 4, W / 2 - 4);
+    const r = T.r(3, 4);
+    if (Math.abs(x) > W / 2 - r - 0.5 || !freeAt(x, z, r + 0.5)) continue;
+    if (vents.some(v => Math.hypot(v.x - x, v.z - z) < 14)) continue;
+    if (zones.some(zn => Math.abs(zn.x - x) < zn.w / 2 + r && Math.abs(zn.z - z) < zn.d / 2 + r)) continue;
+    vents.push({ x, z, r, s: T.r(6.5, 9) });
+  }
+  vents.sort((a, b) => a.z - b.z);
+
+  const fans = [];
+  const nFans = T.ri(...theme.fans);
+  for (let tries = 0; fans.length < nFans && tries < 100; tries++) {
+    const z = T.r(35, 160), x = T.r(-W / 2 + 6, W / 2 - 6);
+    if (fans.some(f => Math.hypot(f.x - x, f.z - z) < 20) || vents.some(v => Math.hypot(v.x - x, v.z - z) < 10)) continue;
+    fans.push({ x, z, r: T.r(4.5, 5.5), s: T.r(4, 5.5) });
+  }
+
+  const blowers = [];
+  const nBlowers = T.ri(...theme.blowers);
+  for (let i = 0; i < nBlowers; i++) {
+    const z = T.r(30, 140), lx = laneX(z);
+    blowers.push({ x0: lx - 6, x1: lx + 6, z0: z, z1: z + 6, y1: 9, dir: T.pick([-1, 1]), s: 4 });
+  }
+
+  /* Paper clips: columns over vents, runs along the lane, one bonus box */
+  const clips = [];
+  const addClip = (x, y, z, extra = {}) => {
+    if (solidAt(x, y, z) || y > H - 1 || y < 0.8 || Math.abs(x) > W / 2 - 1) return;
+    clips.push({ x, y, z, ...extra });
+  };
+  for (const v of vents) for (let i = 0; i < 3; i++) addClip(v.x, 7 + i * 2, v.z);
+  const runs = T.ri(2, 3);
+  for (let k = 0; k < runs; k++) {
+    const z0 = T.r(10, 95), n = T.ri(3, 5), y = T.r(5, 7.5);
+    for (let i = 0; i < n; i++) addClip(laneX(z0 + i * 3), y - i * 0.2, z0 + i * 3);
+  }
+  const bz = T.r(60, 140);
+  addClip(laneX(bz) + T.pick([-1, 1]) * T.r(4, 9), T.r(9, H - 2.5), bz, { n: 5, big: true });
+
+  const tier4 = zones.find(z => z.tier === 4);
+  return {
+    id: theme.id, number: theme.number, name: theme.name,
+    carpet: theme.carpet, wall: theme.wall, accent: theme.accent,
+    width: W, height: H, length: L, seed,
+    stakes: `${tier4.label} pays ${tier4.pay}`,
+    objects, boxes, vents, fans, blowers, zones, clips,
+  };
+}

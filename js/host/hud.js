@@ -4,7 +4,10 @@
 import { esc, clipIcon, planeIcon, reduceMotion } from '../ui.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM } from '../game/sim.js';
-import { UPGRADE_BY_ID } from '../shared/upgrades.js';
+import { UPGRADE_BY_ID, levelOf, ROMAN } from '../shared/upgrades.js';
+
+// One chip per upgrade, with its level: "Packing Tape II".
+const upChips = owned => [...new Set(owned)].map(id => ({ id, text: `${UPGRADE_BY_ID[id]?.name ?? id}${levelOf(owned, id) > 1 ? ` ${ROMAN[levelOf(owned, id)]}` : ''}` }));
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
@@ -203,7 +206,7 @@ export function createHud(root) {
         <div class="shopcard ${p.done ? 'done' : ''}" data-seat="${p.seat}" style="--c:${colorFor(p.seat)};--i:${i}">
           <div class="nm">${esc(p.name)}</div>
           <div class="cl">${clipIcon}<span>${p.clips}</span></div>
-          <div class="ups">${p.owned.map(id => `<span>${esc(UPGRADE_BY_ID[id]?.name ?? id)}</span>`).join('')}</div>
+          <div class="ups">${upChips(p.owned).map(c => `<span data-id="${c.id}">${esc(c.text)}</span>`).join('')}</div>
           <div class="state">${p.done ? 'Done' : 'Shopping'}</div>
         </div>`).join('')}</div>
       <div class="foot"><span>Next: Floor ${state.next.number} · ${esc(state.next.name)} · Race ${state.nextLeg} of ${state.legs}</span></div>`;
@@ -217,10 +220,13 @@ export function createHud(root) {
       card.querySelector('.cl span').textContent = p.clips;
       card.querySelector('.state').textContent = p.done ? 'Done' : 'Shopping';
       const ups = card.querySelector('.ups');
-      const have = [...ups.children].map(s => s.textContent);
-      for (const id of p.owned) {
-        const nm = UPGRADE_BY_ID[id]?.name ?? id;
-        if (!have.includes(nm)) { const s = document.createElement('span'); s.textContent = nm; ups.appendChild(s); }
+      for (const c of upChips(p.owned)) {
+        let chip = ups.querySelector(`[data-id="${c.id}"]`);
+        if (!chip) { chip = document.createElement('span'); chip.dataset.id = c.id; ups.appendChild(chip); }
+        if (chip.textContent !== c.text) {
+          chip.textContent = c.text;
+          chip.style.animation = 'none'; void chip.offsetWidth; chip.style.animation = '';
+        }
       }
     }
   }

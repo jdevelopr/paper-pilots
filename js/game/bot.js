@@ -4,6 +4,7 @@
 // Pure: given race state, it returns stick input. `rng` is passed in.
 
 import { stepPlane, SIM } from './sim.js';
+import { nextCost } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -131,7 +132,8 @@ export function botShop(bot, clips, owned, upgrades) {
   let left = clips;
   for (const id of pref) {
     const u = upgrades.find(x => x.id === id);
-    if (!owned.includes(id) && !buys.includes(id) && u.cost <= left && bot.rng() < 0.8) { buys.push(id); left -= u.cost; }
+    const cost = nextCost([...owned, ...buys], id);
+    if (cost != null && !buys.includes(id) && cost <= left && bot.rng() < 0.8) { buys.push(id); left -= cost; }
   }
   return buys;
 }

@@ -2,7 +2,7 @@
 
 A party game where up to 4 players race paper airplanes through an office building. One screen (a laptop or TV) shows the race. Everyone else plays on their phone by scanning a QR code.
 
-Each floor of the building is raced **3 times** before the elevator goes up:
+Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips:
 
 1. Lobby
 2. Cubicle Farm
@@ -33,17 +33,19 @@ On the host screen, **Enter** (or Space) skips the floor intro and the results s
 
 ### Upgrades
 
-| Upgrade | Cost | Effect |
+Every upgrade has **3 levels**, bought one at a time. Each level costs more and adds a smaller step, and the downsides stack too.
+
+| Upgrade | Cost (L1 / L2 / L3) | Effect per level |
 |---|---|---|
-| Cardstock | 12 | +70 durability, but heavier, so it sinks faster |
-| Rubber Band Launcher | 10 | Faster launch |
-| Wide Wing Fold | 14 | Glides much longer, but turns slower |
-| Glossy Paper | 10 | Less drag, but slides farther when it lands |
-| Sticky Note Flaps | 8 | Sharper turns, slightly more drag |
-| Nose Clip | 8 | Fans barely push you, slightly heavier |
-| Packing Tape | 9 | Takes 40% less damage |
-| Fridge Magnet | 7 | Pulls in paper clips from farther away |
-| Binder Clip Brake | 6 | Stops almost dead when it lands |
+| Cardstock | 12 / 19 / 28 | More durability, but heavier, so it sinks faster |
+| Rubber Band Launcher | 10 / 16 / 23 | Faster launch |
+| Wide Wing Fold | 14 / 22 / 32 | Glides longer, but turns slower |
+| Glossy Paper | 10 / 16 / 23 | Less drag, but slides farther when it lands |
+| Sticky Note Flaps | 8 / 13 / 18 | Sharper turns, slightly more drag |
+| Nose Clip | 8 / 13 / 18 | Fans push you less, slightly heavier |
+| Packing Tape | 9 / 14 / 21 | Takes less damage |
+| Fridge Magnet | 7 / 11 / 16 | Pulls in paper clips from farther away |
+| Binder Clip Brake | 6 / 10 / 14 | Stops faster when it lands |
 
 Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nose clip and so on.
 
@@ -118,8 +120,8 @@ js/client/            phone: join flow and controller
 To tune the game, edit:
 
 - `js/game/sim.js` for flight physics (`SIM` constants)
-- `js/game/floors.js` for level layouts, vents, fans, zones and clip placement
-- `js/shared/upgrades.js` for upgrade costs and stats
+- `js/game/floors.js` for floor themes and the random layout generator (zone distance bands, the guaranteed-clear lane, vent and fan counts)
+- `js/shared/upgrades.js` for upgrade costs, per-level effects and `MAX_LEVEL`
 - `js/game/rules.js` for payouts and `RACES_PER_FLOOR` (races on each floor)
 
 The rendering style is a custom post-process in `js/host/ink.js`. It draws ink outlines from depth and normal edges, adds pencil crosshatching in the shadows, and puts paper grain over everything, with lines that "boil" at 6 fps like a hand-drawn animation.

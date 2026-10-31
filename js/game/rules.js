@@ -1,6 +1,6 @@
 // rules.js: match-level rules (rounds, payouts, the shop). Pure, no DOM, no network.
 
-import { UPGRADE_BY_ID } from '../shared/upgrades.js';
+import { UPGRADE_BY_ID, nextCost } from '../shared/upgrades.js';
 import { FLOORS } from './floors.js';
 
 export const PLACE_CLIPS = [8, 5, 3, 1];
@@ -61,9 +61,10 @@ export function buy(match, seat, id) {
   const pl = match.players[seat];
   const up = UPGRADE_BY_ID[id];
   if (!pl || !up) return { ok: false, reason: 'Unknown upgrade' };
-  if (pl.owned.includes(id)) return { ok: false, reason: 'Already owned' };
-  if (pl.clips < up.cost) return { ok: false, reason: 'Not enough clips' };
-  pl.clips -= up.cost;
+  const cost = nextCost(pl.owned, id);
+  if (cost == null) return { ok: false, reason: 'Already maxed out' };
+  if (pl.clips < cost) return { ok: false, reason: 'Not enough clips' };
+  pl.clips -= cost;
   pl.owned.push(id);
   return { ok: true };
 }

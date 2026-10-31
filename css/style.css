@@ -551,3 +551,9 @@ body.solo .hint { right: auto; left: 18px; }
   body.solo #controller { width: 300px; }
   body.solo #hud { right: 330px; }
 }
+
+/* Upgrade level pips in the phone shop */
+.upg .pips { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.upg .pips i { width: 11px; height: 11px; border: 2px solid var(--ink); border-radius: 50% 45% 55% 48%; background: #fffdf6; }
+.upg .pips i.on { background: var(--green); }
+.upg.bought .pips i.on:last-of-type, .upg.bought .pips i.on { animation: pop var(--t-base) var(--ease-back); }
