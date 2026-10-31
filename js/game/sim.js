@@ -302,7 +302,12 @@ function collide(race, p, px, py, pz) {
   }
   if (p.z < -4) { p.z = -4; p.yaw = Math.PI - p.yaw; p.v *= 0.4; }
 
+  // Near misses: skimming past something at speed earns a "close call".
+  const C = r + 0.9;
+  const canClose = p.state === 'fly' && !p.crumpled && p.v > 9 && race.t - (p.lastClose ?? -9) > 1.5 && race.t - (p.lastHit ?? -9) > 0.8;
+  let closeTo = null;
   for (const b of boxesNow(race)) {
+    if (canClose && !closeTo && p.x > b.x0 - C && p.x < b.x1 + C && p.z > b.z0 - C && p.z < b.z1 + C && p.y > b.y0 - C && p.y < b.y1 + C) closeTo = b;
     if (p.x < b.x0 - r || p.x > b.x1 + r || p.z < b.z0 - r || p.z > b.z1 + r) continue;
     if (p.y < b.y0 - r || p.y > b.y1 + SIM.restH - 0.01) continue;
 
@@ -348,10 +353,15 @@ function collide(race, p, px, py, pz) {
     }
     if (p.state === 'fall') { p.v *= 0.3; }
   }
+  if (closeTo && p.lastHit !== race.t && p.state === 'fly') {
+    p.lastClose = race.t;
+    race.events.push({ name: 'close', seat: p.seat, x: p.x, y: p.y, z: p.z });
+  }
 }
 
 function damage(race, p, impact, kind) {
   if (p.crumpled) return;
+  p.lastHit = race.t;
   const dmg = Math.max(0, impact - 2.5) * 5.2 * p.st.dmg;
   if (dmg <= 0) return;
   p.hp = Math.max(0, p.hp - dmg);

@@ -50,11 +50,16 @@ function noise(dur, { freq = 1200, q = 0.8, vol = 0.4, sweep = 1, delay = 0 } = 
 export const sfx = {
   tick: () => tone(660, 0.12, { type: 'square', vol: 0.18 }),
   go: () => { tone(880, 0.25, { type: 'square', vol: 0.2 }); tone(1320, 0.3, { type: 'triangle', vol: 0.2, delay: 0.05 }); },
-  ding: () => { tone(1568, 0.18, { vol: 0.2 }); tone(2093, 0.22, { vol: 0.14, delay: 0.05 }); },
+  // Clip pickups climb in pitch while you chain them
+  ding: (combo = 1) => { const k = Math.pow(1.122, Math.min(combo - 1, 8)); tone(1568 * k, 0.18, { vol: 0.2 }); tone(2093 * k, 0.22, { vol: 0.14, delay: 0.05 }); },
   throw: boost => noise(boost ? 0.55 : 0.4, { freq: 500, sweep: 4, vol: boost ? 0.5 : 0.35 }),
   thud: () => { noise(0.18, { freq: 300, q: 0.6, vol: 0.6, sweep: 0.5 }); tone(110, 0.15, { type: 'sine', vol: 0.4, slide: 0.5 }); },
   crumple: () => { for (let i = 0; i < 6; i++) noise(0.08, { freq: 2500 + Math.random() * 2000, q: 2, vol: 0.3, delay: i * 0.05 }); },
   gust: dir => noise(0.5, { freq: dir === 'up' ? 400 : 900, sweep: dir === 'up' ? 3 : 0.4, q: 0.6, vol: 0.22 }),
+  close: () => { noise(0.3, { freq: 2600, sweep: 0.35, q: 1.2, vol: 0.3 }); tone(880, 0.12, { type: 'sine', vol: 0.08, slide: 1.5 }); },
+  shutter: () => { noise(0.05, { freq: 3000, q: 2, vol: 0.6 }); noise(0.08, { freq: 1500, q: 2, vol: 0.5, delay: 0.09 }); },
+  drumroll: (secs = 2) => { for (let t = 0; t < secs; t += 0.06) noise(0.05, { freq: 250, q: 0.8, vol: 0.12 + 0.18 * (t / secs), delay: t }); },
+  promo: () => [659, 784, 988, 1319].forEach((f, i) => tone(f, 0.25, { type: 'triangle', vol: 0.14, delay: i * 0.09 })),
   land: () => noise(0.35, { freq: 1800, sweep: 0.3, vol: 0.25 }),
   zone: tier => [0, 1, 2].forEach(i => tone(523 * Math.pow(1.26, i + tier * 0.5), 0.2, { vol: 0.16, delay: i * 0.08 })),
   coin: () => tone(988, 0.08, { type: 'square', vol: 0.1 }),
@@ -62,3 +67,21 @@ export const sfx = {
   fanfare: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.35, { type: 'square', vol: 0.12, delay: i * 0.13 })),
   elevator: () => { tone(1319, 0.6, { type: 'sine', vol: 0.25 }); tone(1047, 0.8, { type: 'sine', vol: 0.25, delay: 0.35 }); },
 };
+
+// Continuous wind that rises with speed. setWind(0..1); 0 fades it out.
+let windSrc = null, windGain = null, windFilter = null;
+export function setWind(level) {
+  if (!ctx) return;
+  if (!windSrc) {
+    windSrc = ctx.createBufferSource();
+    windSrc.buffer = noiseBuf; windSrc.loop = true;
+    windFilter = ctx.createBiquadFilter(); windFilter.type = 'bandpass'; windFilter.Q.value = 0.7;
+    windGain = ctx.createGain(); windGain.gain.value = 0;
+    windSrc.connect(windFilter).connect(windGain).connect(master);
+    windSrc.start();
+  }
+  const t = ctx.currentTime;
+  const l = Math.max(0, Math.min(1, level));
+  windGain.gain.setTargetAtTime(l * 0.16, t, 0.15);
+  windFilter.frequency.setTargetAtTime(300 + l * 1400, t, 0.15);
+}

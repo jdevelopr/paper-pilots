@@ -54,15 +54,16 @@ export function createHud(root) {
       el.className = 'racer';
       el.style.setProperty('--c', colorFor(p.seat));
       el.style.setProperty('--i', i);
-      el.innerHTML = `<span class="sw"></span><div><div class="nm">${esc(p.name)} <span class="rk">${esc(p.rank || '')}</span></div><div class="sub">Aiming</div><div class="hp"><i></i></div></div><div class="cl">${clipIcon}<span>0</span></div>`;
+      el.innerHTML = `<span class="pl"></span><span class="sw"></span><div><div class="nm">${esc(p.name)}</div><div class="sub">Aiming</div><div class="hp"><i></i></div></div><div class="cl">${clipIcon}<span>0</span></div>`;
       racersEl.appendChild(el);
       racerEls.set(p.seat, el);
+      el.dataset.rank = p.rank || '';
       shownClips.set(p.seat, 0);
 
       const tag = document.createElement('div');
       tag.className = 'tag';
       tag.style.setProperty('--c', colorFor(p.seat));
-      tag.textContent = p.name;
+      tag.innerHTML = `<svg class="crown" viewBox="0 0 24 16" aria-hidden="true"><path d="M2 14 L4 4 L9 9 L12 2 L15 9 L20 4 L22 14 Z" fill="#f2c94c" stroke="#2c2416" stroke-width="1.6" stroke-linejoin="round"/></svg>${esc(p.name)}`;
       tags.appendChild(tag);
       tagEls.set(p.seat, tag);
 
@@ -77,6 +78,16 @@ export function createHud(root) {
   }
 
   const STATE_LABEL = { held: 'Aiming', fly: 'Flying', slide: 'Sliding', fall: 'Falling' };
+  const ORD = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
+  let lastOrder = '';
+  // Live running order: best zone landed first, then distance. Cards slide
+  // into place when positions change, and the leader's name tag wears a crown.
+  function placeOrder(planes) {
+    return [...planes].sort((a, b) =>
+      ((a.crumpled ? 1 : 0) - (b.crumpled ? 1 : 0)) ||
+      ((b.state === 'landed' && b.zone ? b.zone.tier + 1 : 0) - (a.state === 'landed' && a.zone ? a.zone.tier + 1 : 0)) ||
+      (b.z - a.z));
+  }
 
   function update(raceState, project, players) {
     if (!raceState || !floor) return;
@@ -92,7 +103,7 @@ export function createHud(root) {
       hp.classList.toggle('low', p.hp / p.maxHp < 0.35);
       let sub = STATE_LABEL[p.state] || '';
       if (p.state === 'landed') sub = p.crumpled ? 'Crumpled' : p.zone ? `${p.zone.label} +${p.zone.pay}` : 'Missed';
-      el.querySelector('.sub').textContent = sub;
+      el.querySelector('.sub').textContent = el.dataset.rank ? `${el.dataset.rank} · ${sub}` : sub;
       const shown = shownClips.get(p.seat);
       if (shown !== p.clips) {
         shownClips.set(p.seat, p.clips);
@@ -108,7 +119,68 @@ export function createHud(root) {
       const pip = pipEls.get(p.seat);
       pip.style.left = `${Math.max(0, Math.min(100, (p.z / floor.length) * 100))}%`;
     }
+    const order = placeOrder(raceState.planes);
+    const key = order.map(p => p.seat).join(',');
+    const anyFlying = raceState.planes.some(p => p.state !== 'held');
+    order.forEach((p, i) => {
+      const el = racerEls.get(p.seat);
+      if (!el) return;
+      el.style.transform = `translateY(${i * 72}px)`;
+      el.querySelector('.pl').textContent = anyFlying ? ORD[i] : '';
+      tagEls.get(p.seat)?.classList.toggle('lead', anyFlying && i === 0 && !p.crumpled);
+    });
+    if (key !== lastOrder) {
+      if (lastOrder && anyFlying) {
+        const lead = racerEls.get(order[0].seat);
+        if (lead && lastOrder.split(',')[0] !== String(order[0].seat)) { lead.classList.remove('lead-change'); void lead.offsetWidth; lead.classList.add('lead-change'); onLeadChange?.(order[0].seat); }
+      }
+      lastOrder = key;
+    }
   }
+  let onLeadChange = null;
+  const setLeadChange = fn => { onLeadChange = fn; };
+
+  // Combo counter per player for chained paper-clip pickups
+  const combos = new Map();
+  function combo(seat, now) {
+    const c = combos.get(seat);
+    const n = c && now - c.at < 1.6 ? c.n + 1 : 1;
+    combos.set(seat, { n, at: now });
+    return n;
+  }
+
+  /* ----------------------------------------------------- full-screen fx --- */
+  const fx = document.createElement('div');
+  fx.className = 'screen-fx';
+  root.appendChild(fx);
+  function flash(kind = 'white') {
+    if (reduceMotion && kind !== 'photo') return;
+    const f = document.createElement('div');
+    f.className = `flash ${kind}`;
+    fx.appendChild(f);
+    setTimeout(() => f.remove(), 900);
+  }
+
+  // Photo finish: letterbox bars + stamp while the replay runs, then a
+  // camera-flash and a pinned "photo" card naming the winner and the margin.
+  function photoStart(a, b) {
+    race.hidden = true;
+    fx.innerHTML = `<div class="letterbox top"></div><div class="letterbox bot"></div>
+      <div class="pf-stamp">Photo finish</div>
+      <div class="pf-names"><span style="--c:${colorFor(a.seat)}">${esc(a.name)}</span><i>vs</i><span style="--c:${colorFor(b.seat)}">${esc(b.name)}</span></div>`;
+  }
+  function photoReveal(a, b, margin) {
+    flash('photo');
+    fx.querySelector('.pf-stamp')?.remove();
+    fx.querySelector('.pf-names')?.remove();
+    const card = document.createElement('div');
+    card.className = 'pf-card';
+    card.innerHTML = `<div class="pf-frame"><div class="pf-win" style="--c:${colorFor(a.seat)}">${esc(a.name)}</div>
+      <div class="pf-by">by ${margin < 1 ? 'a nose' : `${margin.toFixed(1)} ft`}</div>
+      <div class="pf-lose">${esc(b.name)}</div></div><div class="pf-cap">Official result</div>`;
+    fx.appendChild(card);
+  }
+  function photoEnd() { fx.innerHTML = ''; }
 
   function racerHit(seat) {
     const el = racerEls.get(seat);
@@ -265,5 +337,5 @@ export function createHud(root) {
   function showRace() { race.hidden = false; boardWrap.hidden = true; intro.hidden = true; }
   function setHint(t) { hint.textContent = t || ''; }
 
-  return { setRace, update, racerHit, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
+  return { setRace, update, setLeadChange, combo, flash, photoStart, photoReveal, photoEnd, racerHit, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
 }

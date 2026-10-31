@@ -10,7 +10,8 @@ import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js
 import { generateFloor } from '../game/floors.js';
 import { UPGRADES } from '../shared/upgrades.js';
 import { colorFor } from '../shared/colors.js';
-import { sfx } from './audio.js';
+import { sfx, setWind } from './audio.js';
+import { TIER_COLORS } from '../shared/colors.js';
 
 const INTRO_FIRST_MS = 6500;
 const INTRO_MS = 5000;
@@ -67,6 +68,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     race = createRace(floor, raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
     for (const [seat, b] of bots) b.brain = createBot(seat, b.skill, rng);
     raceOverAt = null;
+    rec = []; recT = -1; hitStop = 0; photo = null;
 
     renderer.setFloor(floor);
     renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
@@ -80,7 +82,10 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     hud.showIntro({
       floor, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: RACES_PER_FLOOR,
       players: raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title })), startsAt: () => startsAt,
-    }, label => (label === 'GO' ? sfx.go() : sfx.tick()));
+    }, label => {
+      if (label === 'GO') { sfx.go(); hud.flash('go'); renderer.punch(10); renderer.shake(0.25); }
+      else sfx.tick();
+    });
     hud.setHint(match.round > 0 ? 'Enter to skip' : '');
     scheduleGo();
     sendMeAll();
@@ -120,8 +125,41 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   }
 
   /* ------------------------------------------------------------ tick --- */
-  let acc = 0, meAcc = 0;
+  let acc = 0, meAcc = 0, hitStop = 0;
+  // Recent race history for the photo-finish replay (30 snapshots a second)
+  let rec = [], recT = -1;
+  function record() {
+    if (race.t - recT < 1 / 30) return;
+    recT = race.t;
+    rec.push({ t: race.t, p: race.planes.map(q => [q.x, q.y, q.z, q.yaw, q.pitch, q.roll, q.state, q.crumpled, q.hp]) });
+    if (rec.length > 30 * 30) rec.shift();
+  }
+  function ghostAt(t) {
+    // Interpolate the recording at time t into a race-shaped object for the renderer
+    let i = rec.findIndex(f => f.t >= t);
+    if (i < 0) i = rec.length - 1;
+    const b = rec[i], a = rec[Math.max(0, i - 1)];
+    const k = b.t === a.t ? 1 : Math.max(0, Math.min(1, (t - a.t) / (b.t - a.t)));
+    const L = (u, v) => u + (v - u) * k;
+    return {
+      ...race, t,
+      planes: race.planes.map((q, j) => {
+        const A = a.p[j], B = b.p[j];
+        return { ...q, x: L(A[0], B[0]), y: L(A[1], B[1]), z: L(A[2], B[2]), yaw: L(A[3], B[3]), pitch: L(A[4], B[4]), roll: L(A[5], B[5]), state: B[6], crumpled: B[7], v: 12 };
+      }),
+    };
+  }
+  let photo = null;
+  // Announce lead changes, but not every time two planes swap noses mid-air
+  let lastLeadCall = 0;
+  hud.setLeadChange(seat => {
+    if (phase !== 'race' || race.t - lastLeadCall < 3 || race.t < 2) return;
+    lastLeadCall = race.t;
+    hud.banner(`${nameOf(seat)} takes the lead`, 1400);
+  });
+
   function tick(dt) {
+    if (phase === 'race' && race && hitStop > 0) { hitStop -= dt; dt *= 0.05; }
     if (phase === 'race' && race) {
       acc += Math.min(dt, 0.1);
       while (acc >= SIM.dt) {
@@ -130,17 +168,35 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           if (p && p.state === 'fly') { const s = botSteer(b.brain, race, p); steer(race, seat, s.x, s.y); }
         }
         stepRace(race);
+        record();
         acc -= SIM.dt;
       }
       drainEvents();
+      // Wind rises with the fastest plane in the air (yours, in solo)
+      const flying = race.planes.filter(q => q.state === 'fly' && (!solo || q.seat === 0));
+      setWind(flying.length ? (Math.max(...flying.map(q => q.v)) - 6) / 18 : 0);
       meAcc += dt;
       if (meAcc > 0.12) { meAcc = 0; sendMeAll(); }
       if (race.over && raceOverAt == null) {
         raceOverAt = performance.now();
-        later(1600, endRace);
+        setWind(0);
+        later(1600, finishRace);
       }
     }
     if (phase === 'shop') hud.shopTimer((startsAt - Date.now()) / 1000);
+
+    if (phase === 'photo' && photo) {
+      photo.clock = Math.min(photo.end, photo.clock + dt * photo.speed);
+      renderer.frame(dt, { mode: 'photo', race: ghostAt(photo.clock), pair: photo.pair });
+      if (photo.clock >= photo.end && !photo.revealed) {
+        photo.revealed = true;
+        sfx.shutter();
+        renderer.setSepia(1);
+        hud.photoReveal(photo.a, photo.b, photo.margin);
+        later(2600, () => { renderer.setSepia(0); hud.photoEnd(); photo = null; endRace(); });
+      }
+      return;
+    }
 
     const view = phase === 'intro'
       ? { mode: 'intro', race, introT: 1 - Math.max(0, (startsAt - Date.now() - 3000)) / ((match.round === 0 ? INTRO_FIRST_MS : INTRO_MS) - 3000) }
@@ -166,6 +222,10 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           sfx.thud();
           renderer.shake(Math.min(0.5, e.dmg / 50));
           renderer.burst(e.x, e.y, e.z, col, 10, 4);
+          renderer.hitPlane(e.seat);
+          // Hit-stop: a big smack freezes the action for a beat
+          if (e.dmg >= 15) { hitStop = Math.min(0.12, 0.04 + e.dmg / 400); renderer.punch(-4); }
+          if (e.dmg >= 25 && (!solo || e.seat === 0)) hud.flash('hit');
           const s = renderer.project(e.x, e.y, e.z);
           if (s.visible) hud.floater(s.x, s.y, `-${e.dmg}`, 'dmg');
           hud.racerHit(e.seat);
@@ -173,18 +233,21 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           break;
         }
         case 'clip': {
-          sfx.ding();
+          const chain = hud.combo(e.seat, race.t);
+          sfx.ding(chain);
           const c = race.clips[e.i];
           const s = renderer.project(c.x, c.y, c.z);
-          if (s.visible) hud.floater(s.x, s.y, `+${e.n}`);
-          renderer.burst(c.x, c.y, c.z, '#c3cad1', 6, 2.5);
-          sendTo(e.seat, 'fx', { kind: 'clip', n: e.n });
+          if (s.visible) hud.floater(s.x, s.y, chain > 1 ? `+${e.n}  x${chain}` : `+${e.n}`, chain > 2 ? 'combo big' : chain > 1 ? 'combo' : '');
+          renderer.burst(c.x, c.y, c.z, '#c3cad1', 6 + chain * 2, 2.5 + chain * 0.4);
+          if (c.big) { renderer.confetti(c.x, c.y, c.z, ['#c3cad1', '#e0a526', '#f6efdc'], 24); renderer.punch(3); }
+          sendTo(e.seat, 'fx', { kind: 'clip', n: e.n, chain });
           break;
         }
         case 'crumple':
           sfx.crumple();
-          renderer.burst(e.x, e.y, e.z, col, 22, 5);
-          renderer.shake(0.4);
+          renderer.burst(e.x, e.y, e.z, col, 34, 6);
+          renderer.shake(0.5);
+          hitStop = 0.15;
           hud.banner(`${nameOf(e.seat)} crumpled`);
           sendTo(e.seat, 'fx', { kind: 'crumple' });
           break;
@@ -193,17 +256,35 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           break;
         case 'gust':
           sfx.gust(e.dir);
+          if (p) renderer.gust(p.x, p.y, p.z, e.dir);
+          if (!solo || e.seat === 0) renderer.punch(e.dir === 'down' ? 5 : 3);
           sendTo(e.seat, 'fx', { kind: 'gust' });
           break;
         case 'touch':
           sfx.land();
-          if (p) renderer.burst(p.x, p.y, p.z, '#e9dcbc', 5, 1.5);
+          if (p) renderer.burst(p.x, p.y, p.z, '#e9dcbc', 9, 2);
           break;
+        case 'close': {
+          if (race.t < 1.5) break;
+          sfx.close();
+          const s = renderer.project(e.x, e.y + 1, e.z);
+          if (s.visible) hud.floater(s.x, s.y, 'Close call!', 'close');
+          if (!solo || e.seat === 0) renderer.punch(4);
+          sendTo(e.seat, 'fx', { kind: 'close' });
+          break;
+        }
         case 'landed':
           if (e.zone) {
             sfx.zone(e.zone.tier);
             hud.banner(`${nameOf(e.seat)}: ${e.zone.label} +${e.zone.pay}`);
-            if (p) renderer.burst(p.x, p.y + 0.3, p.z, colorFor(e.seat), 16, 3.5);
+            if (p) {
+              // Bigger party for farther zones
+              renderer.confetti(p.x, p.y + 0.3, p.z, [colorFor(e.seat), TIER_COLORS[e.zone.tier], '#f6efdc'], 16 + e.zone.tier * 10);
+              renderer.ring(p.x, p.y - 0.1, p.z, TIER_COLORS[e.zone.tier], 4 + e.zone.tier * 2);
+              if (e.zone.tier >= 3) { renderer.shake(0.3); renderer.punch(6); }
+              const s = renderer.project(p.x, p.y + 1.5, p.z);
+              if (s.visible) hud.floater(s.x, s.y, `+${e.zone.pay}`, e.zone.tier >= 3 ? 'combo big' : 'combo');
+            }
           }
           sendTo(e.seat, 'landed', { zone: e.zone, crumpled: e.crumpled });
           break;
@@ -242,6 +323,26 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   }
 
   /* --------------------------------------------------------- results --- */
+  // Close finish between the top two? Replay it in slow motion first.
+  function finishRace() {
+    const st = standings(race);
+    const [a, b] = st;
+    const close = a && b && !a.crumpled && !b.crumpled && a.zone && b.zone &&
+      a.zone.tier === b.zone.tier && Math.abs(a.dist - b.dist) < 8 && rec.length > 30;
+    if (!close) return endRace();
+    const land = Math.max(a.landedAt ?? race.t, b.landedAt ?? race.t);
+    const start = Math.max(rec[0].t, land - 2.4);
+    photo = {
+      pair: [a.seat, b.seat], clock: start, end: Math.min(rec[rec.length - 1].t, land + 0.5), speed: 0.4,
+      a: { seat: a.seat, name: nameOf(a.seat) }, b: { seat: b.seat, name: nameOf(b.seat) }, margin: Math.abs(a.dist - b.dist),
+    };
+    setPhase('photo');
+    broadcastPhase();
+    hud.photoStart(photo.a, photo.b);
+    sfx.drumroll((photo.end - photo.clock) / photo.speed);
+    renderer.setSepia(0.35);
+  }
+
   function endRace() {
     const rows = payout(match, standings(race));
     lastRows = rows;

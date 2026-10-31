@@ -576,7 +576,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   const bitGeo = new THREE.BufferGeometry();
   bitGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0.22, 0.05, 0, 0.05, 0.2, 0.02], 3));
   bitGeo.computeVertexNormals();
-  for (let i = 0; i < 140; i++) {
+  for (let i = 0; i < 260; i++) {
     const m = new THREE.Mesh(bitGeo, lam('#ffffff', { side: THREE.DoubleSide }));
     m.visible = false;
     scene.add(m);
@@ -595,6 +595,47 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       b.life = 0.9 + Math.random() * 0.5;
     }
   }
+
+  // Confetti in several colours (zone landings, wins)
+  function confetti(x, y, z, colors, n = 30) {
+    for (let i = 0; i < n; i++) burst(x, y, z, colors[i % colors.length], 1, 6);
+  }
+  // Air streaks around a plane entering a draft
+  function gust(x, y, z, dir) {
+    const k = reduceMotion ? 3 : 10;
+    for (let i = 0; i < k; i++) {
+      const b = bits[bitIx++ % bits.length];
+      b.m.visible = true;
+      b.m.material.color.set('#ffffff');
+      b.m.position.set(x + (Math.random() - 0.5) * 2, y + (Math.random() - 0.5) * 1.5, -z + (Math.random() - 0.5) * 2);
+      b.v.set((Math.random() - 0.5) * 2, (dir === 'up' ? 1 : -1) * (6 + Math.random() * 4), (Math.random() - 0.5) * 2);
+      b.spin.set(0, Math.random() * 4, 0);
+      b.life = 0.5;
+      b.noGrav = true;
+    }
+  }
+
+  // Expanding ink rings on the floor (zone landings)
+  const rings = [];
+  const ringGeo = new THREE.RingGeometry(0.85, 1, 32);
+  function ring(x, y, z, color, size = 6) {
+    const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y + 0.06, -z);
+    m.layers.set(1);
+    scene.add(m);
+    rings.push({ m, t: 0, size });
+  }
+
+  // Per-plane wobble when hit
+  const wobble = new Map();
+  const hitPlane = seat => { if (!reduceMotion) wobble.set(seat, 1); };
+
+  // Field of view widens with speed and "punches" on big moments
+  let fovKick = 0, fovSpeed = 0, baseFov = 58;
+  const punch = amt => { if (!reduceMotion) fovKick = Math.min(14, fovKick + amt); };
+  let sepia = 0, sepiaTarget = 0;
+  const setSepia = v => { sepiaTarget = v; };
 
   let shakeAmt = 0;
   const shake = m => { if (!reduceMotion) shakeAmt = Math.min(0.6, shakeAmt + m); };
@@ -860,6 +901,22 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     aimCamera(dt, pos, look, k);
   }
 
+  // Photo finish: a low side-on shot across the two contenders, slowly dollying.
+  function photoCam(race, dt, pair) {
+    const ps = race.planes.filter(p => pair.includes(p.seat));
+    if (!ps.length) return;
+    const cx = ps.reduce((a, p) => a + p.x, 0) / ps.length;
+    const cy = ps.reduce((a, p) => a + p.y, 0) / ps.length;
+    const cz = ps.reduce((a, p) => a + p.z, 0) / ps.length;
+    const spread = ps.length > 1 ? Math.hypot(ps[0].x - ps[1].x, ps[0].z - ps[1].z) : 0;
+    const side = cx > 0 ? -1 : 1;                 // shoot from the roomier side
+    const W = floor ? floor.width / 2 - 1.5 : 20;
+    const dist = 8 + spread * 0.6;
+    const pos = new THREE.Vector3(Math.max(-W, Math.min(W, cx + side * dist)), Math.max(1.2, cy + 1.6), -(cz - 2 + Math.sin(time * 0.6) * 1.5));
+    const look = new THREE.Vector3(cx, Math.max(0.4, cy - 0.2), -cz);
+    aimCamera(dt, pos, look, 2.2);
+  }
+
   function chase(race, dt, focus) {
     if (focus != null) {
       const me = race.planes.find(p => p.seat === focus);
@@ -936,7 +993,20 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
 
     if (view.mode === 'intro') introCam(view.introT);
     else if (view.mode === 'showcase') showcase(dt, view.seats || []);
+    else if (view.mode === 'photo' && race) photoCam(race, dt, view.pair);
     else if (race) chase(race, dt, view.focus);
+
+    // Speed sensation: FOV follows the fastest flying plane (or yours, in solo)
+    if (race && view.mode !== 'photo') {
+      const fliers = race.planes.filter(p => p.state === 'fly');
+      const mine = view.focus != null ? race.planes.find(p => p.seat === view.focus) : null;
+      const v = mine ? (mine.state === 'fly' ? mine.v : 0) : fliers.reduce((m, p) => Math.max(m, p.v), 0);
+      fovSpeed += ((reduceMotion ? 0 : Math.max(-2, Math.min(10, (v - 12) * 0.7))) - fovSpeed) * Math.min(1, dt * 3);
+    } else fovSpeed *= Math.pow(0.1, dt);
+    fovKick *= Math.pow(0.05, dt);
+    const fov = baseFov + fovSpeed + fovKick - (view.mode === 'photo' ? 12 : 0);
+    if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix(); }
+    sepia += (sepiaTarget - sepia) * Math.min(1, dt * 4);
 
     if (race && view.mode !== 'showcase') syncPlanes(race, dt);
 
@@ -987,12 +1057,22 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     for (const b of bits) {
       if (b.life <= 0) continue;
       b.life -= dt;
-      b.v.y -= 7 * dt;
+      if (!b.noGrav) b.v.y -= 7 * dt;
       b.v.multiplyScalar(Math.pow(0.4, dt));
+      if (b.life - dt <= 0) b.noGrav = false;
       b.m.position.addScaledVector(b.v, dt);
       if (b.m.position.y < 0.05) { b.m.position.y = 0.05; b.v.set(0, 0, 0); }
       b.m.rotation.x += b.spin.x * dt; b.m.rotation.y += b.spin.y * dt;
       if (b.life <= 0) b.m.visible = false;
+    }
+
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const g = rings[i];
+      g.t += dt;
+      const k = g.t / 0.9;
+      g.m.scale.setScalar(0.5 + k * g.size);
+      g.m.material.opacity = 0.9 * (1 - k);
+      if (k >= 1) { scene.remove(g.m); g.m.material.dispose(); rings.splice(i, 1); }
     }
 
     camera.position.copy(camPos);
@@ -1002,7 +1082,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       shakeAmt *= Math.pow(0.02, dt);
     }
     camera.lookAt(camLook);
-    ink.render(scene, camera, time, reduceMotion);
+    ink.render(scene, camera, time, reduceMotion, sepia);
   }
 
   function syncPlanes(race, dt) {
@@ -1029,8 +1109,20 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         aim.visible = false;
         root.position.set(p.x, p.y + (crumpled ? 0.25 : 0), -p.z);
         if (crumpled) root.rotation.set(p.pitch, -p.yaw, p.roll, 'YXZ');
-        else root.rotation.set(p.state === 'slide' || p.state === 'landed' ? 0 : p.pitch, -p.yaw, -p.roll, 'YXZ');
+        else {
+          // Paper flutter: a little roll and pitch jitter that grows with speed
+          const fl = p.state === 'fly' && !reduceMotion ? Math.min(1, p.v / 14) : 0;
+          root.rotation.set(
+            (p.state === 'slide' || p.state === 'landed' ? 0 : p.pitch) + Math.sin(time * 23 + p.seat * 3) * 0.025 * fl,
+            -p.yaw, -p.roll + Math.sin(time * 17 + p.seat) * 0.05 * fl, 'YXZ');
+        }
       }
+      const w = wobble.get(p.seat) || 0;
+      if (w > 0.01) {
+        const k = Math.sin(time * 45) * w * 0.25;
+        root.scale.set(1 + k, 1 - k, 1 + k * 0.5);
+        wobble.set(p.seat, w * Math.pow(0.02, dt));
+      } else root.scale.set(1, 1, 1);
 
       // Dotted pencil trail while flying
       v.trailTick = (v.trailTick || 0) + 1;
@@ -1070,12 +1162,13 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    camera.fov = w / h < 1 ? 72 : 58;
+    baseFov = w / h < 1 ? 72 : 58;
+    camera.fov = baseFov;
     camera.updateProjectionMatrix();
     ink.resize();
   }
   resize();
   window.addEventListener('resize', resize);
 
-  return { setFloor, setPlanes, frame, burst, shake, project, resize, get floor() { return floor; } };
+  return { setFloor, setPlanes, frame, burst, confetti, gust, ring, hitPlane, punch, setSepia, shake, project, resize, get floor() { return floor; } };
 }

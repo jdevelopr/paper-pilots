@@ -95,6 +95,8 @@ export function mountController(root, link, { solo = false } = {}) {
       if (me.state === 'landed') return setView('landed');
       return setView('wait');
     }
+    if (ph === 'photo') { q('.w-t').textContent = 'Photo finish!'; return setView('wait'); }
+    q('.w-t').textContent = 'Watch the screen';
     if (ph === 'results') return setView('results');
     if (ph === 'shop') return setView('shop');
     if (ph === 'final') return setView('final');
@@ -446,6 +448,10 @@ export function mountController(root, link, { solo = false } = {}) {
         vibrate(d.zone ? [20, 40, 20, 40, 60] : [60]);
         break;
       case 'fx':
+        if (['hit', 'clip', 'gust'].includes(d.kind)) phoneFlash(d.kind);
+        if (d.kind === 'close') phoneToast('Close call!');
+        if (d.kind === 'clip' && d.chain > 1) phoneToast(`x${d.chain}`);
+        if (d.kind === 'close') vibrate([10, 25, 10]);
         if (d.kind === 'hit') { vibrate(Math.min(80, 20 + d.dmg * 2)); const h = q('.hpbar'); h.classList.remove('shake'); void h.offsetWidth; h.classList.add('shake'); }
         else if (d.kind === 'clip') vibrate(8);
         else if (d.kind === 'gust') vibrate([6, 20, 6]);
@@ -457,6 +463,23 @@ export function mountController(root, link, { solo = false } = {}) {
         break;
     }
   });
+
+  // Quick full-screen pulses on the phone so you feel hits and pickups
+  // without looking down.
+  function phoneFlash(kind) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const f = document.createElement('div');
+    f.className = `pflash ${kind}`;
+    root.appendChild(f);
+    setTimeout(() => f.remove(), 500);
+  }
+  function phoneToast(text) {
+    const t = document.createElement('div');
+    t.className = 'ptoast';
+    t.textContent = text;
+    root.appendChild(t);
+    setTimeout(() => t.remove(), 1000);
+  }
 
   paintHeader();
   setView('wait');

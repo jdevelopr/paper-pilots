@@ -28,6 +28,7 @@ uniform float far;
 uniform float px;        // line width in device pixels
 uniform float hatchAmt;
 uniform float boil;      // 0 when reduced motion is on
+uniform float sepia;     // 0..1 old-photo tint (photo finish)
 varying vec2 vUv;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -93,6 +94,10 @@ void main() {
   vec2 q = vUv - 0.5;
   col *= 1.0 - dot(q, q) * 0.45;
 
+  // Photo-finish tint
+  vec3 sep = vec3(dot(col, vec3(0.393, 0.769, 0.189)), dot(col, vec3(0.349, 0.686, 0.168)), dot(col, vec3(0.272, 0.534, 0.131)));
+  col = mix(col, sep * 0.92, sepia);
+
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -110,7 +115,7 @@ export function createInk(renderer) {
     uniforms: {
       tColor: { value: rtColor.texture }, tNormal: { value: rtNormal.texture }, tDepth: { value: depthTex },
       res: { value: new THREE.Vector2(1, 1) }, time: { value: 0 }, near: { value: 0.1 }, far: { value: 300 },
-      px: { value: 1 }, hatchAmt: { value: 1 }, boil: { value: 1 },
+      px: { value: 1 }, hatchAmt: { value: 1 }, boil: { value: 1 }, sepia: { value: 0 },
     },
     depthTest: false, depthWrite: false,
   });
@@ -128,10 +133,11 @@ export function createInk(renderer) {
     mat.uniforms.px.value = Math.max(1, renderer.getPixelRatio() * 1.15);
   }
 
-  function render(scene, camera, time, reduceMotion) {
+  function render(scene, camera, time, reduceMotion, sepia = 0) {
     const u = mat.uniforms;
     u.time.value = time; u.near.value = camera.near; u.far.value = camera.far;
     u.boil.value = reduceMotion ? 0 : 1;
+    u.sepia.value = sepia;
 
     renderer.setRenderTarget(rtColor);
     renderer.render(scene, camera);

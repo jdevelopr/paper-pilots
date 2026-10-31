@@ -80,6 +80,20 @@ Computer rivals each commit to a path too, so their builds differ.
 
 Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nose clip and so on.
 
+### Photo finish and game feel
+
+When the top two land in the same zone within 8 ft of each other, the race ends with a **photo finish**. The screen letterboxes, a "Photo finish" stamp drops, and the last couple of seconds replay in slow motion from a low side angle, tinted like an old photo. A camera flash then reveals a pinned photo naming the winner and the margin ("by a nose" if it's under a foot).
+
+The rest of the race has extra feedback too:
+- **Speed and drafts:** the camera widens as you pick up speed. Drafts kick the view and blow air streaks around the plane, and a wind sound rises with speed.
+- **Hits:** big hits freeze the action for a beat, wobble the plane, and flash red on the plane's own phone.
+- **Close calls:** skimming past furniture at speed shows "Close call!" and plays a whoosh.
+- **Clips and landings:** chained paper-clip pickups count up a combo with rising chimes. Zone landings throw confetti and an ink ring that grow bigger the farther the zone.
+- **Running order:** live 1st–4th places slide into order on the host screen, the leader's name tag wears a paper crown, and lead changes get called out.
+- **Phones:** quick color pulses and buzzes for hits, pickups and drafts.
+
+With "reduce motion" on, the screen shake, field-of-view changes, wobble and flashes switch off.
+
 ## Solo flight (no phone needed)
 
 On the home screen, click **Solo flight**. Pick 0–3 computer rivals and either 3 or 5 floors (9 or 15 races). The phone controller appears as a panel in the corner of the screen, and you can use it with the mouse or the keyboard. This is the quickest way to try out the gameplay.
