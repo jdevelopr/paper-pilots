@@ -290,11 +290,12 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         case 'landed':
           if (e.zone) {
             sfx.zone(e.zone.tier);
-            hud.banner(`${nameOf(e.seat)}: ${e.zone.label} +${e.zone.pay}`);
+            hud.banner(`${nameOf(e.seat)}: ${e.zone.label} · ${e.zone.ringName} +${e.zone.pay}`);
             if (p) {
               // Bigger party for farther zones
               renderer.confetti(p.x, p.y + 0.3, p.z, [colorFor(e.seat), TIER_COLORS[e.zone.tier], '#f6efdc'], 16 + e.zone.tier * 10);
-              renderer.ring(p.x, p.y - 0.1, p.z, TIER_COLORS[e.zone.tier], 4 + e.zone.tier * 2);
+              renderer.ring(p.x, p.y - 0.1, p.z, TIER_COLORS[e.zone.tier], 4 + e.zone.tier * 2 + (3 - e.zone.ring) * 2);
+              if (e.zone.ring === 0) { renderer.shake(0.25); sfx.zone(4); }
               if (e.zone.tier >= 3) { renderer.shake(0.3); renderer.punch(6); }
               const s = renderer.project(p.x, p.y + 1.5, p.z);
               if (s.visible) hud.floater(s.x, s.y, `+${e.zone.pay}`, e.zone.tier >= 3 ? 'combo big' : 'combo');

@@ -681,3 +681,8 @@ body:not(.solo) .floaters .trick.edge { right: 30px; }
 body.solo #controller { transition: transform var(--t-slow) var(--ease-out), opacity var(--t-slow); }
 body.solo #controller[data-view="fly"] { transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; transition: transform var(--t-slow) var(--ease-in), opacity var(--t-slow); }
 body.solo:has(#controller[data-view="fly"]) #hud { right: 0; }
+
+/* Target zones: ring name under the zone label */
+.landed-card .zl small { display: block; font-family: var(--body); font-size: 22px; font-weight: 400; color: var(--ink-soft); }
+.rrow .zn small.ring { font-size: 17px; color: var(--ink-soft); }
+.banner-wrap .banner { white-space: nowrap; max-width: none; }

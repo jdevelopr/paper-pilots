@@ -46,7 +46,18 @@ On the host screen, **Enter** (or Space) skips the floor intro and the results s
 
 **Payouts each race:** you get the landing zone's value (3 / 6 / 10 / 15 / 24 clips), plus 8 / 5 / 3 / 1 clips for placing 1st to 4th, plus any clips you picked up. Placings also give 10 / 6 / 3 / 1 points toward the overall win. A plane that crumples gets no zone or placement reward.
 
-**Ranking within a race:** the best zone wins. Ties go to whoever flew farther. Missing every zone ranks below any zone landing, and crumpling ranks last.
+**Target zones.** Every landing zone is painted as a target, and the mats are about 30% bigger than before. Where you land inside it multiplies that zone's pay:
+
+| Ring | Pay |
+|---|---|
+| Bullseye (centre quarter) | ×2 (also scores the Bullseye trick) |
+| Inner ring | ×1.5 |
+| Middle ring | ×1.2 |
+| Outer ring / corners | ×1 |
+
+Raised zones (desk tops, the fridge, a rack) are targets too.
+
+**Ranking within a race:** the best zone wins; within the same zone, the landing closer to the centre wins; then whoever flew farther. Missing every zone ranks below any zone landing, and crumpling ranks last.
 
 ### Upgrade tree
 

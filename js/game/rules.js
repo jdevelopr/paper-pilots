@@ -75,7 +75,7 @@ export function payout(match, standings) {
     }
     return {
       seat: s.seat, name: pl?.name ?? '?', place: i + 1,
-      zone: s.zone?.label ?? null, tier: s.zone?.tier ?? -1, crumpled: s.crumpled,
+      zone: s.zone?.label ?? null, ring: s.zone?.ringName ?? null, tier: s.zone?.tier ?? -1, crumpled: s.crumpled,
       dist: s.dist, earned: { zone, place, pickup, tricks, streak, total: earned }, points,
       trickList: s.tricks || [], zoneStreak, cleanStreak,
       totalPoints: pl?.points ?? 0, clips: pl?.clips ?? 0,

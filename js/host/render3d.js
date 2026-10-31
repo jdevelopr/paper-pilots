@@ -71,6 +71,44 @@ function labelTexture(lines, { w = 512, h = 256, bg = '#f6efdc', fg = INK, borde
   return tex;
 }
 
+// A landing zone painted as a target: concentric ellipses in the tier colour,
+// a dashed border, a bullseye dot, and the zone name along the far edge.
+function targetTexture(zn) {
+  const W = 512, H = Math.max(160, Math.round(512 * zn.d / zn.w));
+  const c = document.createElement('canvas');
+  c.width = W; c.height = Math.min(1024, H);
+  const x = c.getContext('2d');
+  const base = new THREE.Color(TIER_COLORS[zn.tier]);
+  const light = '#' + base.clone().lerp(new THREE.Color('#fffdf6'), 0.55).getHexString();
+  const dark = '#' + base.clone().multiplyScalar(0.82).getHexString();
+  x.fillStyle = light; x.fillRect(0, 0, c.width, c.height);
+  const cx = c.width / 2, cy = c.height / 2;
+  [1, 0.75, 0.5, 0.25].forEach((r, i) => {
+    x.beginPath();
+    x.ellipse(cx, cy, cx * r, cy * r, 0, 0, Math.PI * 2);
+    x.fillStyle = i % 2 ? light : dark;
+    x.fill();
+    x.lineWidth = 5; x.strokeStyle = '#2c2416';
+    x.stroke();
+  });
+  x.beginPath(); x.ellipse(cx, cy, cx * 0.07, cy * 0.07, 0, 0, Math.PI * 2); x.fillStyle = '#c1440e'; x.fill();
+  x.strokeStyle = '#2c2416'; x.lineWidth = 8; x.setLineDash([28, 18]);
+  x.strokeRect(5, 5, c.width - 10, c.height - 10); x.setLineDash([]);
+  // name in the outer band near the far edge, with a paper backing so it stays legible
+  let size = Math.min(64, c.height * 0.16);
+  x.font = `700 ${size}px "Caveat", cursive`;
+  while (size > 18 && x.measureText(zn.label).width > c.width * 0.7) { size *= 0.9; x.font = `700 ${size}px "Caveat", cursive`; }
+  const tw = x.measureText(zn.label).width;
+  x.fillStyle = 'rgba(255,253,246,.85)';
+  x.fillRect(cx - tw / 2 - 10, 14, tw + 20, size * 1.05);
+  x.fillStyle = '#2c2416'; x.textAlign = 'center'; x.textBaseline = 'top';
+  x.fillText(zn.label, cx, 14 + size * 0.05);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
 function speckleTexture(base, dot, n = 2500, size = 256, grid = 0) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
@@ -789,16 +827,14 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
 
     // Landing zones: dashed floor decal plus a sticky-note sign
     for (const zn of f.zones) {
-      const tex = labelTexture([{ text: zn.label }], {
-        w: 512, h: Math.round(512 * Math.min(1, zn.d / zn.w)), bg: TIER_COLORS[zn.tier], dash: true,
-      });
+      const tex = targetTexture(zn);
       const dec = new THREE.Mesh(new THREE.PlaneGeometry(zn.w, zn.d), new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2 }));
       dec.rotation.x = -Math.PI / 2;
       dec.position.set(zn.x, (zn.y || 0) + 0.03, -zn.z);
       dec.layers.set(1);
       env.add(dec);
 
-      const signTex = labelTexture([{ text: `+${zn.pay}`, bold: true }], { w: 256, h: 220, bg: TIER_COLORS[zn.tier] });
+      const signTex = labelTexture([{ text: `+${zn.pay}`, bold: true }, { text: `centre x2`, size: 46 }], { w: 256, h: 240, bg: TIER_COLORS[zn.tier] });
       const sign = new THREE.Group();
       const card = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.9), new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide }));
       card.position.y = 1.2;

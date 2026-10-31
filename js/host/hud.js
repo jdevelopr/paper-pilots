@@ -266,7 +266,7 @@ export function createHud(root) {
         <div class="rrow" style="--c:${colorFor(r.seat)};--i:${i}">
           <div class="pl">${r.place}</div>
           <div class="nm">${esc(r.name)}<div class="rk">${r.promoted ? `<b class="promo">Promoted: ${esc(r.promoted)}</b>` : esc(r.rank)}</div></div>
-          <div class="zn">${r.crumpled ? 'Crumpled' : r.zone ? esc(r.zone) : `Missed (${Math.round(r.dist)} ft)`}
+          <div class="zn">${r.crumpled ? 'Crumpled' : r.zone ? `${esc(r.zone)}${r.ring ? ` <small class="ring">${esc(r.ring)}</small>` : ''}` : `Missed (${Math.round(r.dist)} ft)`}
             <div class="brk">${Math.round(r.dist)} ft${r.pb ? ' · <b class="pb">New best</b>' : ''} · zone ${r.earned.zone} · place ${r.earned.place} · pickups ${r.earned.pickup}${r.earned.tricks ? ` · tricks ${r.earned.tricks}` : ''}${r.earned.streak ? ` · streak ${r.earned.streak}` : ''}</div>
             ${r.zoneStreak >= 2 || r.cleanStreak >= 2 || r.trickList?.length ? `<div class="badges">${r.zoneStreak >= 2 ? `<span>Zone streak x${r.zoneStreak}</span>` : ''}${r.cleanStreak >= 2 ? `<span>Clean streak x${r.cleanStreak}</span>` : ''}${r.trickList?.length ? `<span class="tk">${r.trickList.length} trick${r.trickList.length > 1 ? 's' : ''}${Math.max(...r.trickList.map(t => t.mult)) > 1 ? `, best x${Math.max(...r.trickList.map(t => t.mult))}` : ''}</span>` : ''}</div>` : ''}</div>
           <div class="earn">+<span data-to="${r.earned.total}">0</span>${clipIcon}</div>

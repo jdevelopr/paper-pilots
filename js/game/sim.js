@@ -12,7 +12,7 @@
 // obstacles decides who reaches the far landing zones.
 
 import { statsFor } from '../shared/upgrades.js';
-import { moverBox } from './floors.js';
+import { moverBox, ringAt, RINGS } from './floors.js';
 
 export const SIM = {
   dt: 1 / 60,
@@ -188,7 +188,7 @@ function flightTricks(race, p, px, py, pz) {
 
 function landingTricks(race, p, zn) {
   if (!p.tr || p.crumpled || !zn) return;
-  if (zn.w && Math.abs(p.x - zn.x) < zn.w * 0.18 && Math.abs(p.z - zn.z) < zn.d * 0.18) trick(race, p, 'bullseye');
+  if (zn.ring === 0) trick(race, p, 'bullseye');
   if ((zn.y || 0) > 0.5) trick(race, p, 'perch');
   if (p.lastHit != null && race.t - p.lastHit < 3) trick(race, p, 'bank');
   if (p.hp <= p.maxHp * 0.25) trick(race, p, 'clutch');
@@ -336,7 +336,13 @@ export function zoneAt(floor, x, y, z) {
       if (!best || zn.tier > best.tier) best = zn;
     }
   }
-  return best ? { tier: best.tier, label: best.label, pay: best.pay, x: best.x, z: best.z, w: best.w, d: best.d, y: best.y || 0 } : null;
+  if (!best) return null;
+  const ring = ringAt(best, x, z);
+  return {
+    tier: best.tier, label: best.label, ring, ringName: RINGS[ring].name, base: best.pay,
+    pay: Math.round(best.pay * RINGS[ring].mult),
+    x: best.x, z: best.z, w: best.w, d: best.d, y: best.y || 0,
+  };
 }
 
 function supportAt(floor, x, z, y) {
@@ -485,6 +491,7 @@ export function standings(race) {
     .sort((a, b) =>
       (a.crumpled - b.crumpled) ||
       ((b.zone?.tier ?? -1) - (a.zone?.tier ?? -1)) ||
+      ((a.zone?.ring ?? 9) - (b.zone?.ring ?? 9)) ||      // closer to the centre wins
       (b.dist - a.dist) ||
       ((a.landedAt ?? 999) - (b.landedAt ?? 999)));
 }

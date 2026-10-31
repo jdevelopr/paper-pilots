@@ -374,7 +374,7 @@ export function mountController(root, link, { solo = false } = {}) {
     const crumpled = landed?.crumpled ?? me.crumpled;
     card.classList.toggle('miss', !z);
     card.style.background = z ? 'var(--paper)' : '';
-    q('.zl').textContent = crumpled ? 'Crumpled' : z ? z.label : 'Missed';
+    q('.zl').innerHTML = crumpled ? 'Crumpled' : z ? `${esc(z.label)}<small>${esc(z.ringName || '')}</small>` : 'Missed';
     q('.zp').innerHTML = z ? `+${z.pay}${clipIcon}` : '';
     const zb = q('.zb');
     const newBest = !crumpled && me.best > 0 && me.dist > me.best;
@@ -402,7 +402,7 @@ export function mountController(root, link, { solo = false } = {}) {
     q('.r-place').textContent = ord[row.place - 1];
     q('.r-zone').textContent = `+${row.earned.total} clips · +${row.points} ${row.points === 1 ? 'pt' : 'pts'}`;
     const extras = [row.pb ? 'New best' : '', row.earned.tricks ? `Tricks +${row.earned.tricks}` : '', row.zoneStreak >= 2 ? `Zone streak x${row.zoneStreak}` : '', row.cleanStreak >= 2 ? `Clean streak x${row.cleanStreak}` : ''].filter(Boolean);
-    q('.r-brk').textContent = [row.crumpled ? 'Crumpled' : row.zone ? row.zone : 'Missed the zones', ...extras].join(' · ');
+    q('.r-brk').textContent = [row.crumpled ? 'Crumpled' : row.zone ? `${row.zone}${row.ring ? ` (${row.ring})` : ''}` : 'Missed the zones', ...extras].join(' · ');
     q('.r-promo').innerHTML = row.promoted ? `Promoted to ${esc(row.promoted)}<small>${esc(row.unlock || '')}</small>` : '';
     if (row.promoted) vibrate([30, 60, 30, 60, 120]);
   }

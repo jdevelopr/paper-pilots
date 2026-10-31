@@ -17,6 +17,20 @@
 
 export const ZONE_PAY = [3, 6, 10, 15, 24];
 
+// Every landing zone is a target. Rings are measured as an ellipse fitted to
+// the zone (0 = dead centre, 1 = the edge midpoints; corners count as outer).
+// Landing closer to the centre multiplies the zone's pay and ranks higher.
+export const RINGS = [
+  { name: 'Bullseye', r: 0.25, mult: 2 },
+  { name: 'Inner ring', r: 0.5, mult: 1.5 },
+  { name: 'Middle ring', r: 0.75, mult: 1.2 },
+  { name: 'Outer ring', r: Infinity, mult: 1 },
+];
+export function ringAt(zn, x, z) {
+  const rr = Math.hypot((x - zn.x) / (zn.w / 2), (z - zn.z) / (zn.d / 2));
+  return RINGS.findIndex(g => rr <= g.r);
+}
+
 // Floor 1 is 400 long; each floor above it is 25% longer than the one below.
 const BASE_LENGTH = 400, GROWTH = 1.25;
 
@@ -293,8 +307,10 @@ export function generateFloor(theme, seed = 1) {
         o.x = T.r(-W / 2 + o.w / 2 + 2, W / 2 - o.w / 2 - 2);
         zn = { tier, label: host.name, x: o.x, z: o.z, w: o.w, d: o.d, y: o.h, pay: payFor(tier, theme), host: o };
       } else {
-        const w = tier === 0 ? T.r(14, 18) : tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier;
-        const d = tier === 0 ? T.r(12, 16) : tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5;
+        // Target mats: about 30% bigger than plain mats, since only the
+        // centre pays full price.
+        const w = Math.min(W - 6, 1.3 * (tier === 0 ? T.r(14, 18) : tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier));
+        const d = 1.3 * (tier === 0 ? T.r(12, 16) : tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5);
         zn = { tier, label: T.pick(theme.zoneNames[tier]), x: tier === 0 ? T.r(-6, 6) : T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: 0, pay: payFor(tier, theme) };
       }
       const clash = zones.some(o => Math.abs(o.x - zn.x) < (o.w + zn.w) / 2 + 1.5 && Math.abs(o.z - zn.z) < (o.d + zn.d) / 2 + 1.5);
