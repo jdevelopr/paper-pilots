@@ -309,6 +309,39 @@ function buildObject(o) {
       g.add(boxMesh(w, h, d, '#26292d', 0, 0, 0));
       g.add(boxMesh(w * 0.92, h * 0.86, 0.05, '#6f8fa3', 0, h * 0.07, -d / 2 - 0.03));
       break;
+    case 'hallwall': {
+      // Floor-to-ceiling hallway wall: painted panel, skirting, a chair rail,
+      // and the odd framed picture on the long faces.
+      g.add(boxMesh(w, h, d, o.color || '#e9e1cf'));
+      g.add(boxMesh(w + 0.12, 0.6, d + 0.12, '#6b5440'));
+      g.add(boxMesh(w + 0.08, 0.18, d + 0.08, '#a8794a', 0, 3.4, 0));
+      const long = d > w ? 'd' : 'w';
+      const L = long === 'd' ? d : w;
+      const cols = ['#1e4d6b', '#3d6b52', '#c1440e', '#e0a526'];
+      for (let t = -L / 2 + 6, i = 0; t < L / 2 - 4; t += 11 + (i % 3) * 3, i++) {
+        for (const side of [-1, 1]) {
+          const fw = 2.2 + (i % 2), fh = 1.6 + ((i + 1) % 2) * 0.6;
+          const frame = new THREE.Group();
+          frame.add(boxMesh(fw, fh, 0.12, '#5b4636', 0, 0, 0));
+          const art = boxMesh(fw - 0.4, fh - 0.4, 0.05, cols[(i + (side > 0)) % 4], 0, 0.2, side > 0 ? 0.06 : -0.06);
+          frame.add(art);
+          if (long === 'd') { frame.rotation.y = Math.PI / 2; frame.position.set(side * (w / 2 + 0.07), 5.2, t); }
+          else frame.position.set(t, 5.2, side * (d / 2 + 0.07));
+          g.add(frame);
+        }
+      }
+      break;
+    }
+    case 'lintel':
+      g.add(boxMesh(w + 0.6, h, d, '#efe6d6'));
+      g.add(boxMesh(w + 1.2, 0.45, d + 0.3, '#6b5440'));          // header trim at the door's top edge
+      // EXIT-style sign above the doorway
+      g.add(boxMesh(1.8, 0.6, 0.12, '#3d6b52', 0, 0.8, -d / 2 - 0.08));
+      break;
+    case 'doorframe':
+      // Decorative posts at the sides of the opening (the walls do the colliding)
+      for (const s of [-1, 1]) g.add(boxMesh(0.35, h, d + 0.25, '#6b5440', s * (w / 2 + 0.17), 0, 0));
+      break;
     default:
       g.add(boxMesh(w, h, d, '#999999'));
   }
@@ -400,6 +433,10 @@ function buildMover(m) {
     default:
       g.add(boxMesh(m.w, m.h, m.d, '#999999'));
   }
+  // The meshes above are modelled at a reference size; stretch them to the
+  // mover's actual collision box so what you see is what you hit.
+  const REF = { chair: [2.2, 3.4, 2.2], mailcart: [3.4, 3.2, 2.2], trolley: [3.6, 3.7, 2.2] }[m.type];
+  if (REF) g.scale.set(m.w / REF[0], m.h / REF[1], m.d / REF[2]);
   return { g, spin };
 }
 

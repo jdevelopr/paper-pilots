@@ -20,9 +20,21 @@ export const ZONE_PAY = [3, 6, 10, 15, 24];
 // Floor 1 is 400 long; each floor above it is 25% longer than the one below.
 const BASE_LENGTH = 400, GROWTH = 1.25;
 
-// Distance bands per tier [zMin, zMax] for the zone centre, on a 200-long
-// reference floor. They stretch with the floor.
-const TIER_BANDS = [[100, 116], [120, 134], [138, 152], [156, 170], [176, 191]];
+// Where each tier's landing zone goes. Tier 0 always sits where a stock plane
+// with a plain throw can land (55-80 out). The others spread out along the rest
+// of the floor, ending near the far wall, so on long floors the far zones need
+// vents, a clean line through the hallways, and upgrades.
+function tierBand(tier, L) {
+  if (tier === 0) return [58, 78];
+  const far = L * 0.92, near = 78;
+  const c = near + (far - near) * Math.pow(tier / 4, 1.25);
+  const half = Math.min(18, (far - near) * 0.05);
+  return [c - half, Math.min(L - 12, c + half)];
+}
+
+// Higher floors pay more, so the climb up the building feels like a promotion.
+export const floorPayMult = number => 1 + 0.25 * (number - 1);
+const payFor = (tier, theme) => Math.round(ZONE_PAY[tier] * floorPayMult(theme.number));
 const LANE_HALF = 3.6;     // half-width of the guaranteed-clear corridor
 const TALL = 3.2;          // anything taller than this may not sit in the lane
 
@@ -48,7 +60,7 @@ function tools(rng) {
 
 /* --------------------------------------------------------- collisions --- */
 
-const SOLID = new Set(['counter', 'cubicle', 'pillar', 'plant', 'cabinet', 'couch', 'cooler',
+const SOLID = new Set(['hallwall', 'lintel', 'counter', 'cubicle', 'pillar', 'plant', 'cabinet', 'couch', 'cooler',
   'printer', 'vending', 'fridge', 'rack', 'shelf', 'glass', 'crate', 'copier', 'tv']);
 
 function boxesFor(o) {
@@ -91,10 +103,12 @@ function moverSweep(m) {
 // On-theme moving obstacles. Each returns a mover centred on (x, z).
 const M = {
   // Cubicle Farm: office chairs scooting between desks, the mail cart doing its rounds
-  chair: (x, z, T) => ({ type: 'chair', x, z, y: 0, w: 2.2, d: 2.2, h: 3.4, axis: 'x', from: -T.r(7, 11), to: T.r(7, 11), period: T.r(3.5, 5.5) }),
-  mailcart: (x, z, T) => ({ type: 'mailcart', x, z, y: 0, w: 3.4, d: 2.2, h: 3.2, axis: 'x', from: -T.r(9, 13), to: T.r(9, 13), period: T.r(6, 8) }),
+  // Real proportions: desks are 3 tall, so a chair back reaches ~4.6 and a mail
+  // cart is chest-height to the plane and a good 5 long.
+  chair: (x, z, T) => ({ type: 'chair', x, z, y: 0, w: 2.9, d: 2.9, h: 4.6, axis: 'x', from: -T.r(7, 11), to: T.r(7, 11), period: T.r(3.5, 5.5) }),
+  mailcart: (x, z, T) => ({ type: 'mailcart', x, z, y: 0, w: 5.2, d: 2.8, h: 4.4, axis: 'x', from: -T.r(9, 13), to: T.r(9, 13), period: T.r(6, 8) }),
   // Break Room: the snack trolley, and a bouncy ball someone kicked
-  trolley: (x, z, T) => ({ type: 'trolley', x, z, y: 0, w: 3.6, d: 2.2, h: 3.4, axis: 'x', from: -T.r(8, 12), to: T.r(8, 12), period: T.r(5, 7) }),
+  trolley: (x, z, T) => ({ type: 'trolley', x, z, y: 0, w: 4.6, d: 2.6, h: 4.2, axis: 'x', from: -T.r(8, 12), to: T.r(8, 12), period: T.r(5, 7) }),
   ball: (x, z, T) => ({ type: 'ball', x, z, y: 0.2, w: 1.6, d: 1.6, h: 1.6, axis: 'y', from: 0, to: T.r(6, 9), period: T.r(1.6, 2.4) }),
   // Server Room: a maintenance robot patrolling an aisle, a cable lift going up and down
   robot: (x, z, T) => ({ type: 'robot', x, z, y: 0, w: 2.4, d: 2.4, h: 4, axis: 'z', from: -T.r(8, 12), to: T.r(8, 12), period: T.r(5, 7) }),
@@ -198,7 +212,7 @@ export const THEMES = [
       (z, W, T) => [F.counter(T.pick([-1, 1]) * T.r(10, 16), z, T), F.cooler(T.r(-8, 8), z)],
       (z, W, T) => [F.fridge(T.r(-14, 14), z), ...scatter(z, W, T, [F.table], 1)],
     ],
-    vents: [3, 4], fans: [2, 3], blowers: [0, 0],
+    vents: [3, 4], fans: [2, 3], blowers: [0, 0], hallways: 1,
     movers: [M.trolley, M.ball, M.ball], moverCount: [2, 3],
   },
   {
@@ -221,7 +235,7 @@ export const THEMES = [
       (z, W, T) => scatter(z, W, T, [F.crate, F.crate, F.cabinet], T.ri(2, 3)),
     ],
     rowGap: [26, 34],
-    vents: [4, 6], fans: [0, 0], blowers: [1, 2],
+    vents: [4, 6], fans: [0, 0], blowers: [1, 2], hallways: 2,
     movers: [M.robot, M.robot, M.lift], moverCount: [2, 3],
   },
   {
@@ -238,7 +252,7 @@ export const THEMES = [
       (z, W, T) => [{ ...F.table(T.r(-8, 8), z + 6, T), w: T.r(7, 9), d: T.r(14, 22), h: 3.2 }],
       (z, W, T) => [F.shelf(T.pick([-1, 1]) * T.r(12, 17), z, T), F.plant(T.r(-10, 10), z), F.couch(T.r(-12, 12), z + 5, T)],
     ],
-    vents: [3, 4], fans: [1, 2], blowers: [0, 0],
+    vents: [3, 4], fans: [1, 2], blowers: [0, 0], hallways: 2,
     movers: [M.slidedoor, M.drone, M.drone], moverCount: [2, 3],
   },
 ];
@@ -254,7 +268,7 @@ export function generateFloor(theme, seed = 1) {
   const rng = mulberry32(seed);
   const T = tools(rng);
   const W = 44, H = theme.height, L = theme.length || 200;
-  const k = L / 200, sk = Math.sqrt(k);   // stretch relative to the reference floor
+  const k = L / 200;   // how many reference-length floors this is (content density)
   const many = ([a, b]) => T.ri(Math.round(a * k), Math.round(b * k));
 
   // The clear lane: random control points, linear in between.
@@ -263,6 +277,103 @@ export function generateFloor(theme, seed = 1) {
   for (let i = 1; i < nCtrl; i++) ctrl.push([L * i / nCtrl, T.r(-14, 14)]);
   ctrl[1][1] = T.r(-10, 10);
   ctrl.push([L, T.r(-12, 12)]);
+
+  /* Landing zones, one per tier */
+  const zones = [];
+  for (let tier = 0; tier < 5; tier++) {
+    const [b0, b1] = tierBand(tier, L);
+    const hosts = theme.perches.filter(p => (p.tiers || [3, 4]).includes(tier));
+    const usePerch = tier >= 3 && hosts.length > 0 && T.chance(tier === 4 ? 0.5 : 0.6);
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const z = T.r(b0, b1);
+      let zn;
+      if (usePerch) {
+        const host = T.pick(hosts);
+        const o = host.make(0, z, T);
+        o.x = T.r(-W / 2 + o.w / 2 + 2, W / 2 - o.w / 2 - 2);
+        zn = { tier, label: host.name, x: o.x, z: o.z, w: o.w, d: o.d, y: o.h, pay: payFor(tier, theme), host: o };
+      } else {
+        const w = tier === 0 ? T.r(14, 18) : tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier;
+        const d = tier === 0 ? T.r(12, 16) : tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5;
+        zn = { tier, label: T.pick(theme.zoneNames[tier]), x: tier === 0 ? T.r(-6, 6) : T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: 0, pay: payFor(tier, theme) };
+      }
+      const clash = zones.some(o => Math.abs(o.x - zn.x) < (o.w + zn.w) / 2 + 1.5 && Math.abs(o.z - zn.z) < (o.d + zn.d) / 2 + 1.5);
+      if (!clash || attempt === 29) { zones.push(zn); break; }
+    }
+  }
+  const perched = [];
+  for (const zn of zones) if (zn.host) { perched.push(zn.host); delete zn.host; }
+
+  /* Hallways (floor 3 and up): one set path with turns, walled in floor to
+     ceiling, so steering matters. Each hallway is straight segments joined by
+     open jogs, and usually has a doorway to thread. The lane runs through them. */
+  const hallObjs = [], hallSpans = [], doors = [];
+  const nHalls = theme.hallways || 0;
+  if (nHalls) {
+    // Hallways fill the long stretches *between* landing zones, so reaching the
+    // farther zones means threading a corridor first.
+    const marks = [40, ...zones.map(z => [z.z - z.d / 2, z.z + z.d / 2]).flat(), L - 10].sort((a, b) => a - b);
+    const gaps = [];
+    for (let i = 0; i + 1 < marks.length; i += 2) {
+      const g0 = marks[i] + 10, g1 = marks[i + 1] - 10;
+      if (g1 - g0 > 90) gaps.push([g0, g1]);
+    }
+    gaps.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]));
+    for (const [g0, g1] of gaps.slice(0, nHalls)) {
+      const len = Math.min(240, (g1 - g0) * T.r(0.75, 0.9));
+      const zs = g0 + T.r(0, g1 - g0 - len), ze = zs + len;
+      const cw = T.r(12, 15);                    // corridor width
+      // Each turn sidesteps 9-18 units; the open jog is long enough to make
+      // that S-bend at full speed with a decent line.
+      const jog = T.r(24, 30);
+      const nSeg = len > 3 * 45 + 2 * jog ? 3 : 2;
+      const segLen = (len - (nSeg - 1) * jog) / nSeg;
+      const lim = W / 2 - cw / 2 - 1.5;
+      const centres = [T.r(-lim, lim)];
+      for (let i = 1; i < nSeg; i++) {
+        const prev = centres[i - 1], step = T.r(9, 18);
+        let c = prev + T.pick([-1, 1]) * step;
+        if (Math.abs(c) > lim) c = prev - Math.sign(c) * step;   // turn the other way if it won't fit
+        centres.push(Math.max(-lim, Math.min(lim, c)));
+      }
+      const pts = [];
+      const wall = (x0, x1, z0, z1) => { if (x1 - x0 > 0.3 && z1 - z0 > 0.3) hallObjs.push({ type: 'hallwall', x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, h: H, color: theme.wall }); };
+      for (let i = 0; i < nSeg; i++) {
+        const c = centres[i];
+        const s0 = zs + i * (segLen + jog), s1 = s0 + segLen;
+        // Straight segment: wall in everything outside the corridor
+        wall(-W / 2, c - cw / 2, s0, s1);
+        wall(c + cw / 2, W / 2, s0, s1);
+        pts.push([s0, c], [s1, c]);
+        // Doorway partway down one segment
+        if (i === (nSeg > 2 ? 1 : 0) && T.chance(0.8)) {
+          const dw = T.r(5.5, 7), dh = T.r(6, 8);
+          const dx = c + T.r(-(cw / 2 - dw / 2 - 0.6), cw / 2 - dw / 2 - 0.6);
+          const zd = s0 + segLen * T.r(0.45, 0.65);
+          wall(c - cw / 2, dx - dw / 2, zd - 0.3, zd + 0.3);
+          wall(dx + dw / 2, c + cw / 2, zd - 0.3, zd + 0.3);
+          hallObjs.push({ type: 'lintel', x: dx, z: zd, w: dw, d: 0.6, y: dh, h: H - dh });
+          hallObjs.push({ type: 'doorframe', x: dx, z: zd, w: dw, d: 0.7, h: dh });
+          doors.push({ x: dx, z: zd, w: dw, h: dh });
+          pts.push([zd - 4, dx], [zd + 4, dx]);
+        }
+        // Jog to the next segment: open between the two corridors, walled outside
+        if (i < nSeg - 1) {
+          const n = centres[i + 1];
+          const lo = Math.min(c, n) - cw / 2, hi = Math.max(c, n) + cw / 2;
+          wall(-W / 2, lo, s1, s1 + jog);
+          wall(hi, W / 2, s1, s1 + jog);
+        }
+      }
+      hallSpans.push([zs, ze]);
+      // Replace the random lane points in this stretch with the corridor's path
+      for (let i = ctrl.length - 1; i >= 0; i--) if (ctrl[i][0] > zs - 12 && ctrl[i][0] < ze + 12 && i > 0 && i < ctrl.length - 1) ctrl.splice(i, 1);
+      ctrl.push(...pts.sort((a, b) => a[0] - b[0]));
+    }
+    ctrl.sort((a, b) => a[0] - b[0]);
+  }
+  const inHall = o => hallSpans.some(([zs, ze]) => o.z + o.d / 2 > zs - 3 && o.z - o.d / 2 < ze + 3);
+
   const laneX = z => {
     for (let i = 1; i < ctrl.length; i++) {
       if (z <= ctrl[i][0]) {
@@ -280,32 +391,6 @@ export function generateFloor(theme, seed = 1) {
     return false;
   };
 
-  /* Landing zones, one per tier */
-  const zones = [];
-  for (let tier = 0; tier < 5; tier++) {
-    const [b0, b1] = TIER_BANDS[tier].map(z => z * k);
-    const hosts = theme.perches.filter(p => (p.tiers || [3, 4]).includes(tier));
-    const usePerch = tier >= 3 && hosts.length > 0 && T.chance(tier === 4 ? 0.5 : 0.6);
-    for (let attempt = 0; attempt < 30; attempt++) {
-      const z = T.r(b0, b1);
-      let zn;
-      if (usePerch) {
-        const host = T.pick(hosts);
-        const o = host.make(0, z, T);
-        o.x = T.r(-W / 2 + o.w / 2 + 2, W / 2 - o.w / 2 - 2);
-        zn = { tier, label: host.name, x: o.x, z: o.z, w: o.w, d: o.d, y: o.h, pay: ZONE_PAY[tier], host: o };
-      } else {
-        // Mats grow a little on longer floors, where planes arrive faster.
-        const w = Math.min(W - 6, (tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier) * Math.pow(k, 0.25));
-        const d = (tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5) * sk;
-        zn = { tier, label: T.pick(theme.zoneNames[tier]), x: T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: 0, pay: ZONE_PAY[tier] };
-      }
-      const clash = zones.some(o => Math.abs(o.x - zn.x) < (o.w + zn.w) / 2 + 1.5 && Math.abs(o.z - zn.z) < (o.d + zn.d) / 2 + 1.5);
-      if (!clash || attempt === 29) { zones.push(zn); break; }
-    }
-  }
-  const perched = [];
-  for (const zn of zones) if (zn.host) { perched.push(zn.host); delete zn.host; }
 
   /* Furniture rows down the floor */
   let objects = [];
@@ -326,11 +411,12 @@ export function generateFloor(theme, seed = 1) {
     o.z = Math.max(o.d / 2 + 1, Math.min(L - o.d / 2 - 1, o.z));
     if (o.h > H) o.h = H;
     if (o.z - o.d / 2 < 16) return false;
+    if (inHall(o)) return false;
     if (topOf(o) > TALL && inLane(o)) return false;
     for (const zn of zones) if (overlapsRect(o, zn.x - zn.w / 2 - 1, zn.x + zn.w / 2 + 1, zn.z - zn.d / 2 - 1, zn.z + zn.d / 2 + 1)) return false;
     return true;
   });
-  objects.push(...perched);
+  objects.push(...perched, ...hallObjs);
   objects.unshift({ type: 'desk', x: 0, z: -2.6, w: 13, d: 3, h: 4.2, launch: true });
   const boxes = objects.flatMap(boxesFor);
 
@@ -344,11 +430,11 @@ export function generateFloor(theme, seed = 1) {
     // The first two vents hug the lane so a good line always has lift on it.
     const z = T.r(30, L * 0.75);
     const x = vents.length < 2 * k ? laneX(z) + T.r(-2.5, 2.5) : T.r(-W / 2 + 4, W / 2 - 4);
-    const r = T.r(3, 4) * Math.pow(k, 0.25);
+    const r = T.r(3, 4);
     if (Math.abs(x) > W / 2 - r - 0.5 || !freeAt(x, z, r + 0.5)) continue;
     if (vents.some(v => Math.hypot(v.x - x, v.z - z) < 14)) continue;
     if (zones.some(zn => Math.abs(zn.x - x) < zn.w / 2 + r && Math.abs(zn.z - z) < zn.d / 2 + r)) continue;
-    vents.push({ x, z, r, s: T.r(6.5, 9) * sk });
+    vents.push({ x, z, r, s: T.r(6.5, 9) });
   }
   vents.sort((a, b) => a.z - b.z);
 
@@ -409,9 +495,11 @@ export function generateFloor(theme, seed = 1) {
   return {
     id: theme.id, number: theme.number, name: theme.name,
     carpet: theme.carpet, wall: theme.wall, accent: theme.accent,
-    width: W, height: H, length: L, scale: k, seed,
+    width: W, height: H, length: L, seed,
     stakes: `${tier4.label} pays ${tier4.pay}`,
     objects, boxes, vents, fans, blowers, zones, clips, movers,
+    halls: hallSpans,
+    doors,              // doorways in the hallways (bots dip under the lintel)   // [zStart, zEnd] of each walled hallway
     lane: ctrl,   // the guaranteed-clear path, as [z, x] control points (bots follow it)
   };
 }

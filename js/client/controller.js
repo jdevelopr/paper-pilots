@@ -36,14 +36,16 @@ export function mountController(root, link, { solo = false } = {}) {
     </div>
     <div class="cv" data-v="landed">
       <div class="chead"><span class="cname"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
-      <div class="landed-card"><div class="zl"></div><div class="zp"></div></div>
+      <div class="landed-card"><div class="zl"></div><div class="zp"></div><div class="zb"></div></div>
     </div>
     <div class="cv" data-v="results">
       <div class="chead"><span class="cname"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
-      <div class="cfill r-fill"><div><div class="cbig r-place"></div><h3 class="r-zone"></h3><div class="csub r-brk"></div></div></div>
+      <div class="cfill r-fill"><div><div class="cbig r-place"></div><h3 class="r-zone"></h3><div class="csub r-brk"></div><div class="r-promo"></div></div></div>
+      <div class="crank"><span class="ck-t"></span><i><b></b></i></div>
     </div>
     <div class="cv" data-v="shop">
       <div class="chead"><span class="cname"></span><span class="ctimer"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
+      <div class="crank"><span class="ck-t"></span><i><b></b></i></div>
       <div class="stats"></div>
       <div class="shoplist"></div>
       <button class="btn primary s-done">Done</button>
@@ -337,6 +339,20 @@ export function mountController(root, link, { solo = false } = {}) {
     card.style.background = z ? 'var(--paper)' : '';
     q('.zl').textContent = crumpled ? 'Crumpled' : z ? z.label : 'Missed';
     q('.zp').innerHTML = z ? `+${z.pay}${clipIcon}` : '';
+    const zb = q('.zb');
+    const newBest = !crumpled && me.best > 0 && me.dist > me.best;
+    zb.classList.toggle('pb', newBest);
+    zb.textContent = crumpled ? '' : newBest ? `New best · ${me.dist} ft` : me.best ? `${me.dist} ft · best ${Math.max(me.best, me.dist)} ft` : `${me.dist} ft`;
+  }
+
+  // Career ladder: current title, the next one, and a bar toward it.
+  function paintRank() {
+    const rk = me.rank;
+    if (!rk) return;
+    qa('.crank').forEach(el => {
+      el.querySelector('.ck-t').textContent = rk.next ? `${rk.title} · ${rk.toNext} clips to ${rk.next}` : `${rk.title} · top of the org chart`;
+      el.querySelector('b').style.transform = `scaleX(${Math.max(0.03, Math.min(1, rk.progress))})`;
+    });
   }
 
   function paintResults() {
@@ -345,7 +361,9 @@ export function mountController(root, link, { solo = false } = {}) {
     const ord = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
     q('.r-place').textContent = ord[row.place - 1];
     q('.r-zone').textContent = `+${row.earned.total} clips · +${row.points} ${row.points === 1 ? 'pt' : 'pts'}`;
-    q('.r-brk').textContent = row.crumpled ? 'Crumpled' : row.zone ? row.zone : 'Missed the zones';
+    q('.r-brk').textContent = (row.crumpled ? 'Crumpled' : row.zone ? row.zone : 'Missed the zones') + (row.pb ? ' · New best' : '');
+    q('.r-promo').textContent = row.promoted ? `Promoted to ${row.promoted}` : '';
+    if (row.promoted) vibrate([30, 60, 30, 60, 120]);
   }
   function paintFinal() {
     const row = (phase.rows || []).find(r => r.seat === me.seat);
@@ -377,6 +395,7 @@ export function mountController(root, link, { solo = false } = {}) {
         if (view === 'fly' && d.state === 'held') d.state = 'fly';
         me = d;
         paintHeader();
+        paintRank();
         hpbar.style.transform = `scaleX(${clamp(d.hp / d.maxHp, 0, 1)})`;
         hpbar.classList.toggle('low', d.hp / d.maxHp < 0.35);
         if (phase.phase === 'shop') renderShop();

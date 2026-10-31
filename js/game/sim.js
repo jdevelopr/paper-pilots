@@ -30,11 +30,6 @@ export const SIM = {
   throwWindow: 9,    // seconds to throw before an automatic weak toss
 };
 
-// Longer floors scale the flight: horizontal distances grow by k = floor.scale
-// while ceiling heights stay put, so the glide ratio grows by k. Speeds grow by
-// sqrt(k), so a floor twice as long takes ~1.4x as long to cross, not 2x.
-const scaleOf = f => f.scale || 1;
-
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -64,8 +59,9 @@ export function createRace(floor, players) {
     };
   });
   const clips = floor.clips.map(c => ({ ...c, taken: -1 }));
-  const k = scaleOf(floor);
-  return { floor, k, sk: Math.sqrt(k), timeLimit: SIM.raceTime * Math.sqrt(k), t: 0, planes, clips, events: [], over: false, overAt: null };
+  // Planes fly the same on every floor; longer floors just allow longer flights
+  // (riding vents) before stragglers are forced down.
+  return { floor, timeLimit: SIM.raceTime + (floor.length || 200) / 10, t: 0, planes, clips, events: [], over: false, overAt: null };
 }
 
 /* -------------------------------------------------------------- inputs --- */
@@ -85,7 +81,7 @@ export function throwPlane(race, seat, aim) {
   const power = 0.35 + 0.65 * p.aim.power;
   p.yaw = p.aim.yaw;
   p.pitch = p.aim.pitch;
-  p.v = SIM.launchMax * race.sk * power * p.st.launch / (0.85 + 0.15 * p.st.weight);
+  p.v = SIM.launchMax * power * p.st.launch / (0.85 + 0.15 * p.st.weight);
   p.state = 'fly';
   p.thrownAt = race.t;
   race.events.push({ name: 'throw', seat, power: p.aim.power, boost: p.st.launch > 1 });
@@ -141,8 +137,7 @@ function flyStep(race, p, dt) {
   const st = p.st, f = race.floor;
 
   // Pitch: stick up = climb. A slight nose-down trim keeps a hands-off plane gliding.
-  const k = race.k ?? 1, sk = race.sk ?? 1;
-  const vStall = SIM.vStall * sk, vRef = SIM.vRef * sk;
+  const vStall = SIM.vStall, vRef = SIM.vRef;
   let target = -0.05 + p.inY * 0.55;
   if (p.v < vStall) target = lerp(target, -0.7, clamp((vStall - p.v) / vStall + 0.3, 0, 1));
   p.pitch += (target - p.pitch) * clamp(2.6 * dt, 0, 1);
@@ -151,16 +146,14 @@ function flyStep(race, p, dt) {
   // Bank and turn. Heavier, slower planes turn less; banking costs energy.
   p.roll += (p.inX * 0.85 - p.roll) * clamp(4 * dt, 0, 1);
   const vs = clamp(p.v / vRef, 0.45, 1.3);
-  p.yaw += p.roll * 1.25 * st.turn * vs * sk * dt;
+  p.yaw += p.roll * 1.25 * st.turn * vs * dt;
 
-  const D = SIM.dragK / k * st.drag * (0.85 + 0.15 * st.weight) * (1 + p.roll * p.roll * 0.5);
-  p.v += (-SIM.G * k * Math.sin(p.pitch) - D * p.v * p.v) * dt;
-  p.v = clamp(p.v, 0.5, 40 * sk);
+  const D = SIM.dragK * st.drag * (0.85 + 0.15 * st.weight) * (1 + p.roll * p.roll * 0.5);
+  p.v += (-SIM.G * Math.sin(p.pitch) - D * p.v * p.v) * dt;
+  p.v = clamp(p.v, 0.5, 40);
 
-  // The cap scales up with the floor so a stalled plane still drops as fast as
-  // on a short floor: you can always dump height to stick a landing.
-  const sinkRatio = clamp((vRef / Math.max(p.v, 0.5)) ** 2, 0.55, 5 * sk);
-  const sink = SIM.baseSink / sk * st.sink * Math.pow(st.weight, 0.9) * sinkRatio;
+  const sinkRatio = clamp((vRef / Math.max(p.v, 0.5)) ** 2, 0.55, 5);
+  const sink = SIM.baseSink * st.sink * Math.pow(st.weight, 0.9) * sinkRatio;
 
   const h = p.v * Math.cos(p.pitch);
   p.x += Math.sin(p.yaw) * h * dt;
@@ -213,14 +206,14 @@ function touchDown(race, p, surfaceY, vy) {
   if (p.crumpled) { land(race, p); return; }
   p.v = p.v * Math.cos(p.pitch) * 0.72;
   p.pitch = 0; p.roll = 0;
-  if (vy < -7 * (race.sk ?? 1)) damage(race, p, -vy - 4 * (race.sk ?? 1), 'floor');
+  if (vy < -7) damage(race, p, -vy - 4, 'floor');
   if (p.state === 'landed') return;
   p.state = 'slide';
   race.events.push({ name: 'touch', seat: p.seat });
 }
 
 function slideStep(race, p, dt) {
-  p.v -= (9.5 * (race.k ?? 1) / p.st.slide) * dt;
+  p.v -= (9.5 / p.st.slide) * dt;
   if (p.v <= 0.25) { p.v = 0; land(race, p); return; }
   p.x += Math.sin(p.yaw) * p.v * dt;
   p.z += Math.cos(p.yaw) * p.v * dt;
@@ -320,7 +313,7 @@ function collide(race, p, px, py, pz) {
     if (b.mover && py >= b.y1 - 0.2) {
       // Clipped the top of something moving: get knocked upward.
       p.y = b.y1 + r; p.pitch = Math.abs(p.pitch) * 0.5 + 0.1; p.v *= 0.8;
-      damage(race, p, 4 * (race.sk ?? 1), 'hit');
+      damage(race, p, 4, 'hit');
       continue;
     }
     if (py <= b.y0 - r + 0.05) {
@@ -350,7 +343,6 @@ function collide(race, p, px, py, pz) {
 
 function damage(race, p, impact, kind) {
   if (p.crumpled) return;
-  impact /= race.sk ?? 1;
   const dmg = Math.max(0, impact - 2.5) * 5.2 * p.st.dmg;
   if (dmg <= 0) return;
   p.hp = Math.max(0, p.hp - dmg);

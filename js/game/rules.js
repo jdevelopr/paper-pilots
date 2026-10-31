@@ -1,13 +1,28 @@
 // rules.js: match-level rules (rounds, payouts, the shop). Pure, no DOM, no network.
 
 import { UPGRADE_BY_ID, nextCost } from '../shared/upgrades.js';
-import { FLOORS } from './floors.js';
+import { FLOORS, floorPayMult } from './floors.js';
 
 export const PLACE_CLIPS = [8, 5, 3, 1];
 export const PLACE_POINTS = [10, 6, 3, 1];
 export const SHOP_MS = 40000;
 
 export const RACES_PER_FLOOR = 3;
+
+// Career ladder. Every clip a pilot earns in a match counts toward promotion,
+// so everyone climbs the org chart as the building gets taller.
+export const RANKS = [
+  { title: 'Intern', at: 0 }, { title: 'Temp', at: 20 }, { title: 'Associate', at: 50 },
+  { title: 'Supervisor', at: 95 }, { title: 'Manager', at: 155 }, { title: 'Director', at: 230 },
+  { title: 'VP', at: 320 }, { title: 'CEO', at: 430 },
+];
+export function rankOf(career = 0) {
+  let i = 0;
+  while (i + 1 < RANKS.length && career >= RANKS[i + 1].at) i++;
+  const next = RANKS[i + 1];
+  return { level: i, title: RANKS[i].title, next: next ? next.title : null, toNext: next ? next.at - career : 0,
+    progress: next ? (career - RANKS[i].at) / (next.at - RANKS[i].at) : 1 };
+}
 
 // `rounds` is the number of floors. Each floor is raced RACES_PER_FLOOR times,
 // so match.floors holds one entry per race.
@@ -19,7 +34,7 @@ export function createMatch(rounds = 5) {
 
 export function addPlayer(match, seat, name, bot = false) {
   if (!match.players[seat]) {
-    match.players[seat] = { seat, name, bot, clips: 0, points: 0, owned: [], wins: 0, history: [] };
+    match.players[seat] = { seat, name, bot, clips: 0, points: 0, owned: [], wins: 0, history: [], career: 0, best: {} };
   } else {
     match.players[seat].name = name;
   }
@@ -33,15 +48,26 @@ export const legOf = (m, round = m.round) => (round % RACES_PER_FLOOR) + 1;
 
 // Turn race standings into clips and points. Returns rows in finishing order.
 export function payout(match, standings) {
+  const floor = currentFloor(match);
+  const mult = floorPayMult(floor.number);
   const rows = standings.map((s, i) => {
     const pl = match.players[s.seat];
     const intact = !s.crumpled;
     const zone = intact && s.zone ? s.zone.pay : 0;
-    const place = intact ? (PLACE_CLIPS[i] ?? 0) : 0;
+    const place = intact ? Math.round((PLACE_CLIPS[i] ?? 0) * mult) : 0;
     const points = intact ? (PLACE_POINTS[i] ?? 0) : 0;
     const pickup = s.clips;
     const earned = zone + place + pickup;
+    let promoted = null, pb = false, best = 0;
     if (pl) {
+      const before = rankOf(pl.career).level;
+      pl.career += earned;
+      const after = rankOf(pl.career);
+      if (after.level > before) promoted = after.title;
+      // Personal best distance on this floor (intact landings only)
+      const prev = pl.best[floor.id] ?? 0;
+      if (intact && s.dist > prev) { pb = prev > 0; pl.best[floor.id] = s.dist; }
+      best = pl.best[floor.id] ?? 0;
       pl.clips += earned;
       pl.points += points;
       if (i === 0 && intact) pl.wins++;
@@ -52,6 +78,7 @@ export function payout(match, standings) {
       zone: s.zone?.label ?? null, tier: s.zone?.tier ?? -1, crumpled: s.crumpled,
       dist: s.dist, earned: { zone, place, pickup, total: earned }, points,
       totalPoints: pl?.points ?? 0, clips: pl?.clips ?? 0,
+      rank: rankOf(pl?.career).title, promoted, pb, best: Math.round(best),
     };
   });
   return rows;
@@ -72,5 +99,5 @@ export function buy(match, seat, id) {
 export function finalStandings(match) {
   return Object.values(match.players)
     .sort((a, b) => (b.points - a.points) || (b.wins - a.wins) || (b.clips - a.clips))
-    .map((p, i) => ({ seat: p.seat, name: p.name, place: i + 1, points: p.points, wins: p.wins, clips: p.clips, owned: p.owned }));
+    .map((p, i) => ({ seat: p.seat, name: p.name, place: i + 1, points: p.points, wins: p.wins, clips: p.clips, owned: p.owned, rank: rankOf(p.career).title }));
 }

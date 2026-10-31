@@ -52,7 +52,7 @@ export function createHud(root) {
       el.className = 'racer';
       el.style.setProperty('--c', colorFor(p.seat));
       el.style.setProperty('--i', i);
-      el.innerHTML = `<span class="sw"></span><div><div class="nm">${esc(p.name)}</div><div class="sub">Aiming</div><div class="hp"><i></i></div></div><div class="cl">${clipIcon}<span>0</span></div>`;
+      el.innerHTML = `<span class="sw"></span><div><div class="nm">${esc(p.name)} <span class="rk">${esc(p.rank || '')}</span></div><div class="sub">Aiming</div><div class="hp"><i></i></div></div><div class="cl">${clipIcon}<span>0</span></div>`;
       racersEl.appendChild(el);
       racerEls.set(p.seat, el);
       shownClips.set(p.seat, 0);
@@ -142,7 +142,7 @@ export function createHud(root) {
         <div class="disp"><svg aria-hidden="true"><use href="#i-up"/></svg><span>${f.number}</span></div>
         <div class="fname">${esc(f.name)}</div>
         <div class="stakes">Race ${leg} of ${legs} · ${esc(f.stakes)}</div>
-        <div class="callin">${players.map((p, i) => `<span style="--c:${colorFor(p.seat)};--i:${i}">${esc(p.name)}</span>`).join('')}</div>
+        <div class="callin">${players.map((p, i) => `<span style="--c:${colorFor(p.seat)};--i:${i}">${esc(p.name)}<small>${esc(p.rank || '')}</small></span>`).join('')}</div>
       </div>
       <div class="count" hidden></div>`;
     const panel = intro.querySelector('.elevator'), count = intro.querySelector('.count');
@@ -178,9 +178,9 @@ export function createHud(root) {
       <div class="rows">${rows.map((r, i) => `
         <div class="rrow" style="--c:${colorFor(r.seat)};--i:${i}">
           <div class="pl">${r.place}</div>
-          <div class="nm">${esc(r.name)}</div>
+          <div class="nm">${esc(r.name)}<div class="rk">${r.promoted ? `<b class="promo">Promoted: ${esc(r.promoted)}</b>` : esc(r.rank)}</div></div>
           <div class="zn">${r.crumpled ? 'Crumpled' : r.zone ? esc(r.zone) : `Missed (${Math.round(r.dist)} ft)`}
-            <div class="brk">zone ${r.earned.zone} · place ${r.earned.place} · pickups ${r.earned.pickup}</div></div>
+            <div class="brk">${Math.round(r.dist)} ft${r.pb ? ' · <b class="pb">New best</b>' : ''} · zone ${r.earned.zone} · place ${r.earned.place} · pickups ${r.earned.pickup}</div></div>
           <div class="earn">+<span data-to="${r.earned.total}">0</span>${clipIcon}</div>
           <div class="pts">${plural(r.totalPoints, 'pt')}</div>
         </div>`).join('')}</div>`;
@@ -242,7 +242,7 @@ export function createHud(root) {
       <h2>Employee of the month</h2>
       <div class="podium">${order.map(r => `
         <div class="step" style="--c:${colorFor(r.seat)};--d:${3 - r.place}">
-          <div class="nm">${esc(r.name)}</div>
+          <div class="nm">${esc(r.name)}</div><div class="pts">${esc(r.rank || "")}</div>
           <div class="pts">${plural(r.points, 'pt')} · ${plural(r.wins, 'win')}</div>
           <div class="blk" style="height:${heights[r.place]}px">${r.place}</div>
         </div>`).join('')}</div>

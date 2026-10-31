@@ -2,15 +2,15 @@
 
 A party game where up to 4 players race paper airplanes through an office building. One screen (a laptop or TV) shows the race. Everyone else plays on their phone by scanning a QR code.
 
-Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips. Floor 1 is twice as long as a short office hallway, and each floor above it is 25% longer again (400 → 500 → 625 → 781 → 977). Planes fly faster and glide farther on longer floors, so a race takes about 1.4× as long rather than 2×.
+Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips. Floor 1 is 400 long and each floor above it is 25% longer (400 → 500 → 625 → 781 → 977). Planes fly the same on every floor, so the extra length is what you grow into.
 
-From Floor 2 up there are **moving obstacles**: office chairs and the mail cart scooting across the Cubicle Farm, the snack trolley and a bouncing ball in the Break Room, a patrolling maintenance robot and a cable lift in the Server Room, and sliding glass doors and the CEO's camera drone in the Executive Suite.
+**Landing zones are spread along the whole floor.** The first zone always sits 58–78 out, where a stock plane with a controlled throw can land. The rest step out toward the far wall, so a fresh plane reaches the first one or two, and reaching the far zones takes vents, clean flying and upgrades. Higher floors pay more: zone and placement payouts are 25% bigger per floor (Floor 5 pays double).
 
-1. Lobby
-2. Cubicle Farm
-3. Break Room
-4. Server Room
-5. Executive Suite
+**Floor 2 and up** have moving obstacles: life-size office chairs and the mail cart in the Cubicle Farm, the snack trolley and a bouncing ball in the Break Room, a patrolling robot and a cable lift in the Server Room, and sliding glass doors and the CEO's camera drone in the Executive Suite.
+
+**Floor 3 and up** add **hallways**: floor-to-ceiling walled corridors (1 on the Break Room, 2 on the floors above) between landing zones. Each is a single path with S-bend turns and usually a doorway you have to duck under. No dead ends, no maze: just steering.
+
+**Career progression.** Every clip you earn counts toward a promotion: Intern → Temp → Associate → Supervisor → Manager → Director → VP → CEO. Your title shows on the host screen, promotions get announced after a race, and your phone shows how many clips you need for the next title. The game also tracks your personal-best distance on each floor and flags a new best.
 
 You throw your plane from the launch desk, then glide it the rest of the way. Paper planes can't fly forever, so you want to land in the best landing zone you can reach. Zones farther away pay more paper clips. Along the way you can grab clips floating in the air, ride the floor vents to gain height, stay away from the ceiling fans that push you down, and avoid crashing into the furniture.
 

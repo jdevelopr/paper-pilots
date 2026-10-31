@@ -5,7 +5,7 @@
 //   intro -> race -> results -> shop -> intro (next floor) ... -> final
 
 import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM } from '../game/sim.js';
-import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, finalStandings, SHOP_MS, legOf, RACES_PER_FLOOR } from '../game/rules.js';
+import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, finalStandings, SHOP_MS, legOf, RACES_PER_FLOOR, rankOf } from '../game/rules.js';
 import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js';
 import { generateFloor } from '../game/floors.js';
 import { UPGRADES } from '../shared/upgrades.js';
@@ -70,7 +70,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
 
     renderer.setFloor(floor);
     renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
-    hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat) })), `Race ${legOf(match)}/${RACES_PER_FLOOR}`);
+    hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title, best: match.players[seat].best[floor.id] ?? 0 })), `Race ${legOf(match)}/${RACES_PER_FLOOR}`);
 
     const ms = match.round === 0 ? INTRO_FIRST_MS : INTRO_MS;
     startsAt = Date.now() + ms;
@@ -79,7 +79,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     sfx.elevator();
     hud.showIntro({
       floor, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: RACES_PER_FLOOR,
-      players: raceSeats.map(seat => ({ seat, name: nameOf(seat) })), startsAt: () => startsAt,
+      players: raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title })), startsAt: () => startsAt,
     }, label => (label === 'GO' ? sfx.go() : sfx.tick()));
     hud.setHint(match.round > 0 ? 'Enter to skip' : '');
     scheduleGo();
@@ -217,6 +217,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         seat: h.seat, name: pl.name, clips: pl.clips, points: pl.points, owned: pl.owned,
         state: p?.state ?? 'none', hp: p ? Math.round(p.hp) : 0, maxHp: p?.maxHp ?? 100,
         run: p?.clips ?? 0, crumpled: !!p?.crumpled, zone: p?.zone ?? null,
+        dist: p ? Math.round(p.z) : 0, best: Math.round(pl.best[currentFloor(match).id] ?? 0),
+        rank: rankOf(pl.career),
       });
     }
   }
@@ -242,6 +244,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     setPhase('results');
     sfx.fanfare();
     hud.results(rows, layout, isLastRound(match), legOf(match), RACES_PER_FLOOR);
+    const promos = rows.filter(r => r.promoted);
+    if (promos.length) later(1800, () => { sfx.fanfare(); hud.banner(promos.map(r => `${r.name} promoted to ${r.promoted}`).join(' · '), 3500); });
     hud.setHint('Enter to skip');
     broadcastPhase();
     sendMeAll();
