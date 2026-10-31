@@ -83,7 +83,7 @@ function targetTexture(zn) {
   const dark = '#' + base.clone().multiplyScalar(0.82).getHexString();
   x.fillStyle = light; x.fillRect(0, 0, c.width, c.height);
   const cx = c.width / 2, cy = c.height / 2;
-  [1, 0.75, 0.5, 0.25].forEach((r, i) => {
+  [1, 2 / 3, 1 / 3].forEach((r, i) => {
     x.beginPath();
     x.ellipse(cx, cy, cx * r, cy * r, 0, 0, Math.PI * 2);
     x.fillStyle = i % 2 ? light : dark;
@@ -579,7 +579,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   const ink = createInk(renderer);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#d9cdb4');
+  scene.background = new THREE.Color('#cfe2ea');   // sky, seen through open windows
   const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 320);
   camera.layers.enable(1);
   camera.position.set(0, 9, 12);
@@ -689,6 +689,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     env = new THREE.Group();
     scene.add(env);
     for (const k in anims) anims[k] = [];
+    anims.outside = null;
 
     const W = f.width, H = f.height, L = f.length;
     const zBack = 24, zEnd = L;
@@ -721,11 +722,41 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     // Side walls with windows, plus skirting
     const wallMat = M(f.wall);
     for (const s of [-1, 1]) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.4, H, len), wallMat);
-      wall.position.set(s * (W / 2 + 0.2), H / 2, midZ);
-      env.add(wall);
+      // Open shortcut windows punch real holes in the wall
+      const holes = (f.windows || []).filter(w => w.side === s).sort((a, b) => a.z - b.z);
+      let zc = -zBack;
+      const wallSeg = (z0, z1, y0, y1) => {
+        if (z1 - z0 < 0.05 || y1 - y0 < 0.05) return;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.4, y1 - y0, z1 - z0), wallMat);
+        m.position.set(s * (W / 2 + 0.2), (y0 + y1) / 2, -(z0 + z1) / 2);
+        env.add(m);
+      };
+      for (const w of holes) {
+        wallSeg(zc, w.z - w.half, 0, H);
+        wallSeg(w.z - w.half, w.z + w.half, 0, w.y0);
+        wallSeg(w.z - w.half, w.z + w.half, w.y1, H);
+        zc = w.z + w.half;
+        // Frame and a sash swung wide open
+        const fx = s * (W / 2 + 0.2);
+        env.add(boxMesh(0.6, 0.35, w.half * 2 + 0.6, '#f6efdc', fx, w.y0 - 0.35, -w.z));
+        env.add(boxMesh(0.6, 0.3, w.half * 2 + 0.6, '#f6efdc', fx, w.y1, -w.z));
+        for (const e of [-1, 1]) env.add(boxMesh(0.6, w.y1 - w.y0, 0.3, '#f6efdc', fx, w.y0, -(w.z + e * w.half)));
+        const sash = new THREE.Group();
+        const glass = new THREE.Mesh(new THREE.BoxGeometry(0.08, w.y1 - w.y0 - 0.4, w.half * 2 - 0.4),
+          new THREE.MeshLambertMaterial({ color: '#bfe0ea', transparent: true, opacity: 0.35, depthWrite: false }));
+        glass.layers.set(1);
+        glass.position.set(0, 0, -(w.half - 0.2));
+        sash.add(glass, boxMesh(0.12, 0.2, w.half * 2 - 0.2, '#8a8f93', 0, (w.y1 - w.y0) / 2 - 0.3, -(w.half - 0.1)));
+        sash.position.set(fx + s * 0.3, (w.y0 + w.y1) / 2, -(w.z - w.half));
+        sash.rotation.y = -s * 1.1;     // hinged outward
+        env.add(sash);
+        // Hazard tape on the sill so it reads as "go here"
+        for (let i = 0; i < 6; i++) env.add(boxMesh(0.62, 0.06, 0.55, i % 2 ? '#2c2416' : '#f2c94c', fx, w.y0 - 0.02, -(w.z - w.half + 0.6 + i * (w.half * 2 - 1.2) / 5)));
+      }
+      wallSeg(zc, zEnd, 0, H);
       env.add(Object.assign(boxMesh(0.2, 0.6, len, '#6b5440', s * (W / 2 - 0.05), 0, midZ)));
       for (let z = 6; z < L; z += 18) {
+        if (holes.some(w => Math.abs(w.z - (z + 5)) < w.half + 7)) continue;
         const pane = new THREE.Mesh(new THREE.BoxGeometry(0.1, H * 0.45, 10), new THREE.MeshBasicMaterial({ color: '#cfe6ee' }));
         pane.position.set(s * (W / 2 - 0.02), H * 0.55, -z - 5);
         env.add(pane);
@@ -734,6 +765,60 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         env.add(boxMesh(0.15, H * 0.46, 0.25, '#8a8f93', s * (W / 2 - 0.05), H * 0.32, -z - 5));
       }
     }
+    // Outside the window run: a stone ledge, the facade below, a city skyline,
+    // and wind streaks blowing away from the building.
+    if (f.ledge) {
+      const Lg = f.ledge, s = Lg.side, lz0 = Lg.z0 - 10, lz1 = Lg.z1 + 10;
+      env.add(boxMesh(1.4, 0.35, lz1 - lz0, '#c9bfae', s * (W / 2 + 1.1), Lg.sill - 0.35, -(lz0 + lz1) / 2));
+      // the building's face continuing below this floor (the wall itself has the window holes)
+      const facade = new THREE.Mesh(new THREE.BoxGeometry(0.3, 40, lz1 - lz0 + 80), M('#d8cfbf'));
+      facade.position.set(s * (W / 2 + 0.55), -20, -(lz0 + lz1) / 2);
+      env.add(facade);
+      const sky = ['#9fb3c4', '#b6c4cf', '#8ea3b5', '#c3cdd5'];
+      for (let i = 0; i < 14; i++) {
+        const bh = 20 + ((i * 37) % 50), bw = 14 + ((i * 13) % 18);
+        const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bw), M(sky[i % 4]));
+        b.position.set(s * (W / 2 + 55 + (i % 3) * 30), bh / 2 - 30, -(lz0 - 60 + i * ((lz1 - lz0 + 120) / 14)));
+        b.layers.set(1);
+        env.add(b);
+      }
+      const streaks = [];
+      for (let i = 0; i < 18; i++) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.06), streakMat);
+        m.layers.set(1); env.add(m);
+        streaks.push({ m, t: Math.random(), y: Lg.sill + 1 + Math.random() * 8, z: Lg.z0 + Math.random() * (Lg.z1 - Lg.z0) });
+      }
+      anims.outside = { s, W, depth: Lg.depth, streaks };
+    }
+
+    // Ducts: a metal tunnel above the ceiling or under the floor, with open grates
+    for (const d of f.ducts || []) {
+      const dl = d.z1 - d.z0, dh = d.y1 - d.y0;
+      const tube = new THREE.Mesh(new THREE.BoxGeometry(d.half * 2, dh, dl), new THREE.MeshLambertMaterial({ color: '#a7b0b6', side: THREE.BackSide }));
+      tube.position.set(d.x, (d.y0 + d.y1) / 2, -(d.z0 + d.z1) / 2);
+      env.add(tube);
+      for (let z = d.z0 + 3; z < d.z1; z += 6) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(d.half * 2 + 0.02, 0.12, 0.2), M('#7a8590'));
+        rib.position.set(d.x, d.kind === 'ceil' ? d.y1 - 0.06 : d.y0 + 0.06, -z);
+        env.add(rib);
+      }
+      for (const gz of [d.ez, d.xz]) {
+        const gy = d.kind === 'ceil' ? H - 0.04 : 0.04;
+        // hazard-striped frame around the opening
+        for (const [ox, oz, w2, d2] of [[0, -1.95, 4.2, 0.3], [0, 1.95, 4.2, 0.3], [-1.95, 0, 0.3, 3.6], [1.95, 0, 0.3, 3.6]]) {
+          const fr = new THREE.Mesh(new THREE.BoxGeometry(w2, 0.08, d2), M('#f2c94c'));
+          fr.position.set(d.x + ox, gy, -(gz + oz));
+          env.add(fr);
+        }
+        // the grate itself, hinged open
+        const flap = new THREE.Group();
+        for (let i = -2; i <= 2; i++) flap.add(boxMesh(0.12, 0.05, 3.4, '#5b6266', i * 0.7, 0, 0));
+        flap.position.set(d.x - 1.8, gy, -gz);
+        flap.rotation.z = d.kind === 'ceil' ? -1.2 : 1.2;
+        env.add(flap);
+      }
+    }
+
     // End wall and back wall
     const endWall = new THREE.Mesh(new THREE.BoxGeometry(W, H, 0.4), wallMat);
     endWall.position.set(0, H / 2, -zEnd - 0.2);
@@ -929,9 +1014,18 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     const sx = p.x - dx * back, sz = p.z - dz * back;
     const pos = new THREE.Vector3(sx, p.y + up, -sz);
     const look = new THREE.Vector3(p.x + dx * ahead, p.y + (p.state === 'landed' ? 0 : 0.3), -(p.z + dz * ahead));
-    if (floor) {
+    if (floor && p.duct != null && floor.ducts?.[p.duct]) {
+      // Inside a duct: keep the camera in the tunnel, just behind the plane
+      const d = floor.ducts[p.duct];
+      pos.x = Math.max(d.x - d.half + 0.4, Math.min(d.x + d.half - 0.4, pos.x));
+      pos.y = Math.max(d.y0 + 0.4, Math.min(d.y1 - 0.4, pos.y));
+      pos.z = -Math.max(d.z0 + 0.5, -pos.z);
+      k = 9;   // snap in: the tunnel is too tight for a lazy camera
+    } else if (floor) {
+      const outX = p.out && floor.ledge ? floor.ledge.depth + 1 : 0;
       pos.y = Math.max(0.8, Math.min(pos.y, floor.height - 0.6));
-      pos.x = Math.max(-floor.width / 2 + 1, Math.min(floor.width / 2 - 1, pos.x));
+      const lo = -floor.width / 2 + 1 - (floor.ledge?.side < 0 ? outX : 0), hi = floor.width / 2 - 1 + (floor.ledge?.side > 0 ? outX : 0);
+      pos.x = Math.max(lo, Math.min(hi, pos.x));
       pos.z = Math.min(pos.z, 22);
     }
     aimCamera(dt, pos, look, k);
@@ -983,8 +1077,9 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       look = new THREE.Vector3(cx, Math.max(0.5, cy - 0.5), -(cz + (allDown ? 2 : 7)));
     }
     if (floor) {
+      const anyOut = race.planes.some(q => q.out) && floor.ledge ? floor.ledge.depth + 1 : 0;
       pos.y = Math.min(pos.y, floor.height - 0.7);
-      pos.x = Math.max(-floor.width / 2 + 1.5, Math.min(floor.width / 2 - 1.5, pos.x));
+      pos.x = Math.max(-floor.width / 2 + 1.5 - (floor.ledge?.side < 0 ? anyOut : 0), Math.min(floor.width / 2 - 1.5 + (floor.ledge?.side > 0 ? anyOut : 0), pos.x));
       pos.z = Math.min(pos.z, 22);
     }
     aimCamera(dt, pos, look, fly.length ? 3.2 : 1.6);
@@ -1070,6 +1165,14 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         const x = bl.b.dir > 0 ? b.x0 + (b.x1 - b.x0) * s.t : b.x1 - (b.x1 - b.x0) * s.t;
         s.m.position.set(x, s.y, -s.z);
         s.m.rotation.y = 0;
+      }
+    }
+    if (anims.outside) {
+      const o = anims.outside;
+      for (const st of o.streaks) {
+        st.t += dt * 0.7; if (st.t > 1) st.t = 0;
+        st.m.position.set(o.s * (o.W / 2 + 0.8 + st.t * o.depth), st.y, -st.z);
+        st.m.rotation.y = 0;
       }
     }
     for (const l of anims.leds) l.m.visible = Math.sin(time * 3 + l.ph * 5) > -0.6;

@@ -270,6 +270,28 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           sendTo(e.seat, 'fx', { kind: 'trick', label: e.label, clips: e.clips, mult: e.mult });
           break;
         }
+        case 'outside':
+          sfx.gust('up'); hud.banner(`${nameOf(e.seat)} is out the window!`, 1600);
+          if (!solo || e.seat === 0) renderer.punch(6);
+          sendTo(e.seat, 'fx', { kind: 'toast', text: 'Out the window! Get back in!' });
+          break;
+        case 'inside':
+          if (!e.back) { renderer.confetti(e.x, e.y, e.z, [colorFor(e.seat), '#cfe2ea', '#f6efdc'], 24); renderer.shake(0.2); }
+          sendTo(e.seat, 'fx', { kind: 'toast', text: e.back ? 'Back inside' : 'Made it back in!' });
+          break;
+        case 'stuck':
+          hud.banner(`${nameOf(e.seat)} is stuck outside!`, 2000);
+          sendTo(e.seat, 'fx', { kind: 'toast', text: 'Stuck outside' });
+          break;
+        case 'ductin':
+          sfx.gust('down'); hud.banner(`${nameOf(e.seat)} took the duct!`, 1600);
+          if (!solo || e.seat === 0) renderer.punch(5);
+          sendTo(e.seat, 'fx', { kind: 'toast', text: 'In the duct! Don\u2019t scrape!' });
+          break;
+        case 'ductout':
+          sfx.gust('up'); renderer.burst(e.x, e.y, e.z, '#a7b0b6', 16, 4);
+          if (!solo || e.seat === 0) renderer.punch(7);
+          break;
         case 'chainbreak': {
           const s = p ? renderer.project(p.x, p.y + 1, p.z) : null;
           if (s?.visible) hud.floater(s.x, s.y, `Chain broken (x${e.chain})`, 'dmg');
@@ -294,7 +316,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
             if (p) {
               // Bigger party for farther zones
               renderer.confetti(p.x, p.y + 0.3, p.z, [colorFor(e.seat), TIER_COLORS[e.zone.tier], '#f6efdc'], 16 + e.zone.tier * 10);
-              renderer.ring(p.x, p.y - 0.1, p.z, TIER_COLORS[e.zone.tier], 4 + e.zone.tier * 2 + (3 - e.zone.ring) * 2);
+              renderer.ring(p.x, p.y - 0.1, p.z, TIER_COLORS[e.zone.tier], 4 + e.zone.tier * 2 + (2 - e.zone.ring) * 3);
               if (e.zone.ring === 0) { renderer.shake(0.25); sfx.zone(4); }
               if (e.zone.tier >= 3) { renderer.shake(0.3); renderer.punch(6); }
               const s = renderer.project(p.x, p.y + 1.5, p.z);

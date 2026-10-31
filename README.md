@@ -46,13 +46,12 @@ On the host screen, **Enter** (or Space) skips the floor intro and the results s
 
 **Payouts each race:** you get the landing zone's value (3 / 6 / 10 / 15 / 24 clips), plus 8 / 5 / 3 / 1 clips for placing 1st to 4th, plus any clips you picked up. Placings also give 10 / 6 / 3 / 1 points toward the overall win. A plane that crumples gets no zone or placement reward.
 
-**Target zones.** Every landing zone is painted as a target, and the mats are about 30% bigger than before. Where you land inside it multiplies that zone's pay:
+**Target zones.** Every landing zone is painted as a three-ring target. Where you land inside it multiplies that zone's pay:
 
 | Ring | Pay |
 |---|---|
-| Bullseye (centre quarter) | ×2 (also scores the Bullseye trick) |
+| Bullseye (centre third) | ×2 (also scores the Bullseye trick) |
 | Inner ring | ×1.5 |
-| Middle ring | ×1.2 |
 | Outer ring / corners | ×1 |
 
 Raised zones (desk tops, the fridge, a rack) are targets too.
@@ -91,6 +90,15 @@ Computer rivals each commit to a path too, so their builds differ.
 
 Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nose clip and so on.
 
+### Shortcuts (Floor 4 and up)
+
+The Server Room and Executive Suite each have two risky shortcuts. Both are lined with paper clips.
+
+- **Window run.** One side wall has an open window (hazard tape on the sill) before one of the hallways, and a second open window after it. Fly out the first, ride the outside ledge past the hallway, and fly back in through the second. Outside, a crosswind shoves you away from the building, so you have to steer into it. Air rising up the facade holds you roughly level. Re-entering earns **Window Washer** (8 clips, part of the combo) and a speed burst. Get blown too far out, drop too low, or overshoot the re-entry window and you're **stuck outside**: crumpled, wedged on the ledge.
+- **Duct run.** An open grate with a yellow frame leads into a tight square air duct that runs over (or under) the other hallway. A ceiling grate has a strong vent right under it, so ride it up. A floor grate you dive into. Inside, airflow speeds you along, but the duct is barely wider than your wings and every scrape costs durability. The exit grate pulls you back into the room with a speed burst and **Duct Rat** (8 clips).
+
+Computer rivals don't take the shortcuts.
+
 ### Trick shots and streaks
 
 Flashy flying pays **bonus paper clips**. These go to the shop and toward promotions, not race points. Each trick gets a big hand-lettered callout by the plane, and your phone shows it too.
@@ -102,7 +110,9 @@ Flashy flying pays **bonus paper clips**. These go to the shop and toward promot
 | Draft Chain | 2 | Ride a 2nd, then a 4th different vent in one flight |
 | Thread the Needle | 3 | Fly through a hallway doorway, under the lintel |
 | Clean Hallway | 4 | Get all the way down a hallway without touching anything |
-| Bullseye | 3 | Land in the middle of a zone |
+| Bullseye | 3 | Land in the bullseye ring of a zone |
+| Window Washer | 8 | Get back in through the second window on a window run |
+| Duct Rat | 8 | Make it out the far end of a duct |
 | Stuck It | 4 | Land on a raised zone (desk, fridge, rack top) |
 | Bank Shot | 3 | Land in a zone within 3 s of bouncing off something |
 | Running on Fumes | 3 | Land in a zone with a quarter of your durability or less |
