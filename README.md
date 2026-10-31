@@ -69,12 +69,13 @@ Every upgrade has **5 levels**, bought one at a time (costs ×1, ×1.6, ×2.3, �
 | Cardstock | 12 | More durability, heavier | |
 | Rubber Band Launcher | 10 | Faster start | |
 | Wide Wing Fold | 14 | Glides longer, turns slower | |
-| Glossy Paper | 10 | Less drag, slides farther on landing | Pick one: Glossy *or* Binder Clip |
-| Binder Clip Brake | 6 | Sticks the landing | Pick one: Glossy *or* Binder Clip |
+| Glossy Paper | 10 | Less drag, slides farther on landing | |
+| Binder Clip Brake | 6 | Sticks the landing | |
 | Sticky Note Flaps | 8 | Sharper turns, a little more drag | |
 | Nose Clip | 8 | Fans push you less, slightly heavier | |
 | Packing Tape | 9 | Takes less damage | |
 | Fridge Magnet | 7 | Pulls in paper clips | |
+| Afterburner Doodle | 11 | Every mid-flight trick gives a burst of speed: +2.5 at level I, rising to +5.5 at level V. Without it, tricks give no boost. | |
 
 **Specialty: pick one path.** Buying any keystone locks the other two keystones and everything in their branches for the rest of the match.
 

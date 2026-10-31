@@ -41,10 +41,10 @@ export const UPGRADES = [
   { id: 'widewings', section: 'basic', name: 'Wide Wing Fold', base: 14,
     pro: 'Glides longer', con: 'Turns slower',
     step: both(mul('sink', [0.72, 0.86, 0.9, 0.93, 0.95]), mul('turn', [0.8, 0.9, 0.92, 0.94, 0.95])) },
-  { id: 'glossy', section: 'basic', name: 'Glossy Paper', base: 10, group: 'finish',
+  { id: 'glossy', section: 'basic', name: 'Glossy Paper', base: 10,
     pro: 'Less drag, keeps speed', con: 'Slides farther on landing',
     step: both(mul('drag', [0.68, 0.86, 0.9, 0.93, 0.95]), mul('slide', [1.7, 1.3, 1.2, 1.1, 1.1])) },
-  { id: 'binder', section: 'basic', name: 'Binder Clip Brake', base: 6, group: 'finish',
+  { id: 'binder', section: 'basic', name: 'Binder Clip Brake', base: 6,
     pro: 'Sticks the landing', con: null,
     step: mul('slide', [0.25, 0.6, 0.6, 0.7, 0.7]) },
   { id: 'flaps', section: 'basic', name: 'Sticky Note Flaps', base: 8,
@@ -59,6 +59,9 @@ export const UPGRADES = [
   { id: 'magnet', section: 'basic', name: 'Fridge Magnet', base: 7,
     pro: 'Pulls in paper clips', con: null,
     step: mul('magnet', [2.4, 1.4, 1.3, 1.2, 1.15]) },
+  { id: 'afterburner', section: 'basic', name: 'Afterburner Doodle', base: 11,
+    pro: 'Tricks give a burst of speed', con: null,
+    step: add('trickBoost', [2.5, 0.75, 0.75, 0.75, 0.75]) },
 
   /* ------------------------------------------- specialties (exclusive) --- */
   { id: 'swallowtail', section: 'spec', name: 'Swallowtail Fold', base: 18, group: 'spec', path: 'Glider',
@@ -164,7 +167,7 @@ export function nextCost(owned, id, rank = Infinity) {
 export function baseStats() {
   return {
     hp: 100, weight: 1, launch: 1, drag: 1, sink: 1, turn: 1, slide: 1, wind: 1, dmg: 1, magnet: 1,
-    lift: 1, bounce: 1, stallDrop: 1, clipBonus: 0, landDmg: 1,
+    lift: 1, bounce: 1, stallDrop: 1, clipBonus: 0, landDmg: 1, trickBoost: 0,
   };
 }
 

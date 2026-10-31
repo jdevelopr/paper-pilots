@@ -189,7 +189,7 @@ export function botSteer(bot, race, p) {
 // players do). Shopping order is the bot's wish list; levels repeat.
 const BUILD_PATHS = {
   Glider: ['widewings', 'widewings', 'swallowtail', 'thermal', 'rubberband', 'widewings', 'swallowtail', 'featherweight', 'glossy', 'thermal', 'swallowtail'],
-  Dart: ['rubberband', 'rubberband', 'dart', 'glossy', 'pencilnose', 'dart', 'jetstream', 'flaps', 'rudder', 'dart', 'glossy'],
+  Dart: ['rubberband', 'rubberband', 'dart', 'glossy', 'pencilnose', 'dart', 'jetstream', 'afterburner', 'flaps', 'rudder', 'afterburner', 'dart', 'glossy'],
   Tank: ['cardstock', 'tape', 'cardstock', 'laminated', 'bumpers', 'binder', 'laminated', 'paperweight', 'skids', 'widewings', 'tape'],
 };
 export function botShop(bot, clips, owned, rank = Infinity) {

@@ -289,6 +289,17 @@ function buildPlane(seat, owned, rank = 0) {
     m.position.set(0, -0.12, 0.1);
     group.add(m);
   }
+  if (owned.includes('afterburner')) {
+    // Doodled flames on the tail; more levels, longer flames
+    const lv = owned.filter(x => x === 'afterburner').length;
+    for (const [s, c] of [[-1, '#f08a2c'], [0, '#e2462e'], [1, '#f08a2c']]) {
+      const len = 0.22 + 0.06 * lv + (s ? 0 : 0.08);
+      const f = new THREE.Mesh(new THREE.ConeGeometry(0.06, len, 4), M(c));
+      f.rotation.x = Math.PI / 2;
+      f.position.set(s * 0.1, 0.04, 0.9 + len / 2);
+      group.add(f);
+    }
+  }
   if (owned.includes('rubberband')) {
     const r = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.025, 4, 10), M('#c94f3d'));
     r.position.set(0, -0.16, 0.45); r.rotation.y = Math.PI / 2;

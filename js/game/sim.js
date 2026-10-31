@@ -163,6 +163,8 @@ function newTricks() {
   };
 }
 
+const TRICK_BOOST_CAP = 26;   // a boost never pushes a plane past this speed
+
 function trick(race, p, id) {
   const tr = p.tr;
   if (!tr) return;
@@ -173,7 +175,13 @@ function trick(race, p, id) {
   const clips = Math.round(t.value * mult);
   tr.clips += clips;
   tr.list.push({ id, label: t.label, value: t.value, mult, clips });
-  race.events.push({ name: 'trick', seat: p.seat, id, label: t.label, value: t.value, mult, clips, x: p.x, y: p.y, z: p.z });
+  // Afterburner Doodle: mid-flight tricks kick the plane forward. No upgrade, no boost.
+  let boost = 0;
+  if (p.st.trickBoost > 0 && !p.crumpled && (p.state === 'fly' || p.duct != null || p.out)) {
+    boost = Math.max(0, Math.min(p.st.trickBoost, TRICK_BOOST_CAP - p.v));
+    p.v += boost;
+  }
+  race.events.push({ name: 'trick', seat: p.seat, id, label: t.label, value: t.value, mult, clips, boost, x: p.x, y: p.y, z: p.z });
 }
 
 function flightTricks(race, p, px, py, pz, dt, pyaw) {
