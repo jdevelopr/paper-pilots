@@ -54,6 +54,7 @@ export const sfx = {
   throw: boost => noise(boost ? 0.55 : 0.4, { freq: 500, sweep: 4, vol: boost ? 0.5 : 0.35 }),
   thud: () => { noise(0.18, { freq: 300, q: 0.6, vol: 0.6, sweep: 0.5 }); tone(110, 0.15, { type: 'sine', vol: 0.4, slide: 0.5 }); },
   crumple: () => { for (let i = 0; i < 6; i++) noise(0.08, { freq: 2500 + Math.random() * 2000, q: 2, vol: 0.3, delay: i * 0.05 }); },
+  gust: dir => noise(0.5, { freq: dir === 'up' ? 400 : 900, sweep: dir === 'up' ? 3 : 0.4, q: 0.6, vol: 0.22 }),
   land: () => noise(0.35, { freq: 1800, sweep: 0.3, vol: 0.25 }),
   zone: tier => [0, 1, 2].forEach(i => tone(523 * Math.pow(1.26, i + tier * 0.5), 0.2, { vol: 0.16, delay: i * 0.08 })),
   coin: () => tone(988, 0.08, { type: 'square', vol: 0.1 }),

@@ -191,6 +191,10 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         case 'timeout':
           hud.banner(`${nameOf(e.seat)} ran out of air`);
           break;
+        case 'gust':
+          sfx.gust(e.dir);
+          sendTo(e.seat, 'fx', { kind: 'gust' });
+          break;
         case 'touch':
           sfx.land();
           if (p) renderer.burst(p.x, p.y, p.z, '#e9dcbc', 5, 1.5);

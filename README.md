@@ -27,7 +27,7 @@ After every race, players spend their paper clips in the **Supply closet**. Poin
 
 On the host screen, **Enter** (or Space) skips the floor intro and the results screen.
 
-**Flying tips:** Diving builds speed. Climbing turns that speed back into height. If you climb too hard you'll stall and drop. Floor vents (the round grates with streaks rising out of them) lift you up. Hitting the ceiling or furniture costs durability, and at zero durability your plane crumples into a ball and earns no zone payout. Zones painted on top of desks, tables, the fridge and so on only count if you land on the top surface.
+**Flying tips:** Diving builds speed. Climbing turns that speed back into height. If you climb too hard you'll stall and drop. Floor vents (the round grates with streaks rising out of them) lift you up, and ceiling fans push you down, but **both drafts speed you up**: an updraft is free height plus a little speed, and a downdraft trades height for a bigger burst of speed. Hitting the ceiling or furniture costs durability, and at zero durability your plane crumples into a ball and earns no zone payout. Zones painted on top of desks, tables, the fridge and so on only count if you land on the top surface.
 
 **Payouts each race:** you get the landing zone's value (3 / 6 / 10 / 15 / 24 clips), plus 8 / 5 / 3 / 1 clips for placing 1st to 4th, plus any clips you picked up. Placings also give 10 / 6 / 3 / 1 points toward the overall win. A plane that crumples gets no zone or placement reward.
 

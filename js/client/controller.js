@@ -444,6 +444,7 @@ export function mountController(root, link, { solo = false } = {}) {
       case 'fx':
         if (d.kind === 'hit') { vibrate(Math.min(80, 20 + d.dmg * 2)); const h = q('.hpbar'); h.classList.remove('shake'); void h.offsetWidth; h.classList.add('shake'); }
         else if (d.kind === 'clip') vibrate(8);
+        else if (d.kind === 'gust') vibrate([6, 20, 6]);
         else if (d.kind === 'crumple') vibrate([80, 40, 80]);
         else if (d.kind === 'bought') {
           vibrate([10, 30, 10]);

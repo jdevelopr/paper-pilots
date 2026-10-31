@@ -161,13 +161,16 @@ function flyStep(race, p, dt) {
   p.y += (p.v * Math.sin(p.pitch) - sink) * dt;
 
   // Air currents
+  let inDraft = false;
   for (const vnt of f.vents) {
     const d2 = (p.x - vnt.x) ** 2 + (p.z - vnt.z) ** 2;
     if (d2 < vnt.r * vnt.r) {
       const edge = 1 - Math.sqrt(d2) / vnt.r;
       const fall = clamp(1 - p.y / (f.height * 0.95), 0, 1);
       p.y += vnt.s * 1.6 * st.lift * (0.5 + 0.5 * edge) * fall * dt;
-      p.v += 0.6 * fall * dt;
+      // Drafts also carry you forward: riding one is a speed boost.
+      p.v += vnt.s * 0.5 * (0.5 + 0.5 * edge) * dt;
+      inDraft = 'up';
     }
   }
   for (const fan of f.fans) {
@@ -175,8 +178,14 @@ function flyStep(race, p, dt) {
     if (d2 < fan.r * fan.r) {
       const edge = 1 - Math.sqrt(d2) / fan.r;
       p.y -= fan.s * st.wind * (0.4 + 0.6 * edge) * dt;
+      // A downdraft costs height but pushes you faster (Nose Clip doesn't blunt this).
+      p.v += fan.s * 1.1 * (0.4 + 0.6 * edge) * dt;
+      inDraft = 'down';
     }
   }
+  p.v = Math.min(p.v, 40);
+  if (inDraft && !p.inDraft) race.events.push({ name: 'gust', seat: p.seat, dir: inDraft });
+  p.inDraft = inDraft;
   for (const b of f.blowers) {
     if (p.x > b.x0 && p.x < b.x1 && p.z > b.z0 && p.z < b.z1 && p.y < b.y1) {
       p.x += b.dir * b.s * st.wind * dt;
