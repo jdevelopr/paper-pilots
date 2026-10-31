@@ -67,6 +67,7 @@ export function mountController(root, link, { solo = false } = {}) {
   function setView(v) {
     if (v === view) return;
     view = v;
+    root.dataset.view = v;   // lets solo mode tuck the panel away mid-flight
     qa('.cv').forEach(el => el.classList.toggle('on', el.dataset.v === v));
     if (v === 'aim') resetAim();
     if (v === 'fly') resetStick();
