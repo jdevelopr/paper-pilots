@@ -97,9 +97,9 @@ function speckleTexture(base, dot, n = 2500, size = 256, grid = 0) {
 /* ------------------------------------------------------------- planes --- */
 
 function planeGeometry(owned) {
-  const wide = owned.includes('widewings') ? 1.35 : 1;
+  const wide = (owned.includes('widewings') ? 1.35 : 1) * (owned.includes('swallowtail') ? 1.15 : 1) * (owned.includes('dart') ? 0.82 : 1);
   const thick = owned.includes('cardstock') ? 0.09 : 0.0;
-  const S = 0.75 * wide, L = 0.85, K = 0.28, D = 0.14;
+  const S = 0.75 * wide, L = owned.includes('dart') ? 1.0 : 0.85, K = 0.28, D = owned.includes('swallowtail') ? 0.22 : 0.14;
   // Nose at -z. Classic dart: two wing panels and a folded keel.
   const v = [
     0, 0, -L,          // 0 nose
@@ -132,13 +132,30 @@ function buildPlane(seat, owned) {
   const color = new THREE.Color(colorFor(seat));
   const group = new THREE.Group();
   const paperCol = owned.includes('cardstock') ? color.clone().multiplyScalar(0.9) : color;
-  const mat = owned.includes('glossy')
+  const mat = owned.includes('glossy') || owned.includes('laminated')
     ? new THREE.MeshPhongMaterial({ color: paperCol, flatShading: true, side: THREE.DoubleSide, shininess: 90, specular: 0x777777 })
-    : new THREE.MeshLambertMaterial({ color: paperCol, flatShading: true, side: THREE.DoubleSide });
+    : new THREE.MeshLambertMaterial({ color: paperCol, flatShading: true, side: THREE.DoubleSide, transparent: owned.includes('featherweight'), opacity: owned.includes('featherweight') ? 0.82 : 1 });
   const body = new THREE.Mesh(planeGeometry(owned), mat);
   group.add(body);
 
-  const wide = owned.includes('widewings') ? 1.35 : 1;
+  const wide = (owned.includes('widewings') ? 1.35 : 1) * (owned.includes('swallowtail') ? 1.15 : 1) * (owned.includes('dart') ? 0.82 : 1);
+  if (owned.includes('bumpers')) {
+    for (const s of [-1, 1]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.3), M('#ef8fa8'));
+      b.position.set(s * 0.74 * wide, 0.14, 0.8);
+      group.add(b);
+    }
+  }
+  if (owned.includes('skids')) {
+    const sk = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.9), M('#ef8fa8'));
+    sk.position.set(0, -0.27, 0.35);
+    group.add(sk);
+  }
+  if (owned.includes('rudder')) {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.3, 0.3), M('#c8f04a'));
+    r.position.set(0, 0.16, 0.75);
+    group.add(r);
+  }
   if (owned.includes('noseclip')) {
     const clip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.34), M('#b9c1c9'));
     clip.position.set(0, -0.04, -0.62);

@@ -4,7 +4,9 @@
 import { esc, clipIcon, planeIcon, reduceMotion } from '../ui.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM } from '../game/sim.js';
-import { UPGRADE_BY_ID, levelOf, ROMAN } from '../shared/upgrades.js';
+import { UPGRADE_BY_ID, UPGRADES, levelOf, ROMAN } from '../shared/upgrades.js';
+
+const pathOf = owned => UPGRADES.find(u => u.group === 'spec' && owned.includes(u.id))?.path ?? '';
 
 // One chip per upgrade, with its level: "Packing Tape II".
 const upChips = owned => [...new Set(owned)].map(id => ({ id, text: `${UPGRADE_BY_ID[id]?.name ?? id}${levelOf(owned, id) > 1 ? ` ${ROMAN[levelOf(owned, id)]}` : ''}` }));
@@ -206,6 +208,7 @@ export function createHud(root) {
         <div class="shopcard ${p.done ? 'done' : ''}" data-seat="${p.seat}" style="--c:${colorFor(p.seat)};--i:${i}">
           <div class="nm">${esc(p.name)}</div>
           <div class="cl">${clipIcon}<span>${p.clips}</span></div>
+          <div class="path">${pathOf(p.owned) ? `${pathOf(p.owned)} path` : ''}</div>
           <div class="ups">${upChips(p.owned).map(c => `<span data-id="${c.id}">${esc(c.text)}</span>`).join('')}</div>
           <div class="state">${p.done ? 'Done' : 'Shopping'}</div>
         </div>`).join('')}</div>
@@ -218,6 +221,7 @@ export function createHud(root) {
       if (!card) { showBoard(html); return; }
       card.classList.toggle('done', p.done);
       card.querySelector('.cl span').textContent = p.clips;
+      card.querySelector('.path').textContent = pathOf(p.owned) ? `${pathOf(p.owned)} path` : '';
       card.querySelector('.state').textContent = p.done ? 'Done' : 'Shopping';
       const ups = card.querySelector('.ups');
       for (const c of upChips(p.owned)) {

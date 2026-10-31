@@ -33,21 +33,35 @@ On the host screen, **Enter** (or Space) skips the floor intro and the results s
 
 **Ranking within a race:** the best zone wins. Ties go to whoever flew farther. Missing every zone ranks below any zone landing, and crumpling ranks last.
 
-### Upgrades
+### Upgrade tree
 
-Every upgrade has **3 levels**, bought one at a time. Each level costs more and adds a smaller step, and the downsides stack too.
+Every upgrade has **5 levels**, bought one at a time (costs ×1, ×1.6, ×2.3, ×3.2, ×4.4 of the base). Each level adds a smaller step, and the downsides stack. The phone shop shows the whole tree: locked items say what they need, and locked-out items say what you chose instead.
 
-| Upgrade | Cost (L1 / L2 / L3) | Effect per level |
+**Basics** are open to everyone:
+
+| Upgrade | Base cost | Effect | Notes |
+|---|---|---|---|
+| Cardstock | 12 | More durability, heavier | |
+| Rubber Band Launcher | 10 | Faster start | |
+| Wide Wing Fold | 14 | Glides longer, turns slower | |
+| Glossy Paper | 10 | Less drag, slides farther on landing | Pick one: Glossy *or* Binder Clip |
+| Binder Clip Brake | 6 | Sticks the landing | Pick one: Glossy *or* Binder Clip |
+| Sticky Note Flaps | 8 | Sharper turns, a little more drag | |
+| Nose Clip | 8 | Fans push you less, slightly heavier | |
+| Packing Tape | 9 | Takes less damage | |
+| Fridge Magnet | 7 | Pulls in paper clips | |
+
+**Specialty: pick one path.** Buying any keystone locks the other two keystones and everything in their branches for the rest of the match.
+
+| Path | Keystone (needs) | Branch upgrades |
 |---|---|---|
-| Cardstock | 12 / 19 / 28 | More durability, but heavier, so it sinks faster |
-| Rubber Band Launcher | 10 / 16 / 23 | Faster launch |
-| Wide Wing Fold | 14 / 22 / 32 | Glides longer, but turns slower |
-| Glossy Paper | 10 / 16 / 23 | Less drag, but slides farther when it lands |
-| Sticky Note Flaps | 8 / 13 / 18 | Sharper turns, slightly more drag |
-| Nose Clip | 8 / 13 / 18 | Fans push you less, slightly heavier |
-| Packing Tape | 9 / 14 / 21 | Takes less damage |
-| Fridge Magnet | 7 / 11 / 16 | Pulls in paper clips from farther away |
-| Binder Clip Brake | 6 / 10 / 14 | Stops faster when it lands |
+| Glider | Swallowtail Fold: much slower sink (Wide Wing Fold II) | Thermal Sense: vents lift you higher · Tissue Paper: much lighter but fragile (Swallowtail II) |
+| Dart | Dart Fold: much less drag (Rubber Band II) | Pencil Nose: keep speed when bouncing off walls · Jet Stream Crease: even harder launch (Dart II) |
+| Tank | Laminated: huge durability (Cardstock II + Packing Tape I) | Eraser Bumpers: shrug off hits · Paperweight Drop: stall and drop like a stone for precise landings (Laminated II) |
+
+**Extras** hang off particular basics: Highlighter Rudder (needs Sticky Note Flaps II), Clip Collector, which gives an extra clip per pickup (needs Fridge Magnet II), and Eraser Skids, which make hard landings harmless (needs Binder Clip Brake I).
+
+Computer rivals each commit to a path too, so their builds differ.
 
 Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nose clip and so on.
 

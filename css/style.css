@@ -570,3 +570,17 @@ body.solo .hint { right: auto; left: 18px; }
 .landed-card .zb { font-family: var(--body); font-size: 20px; color: var(--ink-soft); }
 .landed-card .zb.pb { color: var(--red); }
 .r-promo { font-size: 30px; color: var(--green); }
+
+/* Upgrade tree in the phone shop */
+.shoplist .shead { margin: 8px 2px 0; font-size: 26px; font-weight: 700; color: #fff8e6; text-shadow: 0 2px 0 rgba(44,36,22,.6); }
+.shoplist .spath { margin: 2px 4px -2px; font-family: var(--body); font-size: 17px; color: #f6efdc; opacity: .9; }
+.upg.child { margin-left: 22px; position: relative; }
+.upg.child::before { content: ""; position: absolute; left: -16px; top: -12px; width: 12px; height: 34px; border-left: 2.5px solid var(--ink); border-bottom: 2.5px solid var(--ink); border-bottom-left-radius: 8px; opacity: .6; }
+.upg.locked { background: #e6dcc6; }
+.upg.lockedout { background: #d9d0bd; opacity: .55; }
+.upg.lockedout .un { text-decoration: line-through; text-decoration-thickness: 2px; }
+.upg .why { color: var(--ink-soft); font-style: italic; }
+.upg .uc svg.lock { width: 22px; height: 22px; color: #b9c1c9; }
+.upg .pips { gap: 3px; }
+.upg .pips i { width: 9px; height: 9px; }
+.shopcard .path { min-height: 1.2em; font-family: var(--body); font-size: 18px; color: var(--blue); }

@@ -7,7 +7,7 @@
 
 import { esc, clipIcon, planeIcon, vibrate, keepAwake } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
-import { statBars, levelOf, MAX_LEVEL } from '../shared/upgrades.js';
+import { statBars, levelOf, MAX_LEVEL, UPGRADES, UPGRADE_BY_ID, SECTIONS, upgradeState } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -276,41 +276,74 @@ export function mountController(root, link, { solo = false } = {}) {
   /* ------------------------------------------------------------- shop --- */
   const list = q('.shoplist'), doneBtn = q('.s-done'), stats = q('.stats');
   let shopDone = false, lastShopKey = '';
+  // The shop is the upgrade tree: Basics, then the three specialty paths (pick
+  // one, the others lock), then Extras. Every row shows why it's locked if it is.
+  const PATH_NOTE = { Glider: 'Glider path', Dart: 'Dart path', Tank: 'Tank path' };
+  function shopOrder() {
+    const out = [];
+    for (const sec of SECTIONS) {
+      out.push({ head: sec.title, key: `h-${sec.id}` });
+      for (const u of UPGRADES.filter(x => x.section === sec.id && !x.parent)) {
+        if (u.path) out.push({ sub: PATH_NOTE[u.path], key: `p-${u.path}` });
+        out.push({ u, depth: 0 });
+        for (const c of UPGRADES.filter(x => x.parent === u.id)) out.push({ u: c, depth: 1 });
+      }
+    }
+    return out;
+  }
   function renderShop(force) {
-    const ups = phase.upgrades || [];
-    const key = JSON.stringify([me.clips, me.owned, ups.length]);
+    const key = JSON.stringify([me.clips, me.owned]);
     if (!force && key === lastShopKey) return;
     lastShopKey = key;
     const bars = statBars(me.owned);
     stats.innerHTML = Object.entries(bars).map(([k, v]) => `<span>${k}</span><i><b style="transform:scaleX(${v.toFixed(2)})"></b></i>`).join('');
-    const existing = new Map([...list.children].map(el => [el.dataset.id, el]));
-    ups.forEach((u, i) => {
-      let el = existing.get(u.id);
-      if (!el) {
-        el = document.createElement('button');
-        el.className = 'upg';
+    if (!list.children.length) {
+      shopOrder().forEach((row, i) => {
+        if (row.head || row.sub) {
+          const h = document.createElement('div');
+          h.className = row.head ? 'shead' : 'spath';
+          h.textContent = row.head || row.sub;
+          list.appendChild(h);
+          return;
+        }
+        const u = row.u;
+        const el = document.createElement('button');
+        el.className = `upg${row.depth ? ' child' : ''}`;
         el.dataset.id = u.id;
-        el.style.setProperty('--i', i);
+        el.style.setProperty('--i', Math.min(i, 12));
         el.onclick = () => {
-          if (el.disabled || levelOf(me.owned, u.id) >= MAX_LEVEL) return;
+          if (el.disabled) return;
           vibrate(10);
           link.input({ k: 'buy', id: u.id });
         };
         list.appendChild(el);
-      }
-      const lv = levelOf(me.owned, u.id);
-      const maxed = lv >= MAX_LEVEL;
-      const cost = maxed ? null : u.costs[lv];
-      const afford = !maxed && me.clips >= cost;
+      });
+    }
+    for (const el of list.querySelectorAll('.upg')) {
+      const u = UPGRADE_BY_ID[el.dataset.id];
+      const st = upgradeState(me.owned, u.id);
+      const lv = st.level ?? levelOf(me.owned, u.id);
+      const maxed = st.state === 'maxed';
+      const open = st.state === 'open';
+      const afford = open && me.clips >= st.cost;
       el.classList.toggle('owned', maxed);
-      el.disabled = !maxed && !afford;
+      el.classList.toggle('locked', st.state === 'needs');
+      el.classList.toggle('lockedout', st.state === 'lockedOut');
+      el.disabled = !afford;
       const pips = Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('');
-      el.setAttribute('aria-label', `${u.name}, level ${lv} of ${MAX_LEVEL}`);
+      const right = maxed ? '<svg aria-hidden="true"><use href="#i-check"/></svg>'
+        : open ? `${st.cost}${clipIcon}`
+        : '<svg aria-hidden="true" class="lock"><use href="#i-lock"/></svg>';
+      const desc = open || maxed
+        ? `<b>${esc(u.pro)}</b>${u.con ? ` · <em>${esc(u.con)}</em>` : ''}`
+        : `<span class="why">${esc(st.reason)}</span>`;
+      el.setAttribute('aria-label', `${u.name}, level ${lv} of ${MAX_LEVEL}${open || maxed ? '' : `, ${st.reason}`}`);
       el.innerHTML = `<span class="un">${esc(u.name)}<span class="pips">${pips}</span></span>
-        <span class="uc">${maxed ? '<svg aria-hidden="true"><use href="#i-check"/></svg>' : `${cost}${clipIcon}`}</span>
-        <span class="ud"><b>${esc(u.pro)}</b>${u.con ? ` · <em>${esc(u.con)}</em>` : ''}</span>`;
-    });
+        <span class="uc">${right}</span>
+        <span class="ud">${desc}</span>`;
+    }
   }
+
   doneBtn.onclick = () => {
     shopDone = !shopDone;
     doneBtn.textContent = shopDone ? 'Back to shop' : 'Done';

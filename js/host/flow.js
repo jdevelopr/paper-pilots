@@ -233,7 +233,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       inMs: Math.max(0, startsAt - Date.now()),
       players: raceSeats.map(seat => ({ seat, name: nameOf(seat) })),
       rows: phase === 'results' ? lastRows : phase === 'final' ? finalRows : null,
-      upgrades: phase === 'shop' ? UPGRADES.map(u => ({ id: u.id, name: u.name, costs: u.costs, pro: u.pro, con: u.con })) : null,
+      upgrades: phase === 'shop' ? UPGRADES.map(u => ({ id: u.id })) : null,
     });
   }
 
@@ -263,7 +263,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     shopDone = new Set();
     for (const [seat, b] of bots) {
       const pl = match.players[seat];
-      for (const id of botShop(b.brain, pl.clips, pl.owned, UPGRADES)) buy(match, seat, id);
+      for (const id of botShop(b.brain, pl.clips, pl.owned)) buy(match, seat, id);
       shopDone.add(seat);
     }
     startsAt = Date.now() + SHOP_MS;

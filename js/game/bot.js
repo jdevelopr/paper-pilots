@@ -5,7 +5,7 @@
 
 import { stepPlane, createRace, throwPlane, SIM } from './sim.js';
 import { moverBox } from './floors.js';
-import { nextCost } from '../shared/upgrades.js';
+import { nextCost, levelOf } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -184,14 +184,37 @@ export function botSteer(bot, race, p) {
 }
 
 // Shop logic for bots: buy the best-value upgrade they can afford.
-export function botShop(bot, clips, owned, upgrades) {
-  const pref = ['widewings', 'rubberband', 'glossy', 'tape', 'cardstock', 'binder', 'flaps', 'magnet', 'noseclip'];
+// Each bot follows one of the specialty paths through the upgrade tree, so
+// rivals end up with different builds (and lock themselves out the same way
+// players do). Shopping order is the bot's wish list; levels repeat.
+const BUILD_PATHS = {
+  Glider: ['widewings', 'widewings', 'swallowtail', 'thermal', 'rubberband', 'widewings', 'swallowtail', 'featherweight', 'glossy', 'thermal', 'swallowtail'],
+  Dart: ['rubberband', 'rubberband', 'dart', 'glossy', 'pencilnose', 'dart', 'jetstream', 'flaps', 'rudder', 'dart', 'glossy'],
+  Tank: ['cardstock', 'tape', 'cardstock', 'laminated', 'bumpers', 'binder', 'laminated', 'paperweight', 'skids', 'widewings', 'tape'],
+};
+export function botShop(bot, clips, owned) {
+  const path = Object.keys(BUILD_PATHS)[bot.seat % 3];
+  const wish = BUILD_PATHS[path];
+  const have = [...owned];
   const buys = [];
   let left = clips;
-  for (const id of pref) {
-    const u = upgrades.find(x => x.id === id);
-    const cost = nextCost([...owned, ...buys], id);
-    if (cost != null && !buys.includes(id) && cost <= left && bot.rng() < 0.8) { buys.push(id); left -= cost; }
+  // Walk the wish list: buy the first thing not yet at the wished level.
+  const want = {};
+  for (const id of wish) {
+    want[id] = (want[id] || 0) + 1;
+    if (levelOf(have, id) >= want[id]) continue;
+    const cost = nextCost(have, id);
+    if (cost == null) continue;
+    if (cost > left) break;              // save up for it rather than skip ahead
+    have.push(id); buys.push(id); left -= cost;
+  }
+  // Wish list done: keep levelling whatever on it is cheapest.
+  if (wish.every(id => nextCost(have, id) == null || levelOf(have, id) >= wish.filter(x => x === id).length)) {
+    for (let n = 0; n < 3; n++) {
+      const opts = [...new Set(wish)].map(id => [id, nextCost(have, id)]).filter(([, c]) => c != null && c <= left).sort((a, b) => a[1] - b[1]);
+      if (!opts.length) break;
+      have.push(opts[0][0]); buys.push(opts[0][0]); left -= opts[0][1];
+    }
   }
   return buys;
 }

@@ -152,7 +152,7 @@ function flyStep(race, p, dt) {
   p.v += (-SIM.G * Math.sin(p.pitch) - D * p.v * p.v) * dt;
   p.v = clamp(p.v, 0.5, 40);
 
-  const sinkRatio = clamp((vRef / Math.max(p.v, 0.5)) ** 2, 0.55, 5);
+  const sinkRatio = clamp((vRef / Math.max(p.v, 0.5)) ** 2, 0.55, 5 * st.stallDrop);
   const sink = SIM.baseSink * st.sink * Math.pow(st.weight, 0.9) * sinkRatio;
 
   const h = p.v * Math.cos(p.pitch);
@@ -166,7 +166,7 @@ function flyStep(race, p, dt) {
     if (d2 < vnt.r * vnt.r) {
       const edge = 1 - Math.sqrt(d2) / vnt.r;
       const fall = clamp(1 - p.y / (f.height * 0.95), 0, 1);
-      p.y += vnt.s * 1.6 * (0.5 + 0.5 * edge) * fall * dt;
+      p.y += vnt.s * 1.6 * st.lift * (0.5 + 0.5 * edge) * fall * dt;
       p.v += 0.6 * fall * dt;
     }
   }
@@ -206,7 +206,7 @@ function touchDown(race, p, surfaceY, vy) {
   if (p.crumpled) { land(race, p); return; }
   p.v = p.v * Math.cos(p.pitch) * 0.72;
   p.pitch = 0; p.roll = 0;
-  if (vy < -7) damage(race, p, -vy - 4, 'floor');
+  if (vy < -7) damage(race, p, (-vy - 4) * p.st.landDmg, 'floor');
   if (p.state === 'landed') return;
   p.state = 'slide';
   race.events.push({ name: 'touch', seat: p.seat });
@@ -328,13 +328,13 @@ function collide(race, p, px, py, pz) {
       const vn = Math.abs(h * Math.sin(p.yaw));
       p.x = px;
       p.yaw = -p.yaw;
-      p.v *= 0.55;
+      p.v *= Math.min(0.9, 0.55 * p.st.bounce);
       damage(race, p, vn, 'hit');
     } else {
       const vn = Math.abs(h * Math.cos(p.yaw));
       p.z = pz;
       p.yaw = Math.PI - p.yaw;
-      p.v *= 0.35;
+      p.v *= Math.min(0.8, 0.35 * p.st.bounce);
       damage(race, p, vn, 'hit');
     }
     if (p.state === 'fall') { p.v *= 0.3; }
@@ -368,8 +368,9 @@ function pickups(race, p) {
     const d2 = (p.x - c.x) ** 2 + (p.y - c.y) ** 2 + (p.z - c.z) ** 2;
     if (d2 < R2) {
       c.taken = p.seat;
-      p.clips += c.n || 1;
-      race.events.push({ name: 'clip', seat: p.seat, i, n: c.n || 1 });
+      const n = (c.n || 1) + (p.st.clipBonus || 0);
+      p.clips += n;
+      race.events.push({ name: 'clip', seat: p.seat, i, n });
     }
   }
 }
