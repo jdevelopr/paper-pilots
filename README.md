@@ -75,7 +75,7 @@ Every upgrade has **5 levels**, bought one at a time (costs ×1, ×1.6, ×2.3, �
 | Nose Clip | 8 | Fans push you less, slightly heavier | |
 | Packing Tape | 9 | Takes less damage | |
 | Fridge Magnet | 7 | Pulls in paper clips | |
-| Afterburner Doodle | 11 | Every mid-flight trick gives a burst of speed: +2.5 at level I, rising to +5.5 at level V. Without it, tricks give no boost. | |
+| Afterburner Doodle | 11 | Every mid-flight trick gives a burst of speed: +2.5 at level I, rising to +5.5 at level V, with inked slipstream lines trailing off the wing tips. Without it, tricks give no boost. | |
 
 **Specialty: pick one path.** Buying any keystone locks the other two keystones and everything in their branches for the rest of the match.
 
