@@ -9,6 +9,31 @@ import { colorFor } from '../shared/colors.js';
 import { mountController } from './controller.js';
 
 let client = null, ctl = null, mySeat = null, ready = false, everWelcomed = false, retry = 0;
+let view = null, viewLoading = null;
+
+// Every player gets their own 3D chase view of the race. On a desktop the
+// controls dock in the corner (like solo); on a phone the view takes the top
+// of the screen and the controls sit below it.
+const touch = matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 820;
+document.body.classList.add('pv', touch ? 'pv-touch' : 'solo');
+
+async function ensureView() {
+  if (view) return view;
+  if (!viewLoading) viewLoading = (async () => {
+    try { await Promise.race([document.fonts.load('700 48px Caveat'), new Promise(r => setTimeout(r, 1500))]); } catch {}
+    const { createPlayerView } = await import('./view.js');
+    view = createPlayerView({ stage: $('#stage'), hudRoot: $('#hud'), getSeat: () => mySeat });
+    return view;
+  })();
+  return viewLoading;
+}
+// Messages that arrive while the 3D view is still loading are queued, not lost
+const pending = [];
+function toView(fn) {
+  if (view) return fn(view);
+  pending.push(fn);
+  ensureView().then(v => { while (pending.length) pending.shift()(v); });
+}
 
 export function start(code) {
   sessionStorage.setItem('room', code);
@@ -54,8 +79,9 @@ function connect(code, name) {
     $('#me-chip').textContent = name;
     $('#me-chip').style.color = colorFor(mySeat);
     renderRoster(msg.players, MAX_PLAYERS, mySeat);
+    ensureView();
     if (msg.phase === 'lobby' || msg.phase === 'over') show('lobby');
-    else show('game');
+    else show('game').then(() => view?.resize());
   });
   client.on('lobby', players => {
     renderRoster(players, MAX_PLAYERS, mySeat);
@@ -65,8 +91,12 @@ function connect(code, name) {
   client.on('event', msg => {
     if (msg.name === 'phase') {
       if (msg.data.phase === 'lobby') show('lobby');
-      else show('game');
+      else { show('game').then?.(() => view?.resize()); }
+      toView(v => v.setPhase(msg.data));
     }
+    if (msg.name === 'layout') toView(v => v.setLayout(msg.data));
+    if (msg.name === 'snap') { if (view) view.addSnap(msg.data); return; }
+    if (msg.name === 'fx' && view) view.fx(msg.data);
     for (const [ev, fn] of handlers) if (ev === 'event') fn(msg);
   });
   client.on('rejected', reason => fail(reason === 'Room is full' ? 'That room is full' : reason));

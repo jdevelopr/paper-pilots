@@ -63,7 +63,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     // Anyone who joined since the last round gets a seat at the table now.
     for (const h of humans()) addPlayer(match, h.seat, h.name);
     // Every race gets a freshly generated layout of this floor's theme.
-    const floor = layout = generateFloor(currentFloor(match), (rng() * 2 ** 31) >>> 0);
+    const seed = (rng() * 2 ** 31) >>> 0;
+    const floor = layout = generateFloor(currentFloor(match), seed);
     raceSeats = Object.keys(match.players).map(Number).sort((a, b) => a - b);
     race = createRace(floor, raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
     for (const [seat, b] of bots) b.brain = createBot(seat, b.skill, rng);
@@ -72,6 +73,12 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
 
     renderer.setFloor(floor);
     renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
+    // Every player's own screen builds the exact same layout from the same seed
+    lastLayout = {
+      theme: floor.id, seed, label: `Race ${legOf(match)}/${RACES_PER_FLOOR}`, first: match.round === 0,
+      seats: raceSeats.map(seat => ({ seat, name: nameOf(seat), owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })),
+    };
+    if (!solo) broadcast('layout', lastLayout);
     hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title, best: match.players[seat].best[floor.id] ?? 0 })), `Race ${legOf(match)}/${RACES_PER_FLOOR}`);
 
     const ms = match.round === 0 ? INTRO_FIRST_MS : INTRO_MS;
@@ -125,7 +132,19 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   }
 
   /* ------------------------------------------------------------ tick --- */
-  let acc = 0, meAcc = 0, hitStop = 0;
+  let acc = 0, meAcc = 0, snapAcc = 0, hitStop = 0, lastLayout = null;
+  // Race state for the players' own 3D views (15 a second; they interpolate)
+  const r2 = v => Math.round(v * 100) / 100;
+  const STATES = ['held', 'fly', 'slide', 'fall', 'landed'];
+  function snapshot() {
+    return {
+      t: r2(race.t), tl: race.timeLimit, over: race.over,
+      p: race.planes.map(q => [q.seat, r2(q.x), r2(q.y), r2(q.z), r2(q.yaw), r2(q.pitch), r2(q.roll), STATES.indexOf(q.state), q.crumpled ? 1 : 0,
+        Math.round(q.hp), q.maxHp, r2(q.v), r2(q.aim.yaw), r2(q.aim.pitch), r2(q.aim.power), q.clips,
+        q.zone ? { label: q.zone.label, pay: q.zone.pay, tier: q.zone.tier } : null, q.duct ?? -1, q.out ? 1 : 0]),
+      c: race.clips.reduce((a, c, i) => (c.taken >= 0 && a.push(i), a), []),
+    };
+  }
   // Recent race history for the photo-finish replay (30 snapshots a second)
   let rec = [], recT = -1;
   function record() {
@@ -177,6 +196,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       setWind(flying.length ? (Math.max(...flying.map(q => q.v)) - 6) / 18 : 0);
       meAcc += dt;
       if (meAcc > 0.12) { meAcc = 0; sendMeAll(); }
+      snapAcc += dt;
+      if (!solo && snapAcc > 1 / 15) { snapAcc = 0; broadcast('snap', snapshot()); }
       if (race.over && raceOverAt == null) {
         raceOverAt = performance.now();
         setWind(0);
@@ -382,6 +403,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   }
 
   function endRace() {
+    if (!solo) broadcast('snap', snapshot());
     const rows = payout(match, standings(race));
     lastRows = rows;
     setPhase('results');
@@ -487,6 +509,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   // A phone that reconnects mid-game gets the current phase and its own state.
   function onHello(seat) {
     if (!match || phase === 'lobby') return;
+    if (lastLayout) sendTo(seat, 'layout', lastLayout);
+    if (race) sendTo(seat, 'snap', snapshot());
     broadcastPhase();
     sendMeAll();
     if (phase === 'shop') renderShop();

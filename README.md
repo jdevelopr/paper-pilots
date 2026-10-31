@@ -1,6 +1,10 @@
 # Paper Pilots
 
-A party game where up to 4 players race paper airplanes through an office building. One screen (a laptop or TV) shows the race. Everyone else plays on their phone by scanning a QR code.
+A party game where up to 4 players race paper airplanes through an office building. One screen (a laptop or TV) is the host: it shows the whole race for an audience. Players join from a phone or a desktop computer by scanning the QR code or opening the join link.
+
+**Every player gets their own 3D chase view** that follows their plane. On a desktop, the controls dock in the corner (keyboard or mouse) and tuck away while you fly. On a phone, the race fills the top half of the screen and the throw pad and joystick sit underneath. Shop, results and the final standings take over the phone screen between races. Phones and desktops can play in the same room.
+
+The host runs the only simulation. Each race it sends every player the floor and its random seed, so all screens build the exact same layout, then streams plane positions 15 times a second.
 
 Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips. Floor 1 is 800 long and each floor above it is 25% longer (800 → 1,000 → 1,250 → 1,563 → 1,953 → 2,441). Planes fly the same on every floor, so the extra length is what you grow into.
 
@@ -209,7 +213,7 @@ export const PEER_OPTIONS = { host: 'peer.yourdomain.com', port: 443, secure: tr
 
 ## Good to know
 
-- **The host screen is not a player.** A 4-player game means 4 phones plus the screen. You can start a race with just 1 phone.
+- **The host screen is not a player.** A 4-player game means 4 player devices (phones or desktops) plus the host screen. You can start a race with just 1 player.
 - **Reconnecting:** if a phone locks or drops, reopen the same link (or let the page reconnect on its own). The player gets the same seat, name, clips and upgrades back. On the host, a dropped player's card is greyed out while they're away, and their plane keeps gliding on its own.
 - **Closing the host tab ends the room.** The browser will ask you to confirm if a game is in progress.
 - **Reduced motion:** if the operating system's "reduce motion" setting is on, the game turns off screen shake, line wobble and most animations. Everything is still playable.
@@ -219,13 +223,14 @@ export const PEER_OPTIONS = { host: 'peer.yourdomain.com', port: 443, secure: tr
 ```
 index.html            all screens, CDN tags, Three.js import map
 css/style.css         cork board + paper art direction, motion system
+css/player-view.css   layout for the players' own 3D view (desktop dock, phone split screen)
 js/main.js            picks host / solo / phone from the URL
 js/net.js             PeerJS host-authoritative networking (rooms, reconnect, liveness)
 js/ui.js              screen switching, roster sticky notes, toast
 js/shared/            config, colours, upgrade catalogue, solo local link
 js/game/              pure rules: flight sim, floors, bots, payouts (no DOM)
 js/host/              shared screen: flow, 3D renderer, ink shader, HUD, sound
-js/client/            phone: join flow and controller
+js/client/            players: join flow, controller, and the player's own 3D view (view.js)
 ```
 
 To tune the game, edit:

@@ -97,7 +97,7 @@ export function mountController(root, link, { solo = false } = {}) {
       return setView('wait');
     }
     if (ph === 'photo') { q('.w-t').textContent = 'Photo finish!'; return setView('wait'); }
-    q('.w-t').textContent = 'Watch the screen';
+    q('.w-t').textContent = document.body.classList.contains('pv') ? 'Get ready' : 'Watch the screen';
     if (ph === 'results') return setView('results');
     if (ph === 'shop') return setView('shop');
     if (ph === 'final') return setView('final');

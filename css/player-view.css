@@ -1,0 +1,14 @@
+/* ------------------------------------------------ players' own 3D view --- */
+body.pv #stage, body.pv #hud { display: block; }
+body.pv #hud .hostbar, body.pv #hud .hint { display: none; }
+/* Phones: the race on top, the controls underneath */
+body.pv-touch #stage { height: 52dvh; }
+body.pv-touch #hud { bottom: 48dvh; }
+body.pv-touch #controller { top: 52dvh; }
+body.pv-touch .hud-floor, body.pv-touch .hud-timer { font-size: 20px; padding: 2px 10px; }
+body.pv-touch .hud-top { top: 8px; }
+body.pv-touch .progress { display: none; }
+body.pv-touch .floaters .trick { font-size: 70%; }
+/* Between races the controller takes the whole phone screen again */
+body.pv-touch #controller:is([data-view="shop"], [data-view="results"], [data-view="final"]) { top: 0; background: var(--cork); z-index: 3; }
+body.pv:not([data-phase="race"]):not([data-phase="photo"]) .hud-race { display: none; }
