@@ -60,24 +60,24 @@ Raised zones (desk tops, the fridge, a rack) are targets too.
 
 ### Upgrade tree
 
-Every upgrade has **5 levels**, bought one at a time (costs ×1, ×1.6, ×2.3, ×3.2, ×4.4 of the base). Each level adds a smaller step, and the downsides stack. The phone shop shows the whole tree: locked items say what they need, and locked-out items say what you chose instead.
+Every upgrade has **5 levels**, bought one at a time (costs ×1, ×1.8, ×2.9, ×4.4, ×6.5 of the base, so maxing one out is a real commitment). Each level adds a smaller step, and the downsides stack. The phone shop shows the whole tree: locked items say what they need, and locked-out items say what you chose instead.
 
 **Basics** are open to everyone:
 
 | Upgrade | Base cost | Effect | Notes |
 |---|---|---|---|
-| Cardstock | 12 | More durability, heavier | |
-| Rubber Band Launcher | 10 | Faster start | |
-| Wide Wing Fold | 14 | Glides longer, turns slower | |
-| Glossy Paper | 10 | Less drag, slides farther on landing | |
-| Binder Clip Brake | 6 | Sticks the landing | |
-| Sticky Note Flaps | 8 | Sharper turns, a little more drag | |
-| Nose Clip | 8 | Fans push you less, slightly heavier | |
-| Packing Tape | 9 | Takes less damage | |
-| Fridge Magnet | 7 | Pulls in paper clips | |
-| Afterburner Doodle | 11 | Every mid-flight trick gives a burst of speed: +2.5 at level I, rising to +5.5 at level V, with inked slipstream lines trailing off the wing tips. Without it, tricks give no boost. | |
+| Cardstock | 17 | More durability, heavier | |
+| Rubber Band Launcher | 14 | Faster start | |
+| Wide Wing Fold | 20 | Glides longer, turns slower | |
+| Glossy Paper | 14 | Less drag, slides farther on landing | |
+| Binder Clip Brake | 8 | Sticks the landing | |
+| Sticky Note Flaps | 11 | Sharper turns, a little more drag | |
+| Nose Clip | 11 | Fans push you less, slightly heavier | |
+| Packing Tape | 13 | Takes less damage | |
+| Fridge Magnet | 10 | Pulls in paper clips | |
+| Afterburner Doodle | 15 | Every mid-flight trick gives a burst of speed: +2.5 at level I, rising to +5.5 at level V, with inked slipstream lines trailing off the wing tips. Without it, tricks give no boost. | |
 
-**Specialty: pick one path.** Buying any keystone locks the other two keystones and everything in their branches for the rest of the match.
+**Specialty: pick one path.** Keystones cost 25 and branch upgrades 20–22 at level I. Buying any keystone locks the other two keystones and everything in their branches for the rest of the match.
 
 | Path | Keystone (needs) | Branch upgrades |
 |---|---|---|
@@ -85,7 +85,7 @@ Every upgrade has **5 levels**, bought one at a time (costs ×1, ×1.6, ×2.3, �
 | Dart | Dart Fold: much less drag (Rubber Band II) | Pencil Nose: keep speed when bouncing off walls · Jet Stream Crease: even harder launch (Dart II) |
 | Tank | Laminated: huge durability (Cardstock II + Packing Tape I) | Eraser Bumpers: shrug off hits · Paperweight Drop: stall and drop like a stone for precise landings (Laminated II) |
 
-**Extras** hang off particular basics: Highlighter Rudder (needs Sticky Note Flaps II), Clip Collector, which gives an extra clip per pickup (needs Fridge Magnet II), and Eraser Skids, which make hard landings harmless (needs Binder Clip Brake I).
+**Extras** (14–17 at level I) hang off particular basics: Highlighter Rudder (needs Sticky Note Flaps II), Clip Collector, which gives an extra clip per pickup (needs Fridge Magnet II), and Eraser Skids, which make hard landings harmless (needs Binder Clip Brake I).
 
 Computer rivals each commit to a path too, so their builds differ.
 
