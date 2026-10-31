@@ -621,7 +621,32 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     camLook.lerp(targetLook, a);
   }
 
-  function chase(race, dt) {
+  // Solo: follow one plane from behind along its heading instead of framing the pack.
+  function follow(p, dt) {
+    let yaw = p.state === 'held' ? p.aim.yaw : p.yaw;
+    if (p.state === 'landed' || p.state === 'slide') yaw = p.followYaw ?? yaw;
+    p.followYaw = yaw;
+    const dx = Math.sin(yaw), dz = Math.cos(yaw);
+    let back, up, ahead, k;
+    if (p.state === 'held') { back = 7; up = 2.4; ahead = 14; k = 4; }
+    else if (p.state === 'landed') { back = 9; up = 5; ahead = 2; k = 1.6; }
+    else { back = 7; up = 3; ahead = 9; k = 3.5; }
+    const sx = p.x - dx * back, sz = p.z - dz * back;
+    const pos = new THREE.Vector3(sx, p.y + up, -sz);
+    const look = new THREE.Vector3(p.x + dx * ahead, p.y + (p.state === 'landed' ? 0 : 0.3), -(p.z + dz * ahead));
+    if (floor) {
+      pos.y = Math.max(0.8, Math.min(pos.y, floor.height - 0.6));
+      pos.x = Math.max(-floor.width / 2 + 1, Math.min(floor.width / 2 - 1, pos.x));
+      pos.z = Math.min(pos.z, 22);
+    }
+    aimCamera(dt, pos, look, k);
+  }
+
+  function chase(race, dt, focus) {
+    if (focus != null) {
+      const me = race.planes.find(p => p.seat === focus);
+      if (me) return follow(me, dt);
+    }
     const fly = race.planes.filter(p => p.state === 'fly' || p.state === 'slide' || p.state === 'fall');
     const held = race.planes.filter(p => p.state === 'held');
     let pos, look;
@@ -693,7 +718,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
 
     if (view.mode === 'intro') introCam(view.introT);
     else if (view.mode === 'showcase') showcase(dt, view.seats || []);
-    else if (race) chase(race, dt);
+    else if (race) chase(race, dt, view.focus);
 
     if (race && view.mode !== 'showcase') syncPlanes(race, dt);
 

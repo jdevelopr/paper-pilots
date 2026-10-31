@@ -143,7 +143,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       ? { mode: 'intro', race, introT: 1 - Math.max(0, (startsAt - Date.now() - 3000)) / ((match.round === 0 ? INTRO_FIRST_MS : INTRO_MS) - 3000) }
       : phase === 'shop' || phase === 'final'
         ? { mode: 'showcase', race, seats: raceSeats }
-        : { mode: 'race', race };
+        : { mode: 'race', race, focus: solo ? 0 : null };
     if (phase !== 'lobby') {
       renderer.frame(dt, view);
       if (phase === 'race') hud.update(race, renderer.project, Object.fromEntries(humans().map(h => [h.seat, h])));
