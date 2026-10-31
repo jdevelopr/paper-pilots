@@ -644,3 +644,8 @@ body.solo .hint { right: auto; left: 18px; }
 #controller .ptoast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 6; padding: 2px 16px; font-size: 32px; font-weight: 700; background: var(--paper); border: 2px solid var(--ink); border-radius: var(--wob-2); animation: float-up 1s var(--ease-out) forwards; pointer-events: none; white-space: nowrap; }
 .racers .racer .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .racers .racer .sub { white-space: nowrap; }
+
+/* Clean flight view: no racer cards on the left and no name tags or crown
+   over the planes. The progress strip, the timer and the lead-change
+   banners still show who is where. */
+.hud-race .racers, .hud-race .tags { display: none !important; }
