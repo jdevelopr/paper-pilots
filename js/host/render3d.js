@@ -846,30 +846,153 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     // The city floor, so nothing floats
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), M('#a39e94'));
     ground.rotation.x = -Math.PI / 2; ground.position.set(0, street - 0.08, -L / 2); env.add(ground);
-    // The street far below: asphalt, kerbs, and a few parked cars
-    const asphalt = speckleTexture('#666a70', '#3b3f45', 3000, 256, 0); asphalt.repeat.set(30, (g.z1 - g.z0) / 10);
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(600, g.z1 - g.z0), new THREE.MeshLambertMaterial({ map: asphalt }));
-    road.rotation.x = -Math.PI / 2; road.position.set(0, street, -(g.z0 + g.z1) / 2); env.add(road);
-    for (const z of [g.z0 + 4, g.z1 - 4]) env.add(boxMesh(600, 0.4, 8, '#b7b2a8', 0, street, -z));
-    const carCols = ['#c1440e', '#1e4d6b', '#e0a526', '#3d6b52', '#efe6d0'];
-    for (let i = 0; i < 24; i++) {
-      const cz = g.z0 + 14 + ((i * 53) % Math.max(1, g.z1 - g.z0 - 28)), cx = ((i * 97) % 160) - 80;
-      env.add(boxMesh(4.2, 1.4, 2, carCols[i % 5], cx, street, -cz));
-      env.add(boxMesh(2.4, 0.9, 1.8, '#2f3338', cx - 0.3, street + 1.4, -cz));
+    // Down below: a big city park fills the gap between the two buildings
+    // (trees, dirt paths, a pond), and a grid of streets and towers fills the
+    // rest of the view. Everything repeated is instanced so it stays cheap.
+    let seed = (f.seed || 1) >>> 0;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const rr = (a, b) => a + (b - a) * rnd();
+    const tmpO = new THREE.Object3D(), tmpC = new THREE.Color();
+    const instanced = (geo, mat, items, place) => {
+      const m = new THREE.InstancedMesh(geo, mat, Math.max(1, items.length));
+      items.forEach((it, i) => { place(tmpO, it); tmpO.updateMatrix(); m.setMatrixAt(i, tmpO.matrix); if (it.c) m.setColorAt(i, tmpC.set(it.c)); });
+      m.count = items.length;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      env.add(m);
+      return m;
+    };
+    const PX = 150;                                   // the park's half-width
+    const pz0 = g.z0 + 14, pz1 = g.z1 - 14;           // a street runs along each building face
+    // Grass
+    const grassTex = speckleTexture('#7fa05a', '#4f6b36', 3000, 256, 0); grassTex.repeat.set(PX / 6, (pz1 - pz0) / 12);
+    const grass = new THREE.Mesh(new THREE.PlaneGeometry(PX * 2, pz1 - pz0), new THREE.MeshLambertMaterial({ map: grassTex }));
+    grass.rotation.x = -Math.PI / 2; grass.position.set(0, street + 0.03, -(pz0 + pz1) / 2); env.add(grass);
+
+    // Ponds: one big, one small
+    const ponds = [
+      { x: rr(-60, 60), z: rr(pz0 + (pz1 - pz0) * 0.3, pz0 + (pz1 - pz0) * 0.6), rx: rr(40, 55), rz: rr(60, 90) },
+      { x: rr(-90, 90), z: rr(pz0 + (pz1 - pz0) * 0.75, pz1 - 60), rx: rr(18, 26), rz: rr(22, 34) },
+    ];
+    for (const pd of ponds) {
+      const rim = new THREE.Mesh(new THREE.CircleGeometry(1, 40), M('#c9b48a'));
+      rim.rotation.x = -Math.PI / 2; rim.scale.set(pd.rx + 2.5, pd.rz + 2.5, 1); rim.position.set(pd.x, street + 0.06, -pd.z); env.add(rim);
+      const water = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshLambertMaterial({ color: '#5f93b0' }));
+      water.rotation.x = -Math.PI / 2; water.scale.set(pd.rx, pd.rz, 1); water.position.set(pd.x, street + 0.09, -pd.z); env.add(water);
+      // a little jetty
+      env.add(boxMesh(3, 0.3, 12, '#8a6a48', pd.x + pd.rx * 0.7, street + 0.1, -(pd.z - pd.rz * 0.2)));
     }
-    // Neighbouring towers on both sides and beyond the end
-    const sky = ['#9fb3c4', '#b6c4cf', '#8ea3b5', '#c3cdd5', '#a9b7c2'];
-    for (let i = 0; i < 70; i++) {
-      const side = i % 2 ? 1 : -1, bw = 18 + ((i * 13) % 22), bh = 30 + ((i * 37) % 70);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bw), M(sky[i % 5]));
-      b.position.set(side * (W / 2 + 40 + ((i * 29) % 90)), street + bh / 2, -(-60 + i * ((L + 200) / 70)));
-      b.layers.set(1); env.add(b);
+    const inPond = (x, z, pad) => ponds.some(pd => ((x - pd.x) / (pd.rx + pad)) ** 2 + ((z - pd.z) / (pd.rz + pad)) ** 2 < 1);
+
+    // Dirt paths: a few winding ones down the park, and cross paths
+    const pathSegs = [];
+    const addPath = (pts) => { for (let i = 1; i < pts.length; i++) pathSegs.push({ a: pts[i - 1], b: pts[i] }); };
+    for (let k = 0; k < 3; k++) {
+      const base = -PX * 0.6 + k * PX * 0.6, amp = rr(15, 35), ph = rr(0, 6), wl = rr(90, 160), pts = [];
+      for (let z = pz0; z <= pz1; z += 6) {
+        let x = base + Math.sin(z / wl + ph) * amp;
+        // swing around the ponds
+        for (const pd of ponds) {
+          const dz = (z - pd.z) / (pd.rz + 8);
+          if (Math.abs(dz) < 1 && Math.abs(x - pd.x) < pd.rx + 8) x = pd.x + Math.sign(x - pd.x || 1) * (pd.rx + 8) * Math.sqrt(Math.max(0, 1 - dz * dz)) + Math.sign(x - pd.x || 1) * 2;
+        }
+        pts.push([x, z]);
+      }
+      addPath(pts);
     }
-    for (let i = 0; i < 9; i++) {
-      const bw = 26 + ((i * 11) % 20), bh = 40 + ((i * 31) % 60);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bw), M(sky[i % 5]));
-      b.position.set(-140 + i * 35, street + bh / 2, -(L + 90 + (i % 3) * 30)); b.layers.set(1); env.add(b);
+    for (let z = pz0 + rr(40, 80); z < pz1 - 30; z += rr(90, 150)) {
+      const pts = [];
+      for (let x = -PX; x <= PX; x += 8) pts.push([x, z + Math.sin(x / 30 + z) * 6]);
+      if (!pts.some(([x, zz]) => inPond(x, zz, 2))) addPath(pts);
     }
+    instanced(new THREE.BoxGeometry(1, 0.06, 1), M('#b08d5f'), pathSegs, (o, s) => {
+      const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1];
+      o.position.set((s.a[0] + s.b[0]) / 2, street + 0.07, -(s.a[1] + s.b[1]) / 2);
+      o.rotation.set(0, Math.atan2(dx, dz), 0);
+      o.scale.set(3.2, 1, Math.hypot(dx, dz) + 1.5);
+    });
+    const nearPath = (x, z, pad) => pathSegs.some(({ a, b }) => {
+      const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L2));
+      return Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz) < pad;
+    });
+
+    // Trees, packed in tight
+    const trees = [];
+    const greens = ['#4f7a3a', '#5e8a3f', '#3f6b35', '#6d9445', '#7a9a3c', '#557f46'];
+    for (let tries = 0; trees.length < 2600 && tries < 16000; tries++) {
+      const x = rr(-PX + 3, PX - 3), z = rr(pz0 + 3, pz1 - 3);
+      if (inPond(x, z, 3) || nearPath(x, z, 4)) continue;
+      trees.push({ x, z, h: rr(6, 12), r: rr(2.6, 4.6), c: greens[(rnd() * greens.length) | 0] });
+    }
+    instanced(new THREE.CylinderGeometry(0.35, 0.5, 1, 6), M('#5b4636'), trees, (o, t) => { o.position.set(t.x, street + t.h * 0.3, -t.z); o.rotation.set(0, 0, 0); o.scale.set(1, t.h * 0.6, 1); });
+    instanced(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), trees,
+      (o, t) => { o.position.set(t.x, street + t.h * 0.62, -t.z); o.rotation.set(t.x, t.z, 0); o.scale.set(t.r, t.r * 1.15, t.r); });
+    // Benches and lamp posts along the paths
+    const bits = pathSegs.filter((_, i) => i % 9 === 0).map(s => ({ x: s.a[0] + 3, z: s.a[1] }));
+    instanced(new THREE.BoxGeometry(1, 1, 1), M('#6b5440'), bits, (o, b) => { o.position.set(b.x, street + 0.5, -b.z); o.rotation.set(0, 0, 0); o.scale.set(0.8, 1, 2.4); });
+
+    // City grid around the park: streets every block, towers on the blocks
+    const BLOCK = 64, ROAD = 10, X0 = -460, X1 = 460, Z0 = -160, Z1 = L + 260;
+    const roadsX = [], roadsZ = [];
+    for (let x = X0; x <= X1; x += BLOCK) roadsX.push(x);                      // streets running along z
+    for (let z = Z0; z <= Z1; z += BLOCK) roadsZ.push(z);                      // cross streets
+    roadsZ.push(g.z0 + 7, g.z1 - 7);                                           // along each building face
+    roadsX.push(-PX - 6, PX + 6);                                              // the park's edges
+    // Streets stop at the park's edge (the park has its own paths)
+    const inPark = (x, z, pad = 0) => Math.abs(x) < PX + pad && z > pz0 - pad && z < pz1 + pad;
+    const segs = [];
+    for (const x of roadsX) {
+      if (Math.abs(x) < PX + 5) { segs.push({ x0: x - ROAD / 2, x1: x + ROAD / 2, z0: Z0, z1: pz0 }, { x0: x - ROAD / 2, x1: x + ROAD / 2, z0: pz1, z1: Z1 }); }
+      else segs.push({ x0: x - ROAD / 2, x1: x + ROAD / 2, z0: Z0, z1: Z1 });
+    }
+    for (const z of roadsZ) {
+      if (z > pz0 && z < pz1) { segs.push({ x0: X0, x1: -PX - 1, z0: z - ROAD / 2, z1: z + ROAD / 2 }, { x0: PX + 1, x1: X1, z0: z - ROAD / 2, z1: z + ROAD / 2 }); }
+      else segs.push({ x0: X0, x1: X1, z0: z - ROAD / 2, z1: z + ROAD / 2 });
+    }
+    instanced(new THREE.BoxGeometry(1, 0.1, 1), new THREE.MeshLambertMaterial({ color: '#5d6066' }), segs,
+      (o, r) => { o.position.set((r.x0 + r.x1) / 2, street + 0.01, -(r.z0 + r.z1) / 2); o.rotation.set(0, 0, 0); o.scale.set(r.x1 - r.x0, 1, r.z1 - r.z0); });
+    // centre-line dashes
+    const dashes = [];
+    for (const x of roadsX) for (let z = Z0; z < Z1; z += 12) if (!inPark(x, z, 1)) dashes.push({ x, z, along: true });
+    for (const z of roadsZ) for (let x = X0; x < X1; x += 12) if (!inPark(x, z, 1)) dashes.push({ x, z, along: false });
+    instanced(new THREE.BoxGeometry(1, 0.05, 1), M('#e8dfa8'), dashes, (o, d) => { o.position.set(d.x, street + 0.08, -d.z); o.rotation.set(0, 0, 0); o.scale.set(d.along ? 0.35 : 4, 1, d.along ? 4 : 0.35); });
+    // Cars on the streets
+    const carCols = ['#c1440e', '#1e4d6b', '#e0a526', '#3d6b52', '#efe6d0', '#8b3a2e'];
+    const cars = [];
+    for (let i = 0; i < 160; i++) {
+      const along = rnd() < 0.5;
+      if (along) { const x = roadsX[(rnd() * roadsX.length) | 0] + (rnd() < 0.5 ? -2.5 : 2.5); cars.push({ x, z: rr(Z0, Z1), along, c: carCols[i % 6] }); }
+      else { const z = roadsZ[(rnd() * roadsZ.length) | 0] + (rnd() < 0.5 ? -2.5 : 2.5); cars.push({ x: rr(X0, X1), z, along, c: carCols[i % 6] }); }
+      if (inPark(cars[cars.length - 1].x, cars[cars.length - 1].z, 2)) cars.pop();
+    }
+    instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: '#ffffff' }), cars,
+      (o, c) => { o.position.set(c.x, street + 0.8, -c.z); o.rotation.set(0, c.along ? 0 : Math.PI / 2, 0); o.scale.set(2, 1.5, 4.4); });
+
+    // Towers fill every block that isn't the park or one of our two buildings
+    const towers = [];
+    const sky = ['#9fb3c4', '#b6c4cf', '#8ea3b5', '#c3cdd5', '#a9b7c2', '#c9bfae', '#b9a998'];
+    const xsB = [...new Set(roadsX)].sort((a, b) => a - b), zsB = [...new Set(roadsZ)].sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xsB.length; i++) for (let j = 0; j + 1 < zsB.length; j++) {
+      const bx0 = xsB[i] + ROAD / 2 + 1.5, bx1 = xsB[i + 1] - ROAD / 2 - 1.5, bz0 = zsB[j] + ROAD / 2 + 1.5, bz1 = zsB[j + 1] - ROAD / 2 - 1.5;
+      if (bx1 - bx0 < 8 || bz1 - bz0 < 8) continue;
+      const cx = (bx0 + bx1) / 2, cz = (bz0 + bz1) / 2;
+      if (Math.abs(cx) < PX + 6 && cz > g.z0 && cz < g.z1) continue;          // the park
+      if (bx1 > -W / 2 - 4 && bx0 < W / 2 + 4 && (bz0 < g.z0 || bz1 > g.z1)) continue;   // our buildings
+      // 1-4 towers per block, taller further from the run
+      const n = 1 + ((rnd() * 4) | 0), far = Math.min(1, Math.abs(cx) / 400);
+      for (let k = 0; k < n; k++) {
+        const w = (bx1 - bx0) / (n > 2 ? 2 : 1), d = (bz1 - bz0) / (n > 1 ? 2 : 1);
+        const tx = n > 2 ? bx0 + w * ((k % 2) + 0.5) : cx, tz = n > 1 ? bz0 + d * ((k >> (n > 2 ? 1 : 0)) % 2 + 0.5) : cz;
+        const h = rr(20, 55) + far * rr(10, 70);
+        towers.push({ x: tx, z: tz, w: w - 2, d: d - 2, h, c: sky[(rnd() * sky.length) | 0] });
+      }
+    }
+    const towerTex = facadeTexture('#ffffff', 4, 6);
+    towerTex.repeat.set(2, 3);
+    instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: '#ffffff', map: towerTex }), towers,
+      (o, t) => { o.position.set(t.x, street + t.h / 2, -t.z); o.rotation.set(0, 0, 0); o.scale.set(t.w, t.h, t.d); });
+
     // Wind in the gap: crosswind streaks, and gust streaks below the roofline
     const streaks = [];
     for (let i = 0; i < 70; i++) {

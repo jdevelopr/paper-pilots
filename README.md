@@ -103,6 +103,7 @@ Every match ends up on the roof, under open sky. The middle half of the run isn'
 - **The gap.** Rising air columns between the buildings (streaks coming up from the street) carry you across. A crosswind swings you left and right in slow pulses. Dive below the roofline for the paper clip arcs and bonus boxes down there, and gusts push you back up. Go deeper than the gusts reach and you're on your own: crash into the far building's wall, or end up on the street with no zone.
 - **The far roof** is 7 lower, so the jump is a glide down. Zones 2–5 are all here, including the Stairwell Roof and AC Unit perches.
 - **Pigeons.** Flocks wheel back and forth across the run, over both roofs and the gap.
+- **The view.** The gap looks down on a big city park: thousands of trees, winding dirt paths with benches, and two ponds. A grid of streets with cars and towers on every block fills the skyline around it.
 - At the edges of the roofs there's no wall, just a wall of wind that turns you back in without damage. The sky has no ceiling to scrape.
 
 ### Shortcuts (Floor 4 and up)
