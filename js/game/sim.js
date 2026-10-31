@@ -319,8 +319,8 @@ function flyStep(race, p, dt) {
     const d2 = (p.x - vnt.x) ** 2 + (p.z - vnt.z) ** 2;
     if (d2 < vnt.r * vnt.r && p.duct == null && !p.out) {
       const edge = 1 - Math.sqrt(d2) / vnt.r;
-      // (the vent under a ceiling duct keeps pushing all the way up into it)
-      const fall = vnt.duct ? 1 : clamp(1 - p.y / (f.height * 0.95), 0, 1);
+      // (the vent in front of a ceiling duct lifts you right up to its mouth, then eases off)
+      const fall = vnt.top != null ? clamp((vnt.top - p.y) / 2.5, 0, 1) : clamp(1 - p.y / (f.height * 0.95), 0, 1);
       p.y += vnt.s * 1.6 * st.lift * (0.5 + 0.5 * edge) * fall * dt;
       // Drafts also carry you forward: riding one is a speed boost.
       p.v += vnt.s * 0.5 * (0.5 + 0.5 * edge) * dt;
@@ -354,11 +354,6 @@ function flyStep(race, p, dt) {
 
   if (p.duct != null) { ductStep(race, p, dt); return; }
 
-  // Ceiling (an open ceiling grate leads into a duct)
-  if (p.y > f.height - SIM.planeR && !p.out) {
-    const d = (f.ducts || []).findIndex(d => d.kind === 'ceil' && grateAt(d, d.ez, p));
-    if (d >= 0) { enterDuct(race, p, d); return; }
-  }
   if (p.y > f.height - SIM.planeR) {
     const hitV = p.v * Math.max(0, Math.sin(p.pitch));
     p.y = f.height - SIM.planeR;
@@ -367,12 +362,7 @@ function flyStep(race, p, dt) {
     damage(race, p, hitV, 'ceiling');
   }
 
-  // Floor touch-down (an open floor grate drops you into a duct; outside,
-  // there is no floor: you've fallen off the building)
-  if (p.y <= SIM.restH && !p.out) {
-    const d = (f.ducts || []).findIndex(d => d.kind === 'floor' && grateAt(d, d.ez, p));
-    if (d >= 0) { enterDuct(race, p, d); return; }
-  }
+  // Outside there is no floor: you've fallen off the building
   if (p.out && p.y < (f.ledge?.sill ?? 4) - 3) { stuckOutside(race, p, 'fell'); return; }
   if (p.y <= SIM.restH) {
     const vy = p.v * Math.sin(p.pitch);
@@ -453,13 +443,16 @@ function supportAt(floor, x, z, y) {
 
 /* ----------------------------------------------------------- shortcuts --- */
 
-const GRATE = 1.8;   // half-size of a duct grate
-const grateAt = (d, gz, p) => Math.abs(p.x - d.x) < GRATE && Math.abs(p.z - gz) < GRATE;
+// Is the plane lined up with a duct's open mouth? (a little forgiving: the
+// rim nudges you in rather than bouncing you off)
+const mouthAt = (d, p) => Math.abs(p.x - d.x) < d.half - 0.1 && p.y > d.y0 + 0.1 && p.y < d.y1 - 0.1;
 
 function enterDuct(race, p, i) {
-  const d = race.floor.ducts[i];
+  const d = race.floor.ducts[i], r = SIM.planeR;
   p.duct = i;
-  p.y = d.kind === 'ceil' ? d.y0 + SIM.planeR + 0.2 : d.y1 - SIM.planeR - 0.2;
+  p.x = clamp(p.x, d.x - d.half + r, d.x + d.half - r);
+  p.y = clamp(p.y, d.y0 + r, d.y1 - r);
+  p.z = Math.max(p.z, d.z0 + 0.05);
   race.events.push({ name: 'ductin', seat: p.seat, x: p.x, y: p.y, z: p.z });
 }
 
@@ -471,31 +464,19 @@ function ductStep(race, p, dt) {
     p.x = d.x + Math.sign(p.x - d.x) * (d.half - r);
     p.yaw = -p.yaw * 0.6; p.v *= 0.88; scrape();
   }
-  const atExit = grateAt(d, d.xz, p);
-  if (d.kind === 'ceil') {
-    if (atExit) {
-      // Exit grate: the downdraft pulls you back into the room
-      p.y -= 10 * dt;
-      if (p.y < d.y0 - r) return leaveDuct(race, p);
-    } else if (p.y < d.y0 + r) { p.y = d.y0 + r; p.pitch = Math.max(p.pitch, 0.05); if (p.v * Math.sin(p.pitch) < -2) scrape(); }
-    if (p.y > d.y1 - r) { p.y = d.y1 - r; p.pitch = -Math.abs(p.pitch) * 0.5; scrape(); }
-  } else {
-    if (atExit) {
-      // Exit grate: an updraft blows you up and out
-      p.y += 14 * dt;
-      if (p.y > d.y1 + r) { p.pitch = Math.max(p.pitch, 0.25); return leaveDuct(race, p); }
-    } else if (p.y > d.y1 - r) { p.y = d.y1 - r; p.pitch = -Math.abs(p.pitch) * 0.5; scrape(); }
-    if (p.y < d.y0 + r) { p.y = d.y0 + r; p.pitch = Math.max(p.pitch, 0.08); scrape(); }
-  }
-  // End caps
-  if (p.z > d.z1 - r || p.z < d.z0 + r) {
-    p.z = Math.max(d.z0 + r, Math.min(d.z1 - r, p.z));
-    p.yaw = Math.PI - p.yaw; p.v *= 0.5; damage(race, p, 6, 'hit');
-  }
+  // Roof and floor of the duct
+  if (p.y > d.y1 - r) { p.y = d.y1 - r; p.pitch = -Math.abs(p.pitch) * 0.5; scrape(); }
+  if (p.y < d.y0 + r) { p.y = d.y0 + r; p.pitch = Math.max(p.pitch, 0.05); if (p.v * Math.sin(-p.pitch) > 1) scrape(); }
+  // Both ends are open: shoot out the far end, or drift back out the way you came
+  if (p.z > d.z1) return leaveDuct(race, p, true);
+  if (p.z < d.z0) { p.z = d.z0 - r - 0.05; p.duct = null; }
 }
 
-function leaveDuct(race, p) {
+function leaveDuct(race, p, made) {
+  const d = race.floor.ducts[p.duct];
   p.duct = null;
+  p.z = Math.max(p.z, d.z1 + SIM.planeR + 0.05);   // clear of the duct's body
+  if (!made) return;
   p.v += 5;
   race.events.push({ name: 'ductout', seat: p.seat, x: p.x, y: p.y, z: p.z });
   trick(race, p, 'duct');
@@ -524,7 +505,16 @@ function outsideStep(race, p) {
     p.yaw = -p.yaw; p.v *= 0.7;
     damage(race, p, vn, 'wall');
   }
-  if (out > W2 + L.depth) return stuckOutside(race, p, 'blown');
+  // Edge of the ledge run: a wall of wind shoves you back toward the building
+  // (no damage). You only get stuck out here by falling, crumpling or
+  // flying past the end of the ledge.
+  if (out > W2 + L.depth - r) {
+    p.x = side * (W2 + L.depth - r);
+    if (side * Math.sin(p.yaw) > 0) {
+      p.yaw = -p.yaw; p.v *= 0.85;
+      race.events.push({ name: 'gust', seat: p.seat, dir: 'side', x: p.x, y: p.y, z: p.z });
+    }
+  }
   if (p.z < L.z0 - 2 || p.z > L.z1 + 2) return stuckOutside(race, p, 'lost');
   if (p.y > f.height - r) { p.y = f.height - r; p.pitch = -Math.abs(p.pitch) * 0.5; }
 }
@@ -560,12 +550,19 @@ function collide(race, p, px, py, pz) {
   if (p.state === 'landed') return;
   if (p.duct != null) return;                       // ducts handle their own walls
   if (p.out) { outsideStep(race, p); return; }
+  // Flying into an open duct mouth
+  if (p.state === 'fly' && !p.crumpled && f.ducts?.length) {
+    const i = f.ducts.findIndex(d => pz <= d.z0 + 0.6 && p.z >= d.z0 - SIM.planeR - 0.05 && Math.cos(p.yaw) > 0 && mouthAt(d, p));
+    if (i >= 0) { enterDuct(race, p, i); return; }
+  }
   // Side walls and end wall (an open window lets you out onto the ledge)
   const hw = f.width / 2 - r;
   if ((p.x < -hw || p.x > hw) && f.ledge && p.state === 'fly' && !p.crumpled) {
     const w = windowAt(f, p.x > 0 ? 1 : -1, p.z, p.y);
     if (w && w.id === 'out') {
       p.out = { since: race.t };
+      // Clear of the wall plane so the next step doesn't count as coming back in
+      p.x = (p.x > 0 ? 1 : -1) * (f.width / 2 + r + 0.05);
       race.events.push({ name: 'outside', seat: p.seat, x: p.x, y: p.y, z: p.z });
       return;
     }

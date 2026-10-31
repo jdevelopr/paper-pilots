@@ -410,8 +410,10 @@ export function generateFloor(theme, seed = 1) {
      Window run: fly out an open window, along the outside ledge in a crosswind
      that shoves you away from the building, and back in through a second open
      window farther down. Miss it and you're stuck outside (crumpled).
-     Duct run: an open grate in the ceiling (ride a vent up into it) or in the
-     floor (dive into it) leads into a tight square duct that skips a hallway.
+     Duct run: an exposed, open-ended square duct running down the room, either
+     hung just under the ceiling (a vent in front lifts you up to its mouth) or
+     propped just above the floor. Fly in the open mouth, thread the tight
+     tunnel past the furniture and traffic below, and shoot out the far end.
      Scraping the duct walls costs durability; airflow speeds you along. */
   const windows = [], ducts = [];
   let ledge = null;
@@ -430,18 +432,26 @@ export function generateFloor(theme, seed = 1) {
     windows.push({ id: 'out', side, z: wz0, half: 3.6, y0: wy0, y1: wy1 });
     windows.push({ id: 'in', side, z: wz1, half: 3.6, y0: wy0, y1: wy1 });
     ledge = { side, z0: wz0 - 4, z1: wz1 + 4, depth: 9, wind: T.r(2.5, 3.6), sill: wy0 - 0.6 };
-    // Duct along the other hallway (or another stretch)
-    const [, dz0, dz1] = pickStretch(hw);
-    let kind = T.pick(['ceil', 'floor']);
-    // A floor grate can't sit inside a landing zone
-    const lx0 = Math.max(-W / 2 + 5, Math.min(W / 2 - 5, laneX(dz0)));
-    if (zones.some(zn => [dz0, dz1].some(gz => Math.abs(zn.z - gz) < zn.d / 2 + 3 && Math.abs(zn.x - lx0) < zn.w / 2 + 3))) kind = 'ceil';
-    const dx = Math.max(-W / 2 + 5, Math.min(W / 2 - 5, laneX(dz0)));
-    ducts.push(kind === 'ceil'
-      ? { kind, x: dx, half: 1.9, z0: dz0 - 2, z1: dz1 + 2, y0: H, y1: H + 3.2, ez: dz0, xz: dz1 }
-      : { kind, x: dx, half: 1.9, z0: dz0 - 2, z1: dz1 + 2, y0: -3.4, y1: 0, ez: dz0, xz: dz1 });
+    // Duct: an open stretch of room clear of hallways, the window run and zones
+    const kind = T.pick(['ceil', 'floor']);
+    const half = 2.1, tall = 4.0;
+    const blocked = (z0, z1, x) =>
+      hallSpans.some(([a, b]) => z1 > a - 12 && z0 < b + 12) ||
+      (z1 > wz0 - 10 && z0 < wz1 + 10 && Math.abs(x - side * W / 2) < 16) ||
+      zones.some(zn => z1 > zn.z - zn.d / 2 - 6 && z0 < zn.z + zn.d / 2 + 6 && Math.abs(zn.x - x) < zn.w / 2 + half + 3);
+    for (let tries = 0; tries < 80 && !ducts.length; tries++) {
+      const dl = T.r(70, 110), z0 = T.r(60, L - dl - 40), z1 = z0 + dl;
+      const x = Math.max(-W / 2 + half + 3, Math.min(W / 2 - half - 3, laneX(z0) + T.r(-4, 4)));
+      if (blocked(z0, z1, x)) continue;
+      ducts.push(kind === 'ceil'
+        ? { kind, x, half, z0, z1, y0: H - 0.4 - tall, y1: H - 0.4, ez: z0, xz: z1 }
+        : { kind, x, half, z0, z1, y0: 0.6, y1: 0.6 + tall, ez: z0, xz: z1 });
+    }
   }
-  const nearGrate = o => ducts.some(d => [d.ez, d.xz].some(gz => overlapsRect(o, d.x - 3, d.x + 3, gz - 3, gz + 3)));
+  // Nothing may stand in the duct's way (or poke into it)
+  const inDuct = o => ducts.some(d => overlapsRect(o, d.x - d.half - 1.5, d.x + d.half + 1.5, d.z0 - 4, d.z1 + 1)
+    && (o.y || 0) < d.y1 + 0.5 && (o.y || 0) + o.h > d.y0 - 0.5);
+  const nearGrate = o => inDuct(o) || ducts.some(d => overlapsRect(o, d.x - d.half - 3, d.x + d.half + 3, d.z0 - 14, d.z0));
   const nearWindow = o => windows.some(w => (w.side > 0 ? o.x + o.w / 2 > W / 2 - 6 : o.x - o.w / 2 < -W / 2 + 6) && o.z + o.d / 2 > w.z - w.half - 3 && o.z - o.d / 2 < w.z + w.half + 3);
 
   /* Furniture rows down the floor */
@@ -472,13 +482,16 @@ export function generateFloor(theme, seed = 1) {
   objects.push(...perched, ...hallObjs);
   objects.unshift({ type: 'desk', x: 0, z: -2.6, w: 13, d: 3, h: 4.2, launch: true });
   const boxes = objects.flatMap(boxesFor);
+  // The duct's metal body is solid from outside; the ends are open
+  for (const d of ducts) boxes.push({ x0: d.x - d.half - 0.15, x1: d.x + d.half + 0.15, y0: d.y0 - 0.15, y1: d.y1 + 0.15, z0: d.z0, z1: d.z1, type: 'duct' });
 
   const freeAt = (x, z, r) => boxes.every(b => x + r < b.x0 || x - r > b.x1 || z + r < b.z0 || z - r > b.z1);
   const solidAt = (x, y, z) => boxes.some(b => x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6 && y > b.y0 - 0.6 && y < b.y1 + 0.6);
 
   /* Air currents */
   const vents = [];
-  for (const d of ducts) if (d.kind === 'ceil') vents.push({ x: d.x, z: d.ez, r: 3.2, s: 10, duct: true });
+  // A strong vent in front of a ceiling duct lifts you up to its mouth
+  for (const d of ducts) if (d.kind === 'ceil') vents.push({ x: d.x, z: d.z0 - 9, r: 3.4, s: 10, duct: true, top: (d.y0 + d.y1) / 2 });
   const nVents = many(theme.vents);
   for (let tries = 0; vents.length < nVents && tries < 300; tries++) {
     // The first two vents hug the lane so a good line always has lift on it.
@@ -487,6 +500,8 @@ export function generateFloor(theme, seed = 1) {
     const r = T.r(3, 4);
     if (Math.abs(x) > W / 2 - r - 0.5 || !freeAt(x, z, r + 0.5)) continue;
     if (vents.some(v => Math.hypot(v.x - x, v.z - z) < 14)) continue;
+    // Keep ordinary vents clear of the duct grates (and off the duct's path)
+    if (ducts.some(d => Math.abs(x - d.x) < r + d.half + 3 && z > d.ez - r - 8 && z < d.xz + r + 8)) continue;
     if (zones.some(zn => Math.abs(zn.x - x) < zn.w / 2 + r && Math.abs(zn.z - z) < zn.d / 2 + r)) continue;
     vents.push({ x, z, r, s: T.r(6.5, 9) });
   }
@@ -497,6 +512,7 @@ export function generateFloor(theme, seed = 1) {
   for (let tries = 0; fans.length < nFans && tries < 100; tries++) {
     const z = T.r(35, L * 0.8), x = T.r(-W / 2 + 6, W / 2 - 6);
     if (fans.some(f => Math.hypot(f.x - x, f.z - z) < 20) || vents.some(v => Math.hypot(v.x - x, v.z - z) < 10)) continue;
+    if (ducts.some(d => Math.abs(d.x - x) < d.half + 7 && z > d.z0 - 20 && z < d.z1 + 8)) continue;
     fans.push({ x, z, r: T.r(4.5, 5.5), s: T.r(4, 5.5) });
   }
 

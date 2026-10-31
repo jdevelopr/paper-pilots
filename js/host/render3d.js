@@ -319,7 +319,10 @@ function buildPlane(seat, owned, rank = 0) {
 
   const root = new THREE.Group();
   root.add(group, ball);
-  root.userData = { body: group, ball, seat };
+  // Wing tips (just outside the outer edges) for the slipstream doodle lines
+  const tipS = 0.75 * wide + 0.04, tipL = owned.includes('dart') ? 1.0 : 0.85, tipD = owned.includes('swallowtail') ? 0.22 : 0.14;
+  const tips = [new THREE.Vector3(-tipS, tipD, tipL * 0.92), new THREE.Vector3(tipS, tipD, tipL * 0.92)];
+  root.userData = { body: group, ball, seat, tips };
   return root;
 }
 
@@ -417,10 +420,15 @@ function buildObject(o) {
     case 'shelf': {
       g.add(boxMesh(w, h, d, '#7a5a3a'));
       const cols = ['#c1440e', '#1e4d6b', '#3d6b52', '#e0a526', '#efe6d0'];
+      // Book spines face the players: toward the launch end for shelves set
+      // across the room, toward the middle of the room for shelves on a wall.
+      const along = w < d, face = along ? -Math.sign(o.x || 1) : 1;
+      const span = along ? d : w;
       for (let y = 0.4, k = 0; y < h - 0.8; y += 1.5) {
-        for (let x = -w / 2 + 0.4; x < w / 2 - 0.4; x += 0.45, k++) {
-          if (w < d) continue;
-          g.add(boxMesh(0.35, 1.0 + (k % 3) * 0.15, 0.2, cols[k % 5], x, y, -d / 2 - 0.05));
+        for (let u = -span / 2 + 0.4; u < span / 2 - 0.4; u += 0.45, k++) {
+          const bh = 1.0 + (k % 3) * 0.15;
+          if (along) g.add(boxMesh(0.2, bh, 0.35, cols[k % 5], face * (w / 2 + 0.05), y, u));
+          else g.add(boxMesh(0.35, bh, 0.2, cols[k % 5], u, y, d / 2 + 0.05));
         }
       }
       break;
@@ -615,6 +623,53 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   const TRAIL_N = 26;
   const dotGeo = new THREE.SphereGeometry(0.07, 5, 4);
   const tmpM = new THREE.Matrix4();
+
+  // Slipstream doodles: two inky ribbons streaming off the wing tips while a
+  // trick speed boost lasts. Points age out, so the lines shrink away after.
+  const SLIP_N = 28, SLIP_LIFE = 0.55;
+  const slipMat = new THREE.MeshBasicMaterial({ color: '#2c2416', transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
+  function makeSlipLine() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SLIP_N * 2 * 3), 3));
+    const idx = [];
+    for (let i = 0; i < SLIP_N - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    geo.setIndex(idx);
+    geo.setDrawRange(0, 0);
+    const m = new THREE.Mesh(geo, slipMat);
+    m.frustumCulled = false;
+    m.layers.set(1);
+    return { m, pts: [] };   // pts: { x, y, z, age }
+  }
+  const _tip = new THREE.Vector3(), _seg = new THREE.Vector3(), _side = new THREE.Vector3(), _view = new THREE.Vector3();
+  function updateSlipLine(line, emit, worldTip, dt, boil) {
+    for (const q of line.pts) q.age += dt;
+    while (line.pts.length && line.pts[0].age > SLIP_LIFE) line.pts.shift();
+    if (emit) {
+      line.pts.push({ x: worldTip.x, y: worldTip.y, z: worldTip.z, age: 0 });
+      if (line.pts.length > SLIP_N) line.pts.shift();
+    }
+    const n = line.pts.length, pos = line.m.geometry.attributes.position;
+    if (n < 2) { line.m.geometry.setDrawRange(0, 0); line.m.visible = false; return; }
+    line.m.visible = true;
+    for (let i = 0; i < n; i++) {
+      const q = line.pts[i], nb = line.pts[Math.min(n - 1, i + 1)], pb = line.pts[Math.max(0, i - 1)];
+      _seg.set(nb.x - pb.x, nb.y - pb.y, nb.z - pb.z);
+      _view.set(q.x - camera.position.x, q.y - camera.position.y, q.z - camera.position.z);
+      _side.crossVectors(_seg, _view).normalize();
+      // Thin pencil stroke: fattest near the wing, tapering and thinning with age
+      const k = (i + 1) / n, w = 0.05 * k * (1 - q.age / SLIP_LIFE) + 0.008;
+      // Hand-drawn jitter that "boils" with the ink shader's 6 fps redraw
+      const j = Math.sin(i * 2.7 + boil * 5.1) * 0.03 * (1 - k);
+      pos.setXYZ(i * 2, q.x + _side.x * (w + j), q.y + _side.y * (w + j), q.z + _side.z * (w + j));
+      pos.setXYZ(i * 2 + 1, q.x - _side.x * (w - j), q.y - _side.y * (w - j), q.z - _side.z * (w - j));
+    }
+    pos.needsUpdate = true;
+    line.m.geometry.setDrawRange(0, (n - 1) * 6);
+  }
+  function boost(seat, amount = 3) {
+    const v = planes.get(seat);
+    if (v) v.boostT = Math.max(v.boostT || 0, 0.7 + amount * 0.18);
+  }
   const clipGeo = clipGeometry();
   const clipMat = lam('#c3cad1', { emissive: '#2d3238' });
   const shadowMat = new THREE.MeshBasicMaterial({ color: '#2c2416', transparent: true, opacity: 0.22, depthWrite: false });
@@ -657,7 +712,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       b.m.visible = true;
       b.m.material.color.set('#ffffff');
       b.m.position.set(x + (Math.random() - 0.5) * 2, y + (Math.random() - 0.5) * 1.5, -z + (Math.random() - 0.5) * 2);
-      b.v.set((Math.random() - 0.5) * 2, (dir === 'up' ? 1 : -1) * (6 + Math.random() * 4), (Math.random() - 0.5) * 2);
+      b.v.set(dir === 'side' ? (Math.random() - 0.5) * 12 : (Math.random() - 0.5) * 2, dir === 'side' ? (Math.random() - 0.5) * 2 : (dir === 'up' ? 1 : -1) * (6 + Math.random() * 4), (Math.random() - 0.5) * 2);
       b.spin.set(0, Math.random() * 4, 0);
       b.life = 0.5;
       b.noGrav = true;
@@ -724,6 +779,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     env.add(ceil);
     for (let z = 0; z < L; z += 22) {
       for (const x of [-11, 11]) {
+        if ((f.ducts || []).some(d => d.kind === 'ceil' && Math.abs(d.x - x) < d.half + 3 && z + 8 > d.z0 - 2 && z + 8 < d.z1 + 2)) continue;
         const p = new THREE.Mesh(new THREE.BoxGeometry(5, 0.1, 2.4), new THREE.MeshBasicMaterial({ color: '#fffaf0' }));
         p.position.set(x, H - 0.05, -z - 8);
         env.add(p);
@@ -802,31 +858,41 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       anims.outside = { s, W, depth: Lg.depth, streaks };
     }
 
-    // Ducts: a metal tunnel above the ceiling or under the floor, with open grates
+    // Ducts: an exposed square metal duct, open at both ends, hung under the
+    // ceiling or propped just off the floor. Built from four slabs so you can
+    // see straight down the tunnel from the mouth.
     for (const d of f.ducts || []) {
-      const dl = d.z1 - d.z0, dh = d.y1 - d.y0;
-      const tube = new THREE.Mesh(new THREE.BoxGeometry(d.half * 2, dh, dl), new THREE.MeshLambertMaterial({ color: '#a7b0b6', side: THREE.BackSide }));
-      tube.position.set(d.x, (d.y0 + d.y1) / 2, -(d.z0 + d.z1) / 2);
-      env.add(tube);
-      for (let z = d.z0 + 3; z < d.z1; z += 6) {
-        const rib = new THREE.Mesh(new THREE.BoxGeometry(d.half * 2 + 0.02, 0.12, 0.2), M('#7a8590'));
-        rib.position.set(d.x, d.kind === 'ceil' ? d.y1 - 0.06 : d.y0 + 0.06, -z);
-        env.add(rib);
-      }
-      for (const gz of [d.ez, d.xz]) {
-        const gy = d.kind === 'ceil' ? H - 0.04 : 0.04;
-        // hazard-striped frame around the opening
-        for (const [ox, oz, w2, d2] of [[0, -1.95, 4.2, 0.3], [0, 1.95, 4.2, 0.3], [-1.95, 0, 0.3, 3.6], [1.95, 0, 0.3, 3.6]]) {
-          const fr = new THREE.Mesh(new THREE.BoxGeometry(w2, 0.08, d2), M('#f2c94c'));
-          fr.position.set(d.x + ox, gy, -(gz + oz));
-          env.add(fr);
+      const dl = d.z1 - d.z0, dh = d.y1 - d.y0, t = 0.15, cz = -(d.z0 + d.z1) / 2, cy = (d.y0 + d.y1) / 2;
+      const metal = new THREE.MeshLambertMaterial({ color: '#b4bcc2' });
+      const slab = (w, h, x, y) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, dl), metal); m.position.set(x, y, cz); env.add(m); };
+      slab(d.half * 2 + 2 * t, t, d.x, d.y1 + t / 2);            // roof
+      slab(d.half * 2 + 2 * t, t, d.x, d.y0 - t / 2);            // floor
+      slab(t, dh, d.x - d.half - t / 2, cy);                     // sides
+      slab(t, dh, d.x + d.half + t / 2, cy);
+      // Seams around the outside every few feet
+      for (let z = d.z0 + 4; z < d.z1 - 2; z += 6) {
+        for (const [w, h, x, y] of [[d.half * 2 + 0.5, 0.1, d.x, d.y1 + t + 0.03], [d.half * 2 + 0.5, 0.1, d.x, d.y0 - t - 0.03],
+          [0.1, dh + 0.5, d.x - d.half - t - 0.03, cy], [0.1, dh + 0.5, d.x + d.half + t + 0.03, cy]]) {
+          const sm = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.2), M('#7a8590'));
+          sm.position.set(x, y, -z); env.add(sm);
         }
-        // the grate itself, hinged open
-        const flap = new THREE.Group();
-        for (let i = -2; i <= 2; i++) flap.add(boxMesh(0.12, 0.05, 3.4, '#5b6266', i * 0.7, 0, 0));
-        flap.position.set(d.x - 1.8, gy, -gz);
-        flap.rotation.z = d.kind === 'ceil' ? -1.2 : 1.2;
-        env.add(flap);
+      }
+      // Hazard-striped rims on both open mouths
+      for (const mz of [d.z0, d.z1]) {
+        for (const [w, h, x, y] of [[d.half * 2 + 0.7, 0.3, d.x, d.y1 + 0.15], [d.half * 2 + 0.7, 0.3, d.x, d.y0 - 0.15],
+          [0.3, dh + 0.6, d.x - d.half - 0.2, cy], [0.3, dh + 0.6, d.x + d.half + 0.2, cy]]) {
+          const rim = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.3), M('#f2c94c'));
+          rim.position.set(x, y, -mz); env.add(rim);
+        }
+      }
+      // Hangers to the ceiling, or little stands on the floor
+      for (let z = d.z0 + 6; z < d.z1 - 3; z += 12) {
+        for (const sx of [-1, 1]) {
+          const x = d.x + sx * (d.half - 0.3);
+          const len2 = d.kind === 'ceil' ? H - d.y1 : d.y0;
+          const rod = new THREE.Mesh(new THREE.BoxGeometry(0.1, len2, 0.1), M('#5b6266'));
+          rod.position.set(x, d.kind === 'ceil' ? (d.y1 + H) / 2 : d.y0 / 2, -z); env.add(rod);
+        }
       }
     }
 
@@ -968,7 +1034,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   /* ----------------------------------------------------------- planes --- */
   function setPlanes(list) {
     for (const p of planes.values()) {
-      planeLayer.remove(p.root, p.shadow, p.trail, p.aim);
+      planeLayer.remove(p.root, p.shadow, p.trail, p.aim, ...p.slips.map(l => l.m));
     }
     planes.clear();
     for (const { seat, owned, rank } of list) {
@@ -987,8 +1053,9 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         dot.layers.set(1);
         aim.add(dot);
       }
-      planeLayer.add(root, shadow, trail, aim);
-      planes.set(seat, { root, shadow, trail, trailPts, aim, lastState: 'held' });
+      const slips = [makeSlipLine(), makeSlipLine()];
+      planeLayer.add(root, shadow, trail, aim, ...slips.map(l => l.m));
+      planes.set(seat, { root, shadow, trail, trailPts, aim, slips, boostT: 0, lastState: 'held' });
     }
   }
 
@@ -1122,6 +1189,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       p.shadow.position.set(p.root.position.x, 4.22, 2.4);
       p.trail.visible = false;
       p.aim.visible = false;
+      p.slips.forEach(l => { l.pts.length = 0; l.m.visible = false; });
     });
     const sway = Math.sin(showcaseState.t * 0.4) * 1.5;
     aimCamera(dt, tmp.set(sway, 7.6, 10.4), new THREE.Vector3(0, 7.9, 2.4), 3);
@@ -1302,6 +1370,17 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       trail.count = n;
       trail.instanceMatrix.needsUpdate = true;
 
+      // Slipstream doodle lines off the wing tips during a trick boost
+      const flying = p.state === 'fly' && !crumpled;
+      v.boostT = flying ? Math.max(0, (v.boostT || 0) - dt) : 0;
+      root.updateMatrixWorld();
+      const boil = Math.floor(time * 6);
+      v.slips.forEach((line, i) => {
+        _tip.copy(root.userData.tips[i]);
+        root.userData.body.localToWorld(_tip);
+        updateSlipLine(line, v.boostT > 0, _tip, dt, boil);
+      });
+
       const sy = supportBelow(p.x, p.y, p.z);
       shadow.position.set(p.x, sy + 0.04, -p.z);
       const hgt = Math.max(0, p.y - sy);
@@ -1330,5 +1409,5 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   resize();
   window.addEventListener('resize', resize);
 
-  return { setFloor, setPlanes, frame, burst, confetti, gust, ring, hitPlane, punch, setSepia, shake, project, resize, get floor() { return floor; } };
+  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, setSepia, shake, project, resize, get floor() { return floor; } };
 }
