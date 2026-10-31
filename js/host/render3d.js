@@ -1110,11 +1110,21 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         root.position.set(p.x, p.y + (crumpled ? 0.25 : 0), -p.z);
         if (crumpled) root.rotation.set(p.pitch, -p.yaw, p.roll, 'YXZ');
         else {
-          // Paper flutter: a little roll and pitch jitter that grows with speed
-          const fl = p.state === 'fly' && !reduceMotion ? Math.min(1, p.v / 14) : 0;
+          // Paper flutter. A healthy plane at speed flies rock-steady; the
+          // wobble grows as it takes damage and as it slows toward a stall,
+          // so you can read trouble straight off the plane.
+          let fl = 0;
+          if (p.state === 'fly' && !reduceMotion) {
+            const hurt = 1 - Math.max(0, p.hp) / (p.maxHp || 100);      // 0 healthy .. 1 nearly crumpled
+            const slow = Math.max(0, Math.min(1, (8.5 - p.v) / 4));     // starts below 8.5, full by ~4.5
+            fl = Math.min(1.6, hurt * hurt * 1.4 + slow * 1.1);
+          }
+          // Two frequencies so it reads as paper shaking, not a smooth sway
+          const shakeP = (Math.sin(time * 23 + p.seat * 3) + 0.5 * Math.sin(time * 41 + p.seat)) * 0.04 * fl;
+          const shakeR = (Math.sin(time * 17 + p.seat) + 0.6 * Math.sin(time * 37 + p.seat * 2)) * 0.09 * fl;
           root.rotation.set(
-            (p.state === 'slide' || p.state === 'landed' ? 0 : p.pitch) + Math.sin(time * 23 + p.seat * 3) * 0.025 * fl,
-            -p.yaw, -p.roll + Math.sin(time * 17 + p.seat) * 0.05 * fl, 'YXZ');
+            (p.state === 'slide' || p.state === 'landed' ? 0 : p.pitch) + shakeP,
+            -p.yaw + shakeR * 0.3, -p.roll + shakeR, 'YXZ');
         }
       }
       const w = wobble.get(p.seat) || 0;

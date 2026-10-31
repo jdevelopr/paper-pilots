@@ -56,6 +56,7 @@ export function createRace(floor, players) {
       clips: 0,
       thrownAt: null, landedAt: null,
       zone: null, dist: 0, maxZ: 0,
+      tr: newTricks(),
     };
   });
   const clips = floor.clips.map(c => ({ ...c, taken: -1 }));
@@ -122,6 +123,77 @@ export function stepRace(race, dt = SIM.dt) {
   return race;
 }
 
+/* -------------------------------------------------------------- tricks --- */
+// Trick shots pay bonus paper clips. Every trick in one flight grows a combo
+// multiplier (x2, x3, up to x5); taking a hit breaks the chain. Bot look-ahead
+// copies set p.tr = null so predictions never score tricks.
+export const TRICKS = {
+  close:    { label: 'Close Call',        value: 1 },
+  doorway:  { label: 'Thread the Needle', value: 3 },
+  under:    { label: 'Under the Desk',    value: 2 },
+  drafts:   { label: 'Draft Chain',       value: 2 },
+  hallway:  { label: 'Clean Hallway',     value: 4 },
+  bullseye: { label: 'Bullseye',          value: 3 },
+  perch:    { label: 'Stuck It',          value: 4 },
+  bank:     { label: 'Bank Shot',         value: 3 },
+  clutch:   { label: 'Running on Fumes',  value: 3 },
+};
+// Chain multiplier per trick in a flight: x1, x1.5, x2, x2.5, x3 (cap).
+const chainMult = n => Math.min(3, 1 + 0.5 * (n - 1));
+// Repeatable tricks are capped per flight so one floor full of vents can't
+// outscore the landing zones.
+const PER_FLIGHT = { close: 3, drafts: 2, under: 3 };
+function newTricks() { return { list: [], chain: 0, clips: 0, vents: [], under: [], doors: [], hall: null }; }
+
+function trick(race, p, id) {
+  const tr = p.tr;
+  if (!tr) return;
+  const t = TRICKS[id];
+  if (PER_FLIGHT[id] && tr.list.filter(x => x.id === id).length >= PER_FLIGHT[id]) return;
+  tr.chain = Math.min(5, tr.chain + 1);
+  const mult = chainMult(tr.chain);
+  const clips = Math.round(t.value * mult);
+  tr.clips += clips;
+  tr.list.push({ id, label: t.label, value: t.value, mult, clips });
+  race.events.push({ name: 'trick', seat: p.seat, id, label: t.label, value: t.value, mult, clips, x: p.x, y: p.y, z: p.z });
+}
+
+function flightTricks(race, p, px, py, pz) {
+  const tr = p.tr, f = race.floor;
+  if (!tr || p.state !== 'fly' || p.crumpled) return;
+  // Through a doorway, under the lintel
+  (f.doors || []).forEach((d, i) => {
+    if (tr.doors.includes(i)) return;
+    if (pz < d.z && p.z >= d.z && Math.abs(p.x - d.x) < d.w / 2 && p.y < d.h) { tr.doors.push(i); trick(race, p, 'doorway'); }
+  });
+  // Under a desk or table (not the launch desk)
+  (f.objects || []).forEach((o, i) => {
+    if ((o.type !== 'desk' && o.type !== 'table') || o.launch || tr.under.includes(i)) return;
+    if (p.y < o.h - 0.6 && Math.abs(p.x - o.x) < o.w / 2 && Math.abs(p.z - o.z) < o.d / 2) { tr.under.push(i); trick(race, p, 'under'); }
+  });
+  // Riding a second (third...) different vent in one flight
+  f.vents.forEach((v, i) => {
+    if (tr.vents.includes(i)) return;
+    if ((p.x - v.x) ** 2 + (p.z - v.z) ** 2 < v.r * v.r) { tr.vents.push(i); if (tr.vents.length === 2 || tr.vents.length === 4) trick(race, p, 'drafts'); }
+  });
+  // All the way down a hallway without touching anything
+  (f.halls || []).forEach(([zs, ze], i) => {
+    if (pz < zs && p.z >= zs) tr.hall = { i, hit: p.lastHit ?? -1 };
+    if (tr.hall && tr.hall.i === i && pz < ze && p.z >= ze) {
+      if ((p.lastHit ?? -1) === tr.hall.hit) trick(race, p, 'hallway');
+      tr.hall = null;
+    }
+  });
+}
+
+function landingTricks(race, p, zn) {
+  if (!p.tr || p.crumpled || !zn) return;
+  if (zn.w && Math.abs(p.x - zn.x) < zn.w * 0.18 && Math.abs(p.z - zn.z) < zn.d * 0.18) trick(race, p, 'bullseye');
+  if ((zn.y || 0) > 0.5) trick(race, p, 'perch');
+  if (p.lastHit != null && race.t - p.lastHit < 3) trick(race, p, 'bank');
+  if (p.hp <= p.maxHp * 0.25) trick(race, p, 'clutch');
+}
+
 export function stepPlane(race, p, dt) {
   const px = p.x, py = p.y, pz = p.z;
   if (p.state === 'fly') flyStep(race, p, dt);
@@ -130,6 +202,7 @@ export function stepPlane(race, p, dt) {
   if (p.state === 'landed') return;
   collide(race, p, px, py, pz);
   pickups(race, p);
+  flightTricks(race, p, px, py, pz);
   p.maxZ = Math.max(p.maxZ, p.z);
 }
 
@@ -251,6 +324,7 @@ function land(race, p) {
   p.dist = Math.max(0, p.z);
   p.zone = p.crumpled ? null : zoneAt(race.floor, p.x, p.y, p.z);
   race.events.push({ name: 'landed', seat: p.seat, zone: p.zone, crumpled: p.crumpled });
+  landingTricks(race, p, p.zone);
 }
 
 export function zoneAt(floor, x, y, z) {
@@ -262,7 +336,7 @@ export function zoneAt(floor, x, y, z) {
       if (!best || zn.tier > best.tier) best = zn;
     }
   }
-  return best ? { tier: best.tier, label: best.label, pay: best.pay } : null;
+  return best ? { tier: best.tier, label: best.label, pay: best.pay, x: best.x, z: best.z, w: best.w, d: best.d, y: best.y || 0 } : null;
 }
 
 function supportAt(floor, x, z, y) {
@@ -356,12 +430,15 @@ function collide(race, p, px, py, pz) {
   if (closeTo && p.lastHit !== race.t && p.state === 'fly') {
     p.lastClose = race.t;
     race.events.push({ name: 'close', seat: p.seat, x: p.x, y: p.y, z: p.z });
+    if (race.t > 1.5) trick(race, p, 'close');
   }
 }
 
 function damage(race, p, impact, kind) {
   if (p.crumpled) return;
   p.lastHit = race.t;
+  if (p.tr && p.tr.chain > 1) race.events.push({ name: 'chainbreak', seat: p.seat, chain: p.tr.chain });
+  if (p.tr) p.tr.chain = 0;
   const dmg = Math.max(0, impact - 2.5) * 5.2 * p.st.dmg;
   if (dmg <= 0) return;
   p.hp = Math.max(0, p.hp - dmg);
@@ -403,6 +480,7 @@ export function standings(race) {
     .map(p => ({
       seat: p.seat, zone: p.zone, crumpled: p.crumpled,
       dist: Math.round(p.dist * 10) / 10, clips: p.clips, landedAt: p.landedAt,
+      clean: !p.crumpled && p.hp >= p.maxHp, tricks: p.tr ? p.tr.list : [], trickClips: p.tr ? p.tr.clips : 0,
     }))
     .sort((a, b) =>
       (a.crumpled - b.crumpled) ||

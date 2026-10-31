@@ -260,6 +260,22 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           if (!solo || e.seat === 0) renderer.punch(e.dir === 'down' ? 5 : 3);
           sendTo(e.seat, 'fx', { kind: 'gust' });
           break;
+        case 'trick': {
+          // Big hand-lettered callout by the plane; the multiplier grows the stamp
+          sfx.trick(e.mult);
+          const s = renderer.project(e.x, e.y + 1.4, e.z);
+          hud.trick(s.visible ? s : null, nameOf(e.seat), e.label, e.clips, e.mult, colorFor(e.seat));
+          if (p) renderer.confetti(p.x, p.y, p.z, [colorFor(e.seat), '#f2c94c', '#f6efdc'], 6 + e.mult * 4);
+          if (!solo || e.seat === 0) renderer.punch(2 + e.mult);
+          sendTo(e.seat, 'fx', { kind: 'trick', label: e.label, clips: e.clips, mult: e.mult });
+          break;
+        }
+        case 'chainbreak': {
+          const s = p ? renderer.project(p.x, p.y + 1, p.z) : null;
+          if (s?.visible) hud.floater(s.x, s.y, `Chain broken (x${e.chain})`, 'dmg');
+          sendTo(e.seat, 'fx', { kind: 'chainbreak', chain: e.chain });
+          break;
+        }
         case 'touch':
           sfx.land();
           if (p) renderer.burst(p.x, p.y, p.z, '#e9dcbc', 9, 2);
@@ -267,8 +283,6 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         case 'close': {
           if (race.t < 1.5) break;
           sfx.close();
-          const s = renderer.project(e.x, e.y + 1, e.z);
-          if (s.visible) hud.floater(s.x, s.y, 'Close call!', 'close');
           if (!solo || e.seat === 0) renderer.punch(4);
           sendTo(e.seat, 'fx', { kind: 'close' });
           break;
@@ -301,7 +315,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       sendTo(h.seat, 'me', {
         seat: h.seat, name: pl.name, clips: pl.clips, points: pl.points, owned: pl.owned,
         state: p?.state ?? 'none', hp: p ? Math.round(p.hp) : 0, maxHp: p?.maxHp ?? 100,
-        run: p?.clips ?? 0, crumpled: !!p?.crumpled, zone: p?.zone ?? null,
+        run: (p?.clips ?? 0) + (p?.tr?.clips ?? 0), chain: p?.tr?.chain ?? 0, crumpled: !!p?.crumpled, zone: p?.zone ?? null,
         dist: p ? Math.round(p.z) : 0, best: Math.round(pl.best[currentFloor(match).id] ?? 0),
         rank: rankOf(pl.career),
       });

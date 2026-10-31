@@ -182,6 +182,19 @@ export function createHud(root) {
   }
   function photoEnd() { fx.innerHTML = ''; }
 
+  // Trick callout: hand-lettered name + bonus, stamped near the plane (or in
+  // a column on the right if the plane is off-screen). Bigger with the combo.
+  function trick(at, name, label, clips, mult, color) {
+    const el = document.createElement('div');
+    el.className = `trick m${Math.min(mult, 5)}`;
+    el.style.setProperty('--c', color);
+    el.innerHTML = `<b>${esc(label)}</b><span>+${clips}${mult > 1 ? ` <i>x${mult}</i>` : ''}</span>`;
+    if (at) { el.style.left = `${at.x}px`; el.style.top = `${at.y}px`; }
+    else { el.classList.add('edge'); }
+    floaters.appendChild(el);
+    setTimeout(() => el.remove(), 1700);
+  }
+
   function racerHit(seat) {
     const el = racerEls.get(seat);
     if (!el) return;
@@ -254,7 +267,8 @@ export function createHud(root) {
           <div class="pl">${r.place}</div>
           <div class="nm">${esc(r.name)}<div class="rk">${r.promoted ? `<b class="promo">Promoted: ${esc(r.promoted)}</b>` : esc(r.rank)}</div></div>
           <div class="zn">${r.crumpled ? 'Crumpled' : r.zone ? esc(r.zone) : `Missed (${Math.round(r.dist)} ft)`}
-            <div class="brk">${Math.round(r.dist)} ft${r.pb ? ' · <b class="pb">New best</b>' : ''} · zone ${r.earned.zone} · place ${r.earned.place} · pickups ${r.earned.pickup}</div></div>
+            <div class="brk">${Math.round(r.dist)} ft${r.pb ? ' · <b class="pb">New best</b>' : ''} · zone ${r.earned.zone} · place ${r.earned.place} · pickups ${r.earned.pickup}${r.earned.tricks ? ` · tricks ${r.earned.tricks}` : ''}${r.earned.streak ? ` · streak ${r.earned.streak}` : ''}</div>
+            ${r.zoneStreak >= 2 || r.cleanStreak >= 2 || r.trickList?.length ? `<div class="badges">${r.zoneStreak >= 2 ? `<span>Zone streak x${r.zoneStreak}</span>` : ''}${r.cleanStreak >= 2 ? `<span>Clean streak x${r.cleanStreak}</span>` : ''}${r.trickList?.length ? `<span class="tk">${r.trickList.length} trick${r.trickList.length > 1 ? 's' : ''}${Math.max(...r.trickList.map(t => t.mult)) > 1 ? `, best x${Math.max(...r.trickList.map(t => t.mult))}` : ''}</span>` : ''}</div>` : ''}</div>
           <div class="earn">+<span data-to="${r.earned.total}">0</span>${clipIcon}</div>
           <div class="pts">${plural(r.totalPoints, 'pt')}</div>
         </div>`).join('')}</div>`;
@@ -337,5 +351,5 @@ export function createHud(root) {
   function showRace() { race.hidden = false; boardWrap.hidden = true; intro.hidden = true; }
   function setHint(t) { hint.textContent = t || ''; }
 
-  return { setRace, update, setLeadChange, combo, flash, photoStart, photoReveal, photoEnd, racerHit, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
+  return { setRace, update, setLeadChange, combo, flash, photoStart, photoReveal, photoEnd, trick, racerHit, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
 }

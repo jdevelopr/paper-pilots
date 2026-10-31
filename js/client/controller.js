@@ -400,7 +400,8 @@ export function mountController(root, link, { solo = false } = {}) {
     const ord = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
     q('.r-place').textContent = ord[row.place - 1];
     q('.r-zone').textContent = `+${row.earned.total} clips · +${row.points} ${row.points === 1 ? 'pt' : 'pts'}`;
-    q('.r-brk').textContent = (row.crumpled ? 'Crumpled' : row.zone ? row.zone : 'Missed the zones') + (row.pb ? ' · New best' : '');
+    const extras = [row.pb ? 'New best' : '', row.earned.tricks ? `Tricks +${row.earned.tricks}` : '', row.zoneStreak >= 2 ? `Zone streak x${row.zoneStreak}` : '', row.cleanStreak >= 2 ? `Clean streak x${row.cleanStreak}` : ''].filter(Boolean);
+    q('.r-brk').textContent = [row.crumpled ? 'Crumpled' : row.zone ? row.zone : 'Missed the zones', ...extras].join(' · ');
     q('.r-promo').innerHTML = row.promoted ? `Promoted to ${esc(row.promoted)}<small>${esc(row.unlock || '')}</small>` : '';
     if (row.promoted) vibrate([30, 60, 30, 60, 120]);
   }
@@ -449,7 +450,8 @@ export function mountController(root, link, { solo = false } = {}) {
         break;
       case 'fx':
         if (['hit', 'clip', 'gust'].includes(d.kind)) phoneFlash(d.kind);
-        if (d.kind === 'close') phoneToast('Close call!');
+        if (d.kind === 'trick') { phoneToast(`${d.label} +${d.clips}${d.mult > 1 ? ` x${d.mult}` : ''}`); phoneFlash('clip'); vibrate([12, 30, 12, 30, 20 + d.mult * 10]); }
+        if (d.kind === 'chainbreak') phoneToast(`Chain broken`);
         if (d.kind === 'clip' && d.chain > 1) phoneToast(`x${d.chain}`);
         if (d.kind === 'close') vibrate([10, 25, 10]);
         if (d.kind === 'hit') { vibrate(Math.min(80, 20 + d.dmg * 2)); const h = q('.hpbar'); h.classList.remove('shake'); void h.offsetWidth; h.classList.add('shake'); }

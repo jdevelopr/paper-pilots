@@ -60,6 +60,7 @@ export const sfx = {
   shutter: () => { noise(0.05, { freq: 3000, q: 2, vol: 0.6 }); noise(0.08, { freq: 1500, q: 2, vol: 0.5, delay: 0.09 }); },
   drumroll: (secs = 2) => { for (let t = 0; t < secs; t += 0.06) noise(0.05, { freq: 250, q: 0.8, vol: 0.12 + 0.18 * (t / secs), delay: t }); },
   promo: () => [659, 784, 988, 1319].forEach((f, i) => tone(f, 0.25, { type: 'triangle', vol: 0.14, delay: i * 0.09 })),
+  trick: (mult = 1) => { const k = Math.pow(1.19, Math.min(mult, 5) - 1); [523, 659, 784].forEach((f, i) => tone(f * k, 0.16, { type: 'square', vol: 0.11, delay: i * 0.06 })); noise(0.25, { freq: 1800 * k, sweep: 2, q: 1, vol: 0.12 }); },
   land: () => noise(0.35, { freq: 1800, sweep: 0.3, vol: 0.25 }),
   zone: tier => [0, 1, 2].forEach(i => tone(523 * Math.pow(1.26, i + tier * 0.5), 0.2, { vol: 0.16, delay: i * 0.08 })),
   coin: () => tone(988, 0.08, { type: 'square', vol: 0.1 }),

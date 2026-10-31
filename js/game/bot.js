@@ -33,7 +33,7 @@ export function createBot(seat, skill, rng) {
 function estimateReach(bot, floor, p, aim) {
   const r = createRace(floor, [{ seat: p.seat, owned: [] }]);
   const q = r.planes[0];
-  q.st = p.st; q.hp = p.hp; q.maxHp = p.maxHp; q.x = p.x;
+  q.st = p.st; q.hp = p.hp; q.maxHp = p.maxHp; q.x = p.x; q.tr = null;
   throwPlane(r, p.seat, aim);
   const ghost = { ...bot, target: { x: laneX(floor, floor.length - 5), z: floor.length - 5, tier: -1 }, ways: [], nextPlan: Infinity, planY: 0 };
   const dt = 1 / 30;
@@ -94,7 +94,7 @@ function steerToward(q, tx, tz) {
 
 // Fly a copy of the plane forward with a fixed stick and see where it lands.
 function predict(race, p, yCmd, tx, tz) {
-  const q = { ...p };
+  const q = { ...p, tr: null };   // predictions don't score tricks
   const fake = { floor: race.floor, timeLimit: race.timeLimit, t: race.t, planes: [q], clips: [], events: [] };
   const dt = 1 / 30;
   for (let i = 0; i < 1500 && q.state !== 'landed'; i++) {

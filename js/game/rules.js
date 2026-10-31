@@ -23,7 +23,7 @@ export function createMatch(rounds = 5) {
 
 export function addPlayer(match, seat, name, bot = false) {
   if (!match.players[seat]) {
-    match.players[seat] = { seat, name, bot, clips: 0, points: 0, owned: [], wins: 0, history: [], career: 0, best: {} };
+    match.players[seat] = { seat, name, bot, clips: 0, points: 0, owned: [], wins: 0, history: [], career: 0, best: {}, zoneStreak: 0, cleanStreak: 0 };
   } else {
     match.players[seat].name = name;
   }
@@ -46,7 +46,18 @@ export function payout(match, standings) {
     const place = intact ? Math.round((PLACE_CLIPS[i] ?? 0) * mult) : 0;
     const points = intact ? (PLACE_POINTS[i] ?? 0) : 0;
     const pickup = s.clips;
-    const earned = zone + place + pickup;
+    const tricks = s.trickClips || 0;
+    // Streaks across races: landing in a zone again and again, and flying clean
+    // (no damage at all). The bonus grows with the streak and resets on a miss.
+    let streak = 0, zoneStreak = 0, cleanStreak = 0;
+    if (pl) {
+      pl.zoneStreak = intact && s.zone ? (pl.zoneStreak || 0) + 1 : 0;
+      pl.cleanStreak = s.clean ? (pl.cleanStreak || 0) + 1 : 0;
+      zoneStreak = pl.zoneStreak; cleanStreak = pl.cleanStreak;
+      if (zoneStreak >= 2) streak += Math.round(Math.min(10, 2 * (zoneStreak - 1)) * mult);
+      if (cleanStreak >= 2) streak += Math.round(Math.min(8, 2 * (cleanStreak - 1)) * mult);
+    }
+    const earned = zone + place + pickup + tricks + streak;
     let promoted = null, unlock = null, pb = false, best = 0;
     if (pl) {
       const before = rankOf(pl.career).level;
@@ -65,7 +76,8 @@ export function payout(match, standings) {
     return {
       seat: s.seat, name: pl?.name ?? '?', place: i + 1,
       zone: s.zone?.label ?? null, tier: s.zone?.tier ?? -1, crumpled: s.crumpled,
-      dist: s.dist, earned: { zone, place, pickup, total: earned }, points,
+      dist: s.dist, earned: { zone, place, pickup, tricks, streak, total: earned }, points,
+      trickList: s.tricks || [], zoneStreak, cleanStreak,
       totalPoints: pl?.points ?? 0, clips: pl?.clips ?? 0,
       rank: rankOf(pl?.career).title, promoted, unlock, pb, best: Math.round(best),
     };

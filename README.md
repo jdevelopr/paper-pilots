@@ -80,6 +80,30 @@ Computer rivals each commit to a path too, so their builds differ.
 
 Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nose clip and so on.
 
+### Trick shots and streaks
+
+Flashy flying pays **bonus paper clips**. These go to the shop and toward promotions, not race points. Each trick gets a big hand-lettered callout by the plane, and your phone shows it too.
+
+| Trick | Clips | How |
+|---|---|---|
+| Close Call | 1 | Skim past furniture at speed (max 3 per flight) |
+| Under the Desk | 2 | Fly under a desk or table (max 3) |
+| Draft Chain | 2 | Ride a 2nd, then a 4th different vent in one flight |
+| Thread the Needle | 3 | Fly through a hallway doorway, under the lintel |
+| Clean Hallway | 4 | Get all the way down a hallway without touching anything |
+| Bullseye | 3 | Land in the middle of a zone |
+| Stuck It | 4 | Land on a raised zone (desk, fridge, rack top) |
+| Bank Shot | 3 | Land in a zone within 3 s of bouncing off something |
+| Running on Fumes | 3 | Land in a zone with a quarter of your durability or less |
+
+**Combo:** tricks in the same flight chain together, with each one worth more than the last (x1, x1.5, x2, x2.5, then x3). Taking any hit breaks the chain.
+
+**Streaks** carry across races:
+- **Zone streak:** land in a zone race after race for +2, +4, +6... clips (up to +10).
+- **Clean streak:** finish races without taking any damage for +2, +4... (up to +8).
+
+Both are scaled by the floor's pay bonus and reset when you miss. The results board shows trick and streak earnings for everyone.
+
 ### Photo finish and game feel
 
 When the top two land in the same zone within 8 ft of each other, the race ends with a **photo finish**. The screen letterboxes, a "Photo finish" stamp drops, and the last couple of seconds replay in slow motion from a low side angle, tinted like an old photo. A camera flash then reveals a pinned photo naming the winner and the margin ("by a nose" if it's under a foot).
