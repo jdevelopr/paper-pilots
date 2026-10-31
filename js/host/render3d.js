@@ -124,17 +124,84 @@ function planeGeometry(owned) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
   g.setIndex(idx);
+  // UVs from the top-down footprint, so paper patterns lie flat across the wings.
+  const uv = [];
+  for (let i = 0; i < v.length; i += 3) uv.push(v[i] / (2 * S) + 0.5, v[i + 2] / (2 * L) + 0.5);
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.computeVertexNormals();
   return g;
 }
 
-function buildPlane(seat, owned) {
-  const color = new THREE.Color(colorFor(seat));
+/* ---------------------------------------------------- rank paper looks --- */
+// Every promotion changes what your plane is folded from. The pattern is a
+// near-white texture so the player's colour still tints it and stays readable.
+const PAPER_TEX = new Map();
+function paperTexture(rank) {
+  if (PAPER_TEX.has(rank)) return PAPER_TEX.get(rank);
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const x = c.getContext('2d');
+  const line = (style, w, fn) => { x.strokeStyle = style; x.lineWidth = w; x.beginPath(); fn(); x.stroke(); };
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 256, 256);
+  switch (rank) {
+    case 1: // lined notebook
+      line('rgba(70,120,200,.55)', 3, () => { for (let y = 20; y < 256; y += 26) { x.moveTo(0, y); x.lineTo(256, y); } });
+      line('rgba(210,60,60,.7)', 4, () => { x.moveTo(40, 0); x.lineTo(40, 256); });
+      break;
+    case 2: // graph paper
+      line('rgba(60,140,120,.45)', 2, () => { for (let i = 0; i <= 256; i += 16) { x.moveTo(i, 0); x.lineTo(i, 256); x.moveTo(0, i); x.lineTo(256, i); } });
+      line('rgba(60,140,120,.65)', 3, () => { for (let i = 0; i <= 256; i += 64) { x.moveTo(i, 0); x.lineTo(i, 256); x.moveTo(0, i); x.lineTo(256, i); } });
+      break;
+    case 3: // legal pad
+      x.fillStyle = '#fff3a8'; x.fillRect(0, 0, 256, 256);
+      line('rgba(90,130,200,.5)', 2.5, () => { for (let y = 18; y < 256; y += 22) { x.moveTo(0, y); x.lineTo(256, y); } });
+      line('rgba(200,50,50,.75)', 3, () => { x.moveTo(36, 0); x.lineTo(36, 256); x.moveTo(42, 0); x.lineTo(42, 256); });
+      break;
+    case 4: // kraft paper
+      x.fillStyle = '#e3c79a'; x.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(110,70,30,${Math.random() * 0.25})`; x.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 6, 1); }
+      break;
+    case 5: // blueprint
+      x.fillStyle = '#4f7fbf'; x.fillRect(0, 0, 256, 256);
+      line('rgba(255,255,255,.35)', 1.5, () => { for (let i = 0; i <= 256; i += 16) { x.moveTo(i, 0); x.lineTo(i, 256); x.moveTo(0, i); x.lineTo(256, i); } });
+      line('rgba(255,255,255,.85)', 3, () => { x.moveTo(30, 200); x.lineTo(128, 40); x.lineTo(226, 200); x.closePath(); x.moveTo(128, 40); x.lineTo(128, 220); });
+      break;
+    case 6: // silver foil
+    case 7: // gold foil
+      for (let y = 0; y < 256; y += 2) { x.fillStyle = `rgba(0,0,0,${0.04 + Math.random() * 0.06})`; x.fillRect(0, y, 256, 1); }
+      break;
+    default: return null;
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  PAPER_TEX.set(rank, t);
+  return t;
+}
+
+function paperMaterial(seat, owned, rank) {
+  const base = new THREE.Color(colorFor(seat));
+  if (owned.includes('cardstock')) base.multiplyScalar(0.9);
+  const map = paperTexture(rank);
+  const shiny = owned.includes('glossy') || owned.includes('laminated');
+  if (rank >= 6) {
+    // Foil: metallic, but keep a hint of the player's colour
+    const metal = new THREE.Color(rank === 7 ? '#e8b830' : '#d6dce3');
+    return new THREE.MeshPhongMaterial({
+      color: base.lerp(metal, rank === 7 ? 0.7 : 0.6), map, flatShading: true, side: THREE.DoubleSide,
+      shininess: 140, specular: rank === 7 ? 0xffe08a : 0xdddddd, emissive: rank === 7 ? 0x3a2800 : 0x1a1d22,
+    });
+  }
+  const color = map ? base.lerp(new THREE.Color('#ffffff'), rank === 5 ? 0.55 : 0.25) : base;
+  const opts = { color, map, flatShading: true, side: THREE.DoubleSide };
+  if (owned.includes('featherweight')) Object.assign(opts, { transparent: true, opacity: 0.82 });
+  return shiny
+    ? new THREE.MeshPhongMaterial({ ...opts, shininess: 90, specular: 0x777777 })
+    : new THREE.MeshLambertMaterial(opts);
+}
+
+function buildPlane(seat, owned, rank = 0) {
   const group = new THREE.Group();
-  const paperCol = owned.includes('cardstock') ? color.clone().multiplyScalar(0.9) : color;
-  const mat = owned.includes('glossy') || owned.includes('laminated')
-    ? new THREE.MeshPhongMaterial({ color: paperCol, flatShading: true, side: THREE.DoubleSide, shininess: 90, specular: 0x777777 })
-    : new THREE.MeshLambertMaterial({ color: paperCol, flatShading: true, side: THREE.DoubleSide, transparent: owned.includes('featherweight'), opacity: owned.includes('featherweight') ? 0.82 : 1 });
+  const mat = paperMaterial(seat, owned, rank);
   const body = new THREE.Mesh(planeGeometry(owned), mat);
   group.add(body);
 
@@ -731,8 +798,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       planeLayer.remove(p.root, p.shadow, p.trail, p.aim);
     }
     planes.clear();
-    for (const { seat, owned } of list) {
-      const root = buildPlane(seat, owned || []);
+    for (const { seat, owned, rank } of list) {
+      const root = buildPlane(seat, owned || [], rank || 0);
       const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.6, 10), shadowMat);
       shadow.rotation.x = -Math.PI / 2;
       shadow.layers.set(1);
