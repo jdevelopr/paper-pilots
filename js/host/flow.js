@@ -267,7 +267,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           hud.trick(s.visible ? s : null, nameOf(e.seat), e.label, e.clips, e.mult, colorFor(e.seat));
           if (p) renderer.confetti(p.x, p.y, p.z, [colorFor(e.seat), '#f2c94c', '#f6efdc'], 6 + e.mult * 4);
           if (!solo || e.seat === 0) renderer.punch(2 + e.mult + (e.boost ? 2 + e.boost : 0));
-          if (e.boost && p) { renderer.burst(p.x, p.y, p.z, '#f08a2c', 10 + Math.round(e.boost * 3), 3); sfx.gust('up'); }
+          if (e.boost && p) { renderer.burst(p.x, p.y, p.z, '#f08a2c', 10 + Math.round(e.boost * 3), 3); renderer.boost(e.seat, e.boost); sfx.gust('up'); }
           sendTo(e.seat, 'fx', { kind: 'trick', label: e.label, clips: e.clips, mult: e.mult, boost: e.boost });
           break;
         }

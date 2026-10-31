@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { createInk } from './ink.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM } from '../game/sim.js';
-import { moverAt } from '../game/floors.js';
+import { moverAt, groundAt, gapWind } from '../game/floors.js';
 
 const INK = '#2c2416';
 const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -483,6 +483,50 @@ function buildObject(o) {
       // Decorative posts at the sides of the opening (the walls do the colliding)
       for (const s of [-1, 1]) g.add(boxMesh(0.35, h, d + 0.25, '#6b5440', s * (w / 2 + 0.17), 0, 0));
       break;
+    /* ----- Rooftop gear ----- */
+    case 'parapet':
+      g.add(boxMesh(w, h, d, '#b8ad9a'));
+      g.add(boxMesh(w + 0.15, 0.15, d + 0.15, '#d8cfbf', 0, h, 0));
+      break;
+    case 'acunit': {
+      g.add(boxMesh(w, h, d, '#c9cdd1'));
+      for (let x = -w / 2 + 0.5; x < w / 2 - 0.3; x += 0.45) g.add(boxMesh(0.08, h * 0.6, 0.04, '#8a8f93', x, h * 0.2, d / 2 + 0.02));
+      const fan = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w, d) * 0.35, Math.min(w, d) * 0.35, 0.12, 12), M('#3b3f45'));
+      fan.position.y = h + 0.06; g.add(fan);
+      for (let i = 0; i < 3; i++) { const b = boxMesh(Math.min(w, d) * 0.6, 0.05, 0.25, '#8a8f93', 0, h + 0.12, 0); b.rotation.y = i * Math.PI / 3; g.add(b); }
+      break;
+    }
+    case 'watertower': {
+      const legH = h * 0.45, tankH = h * 0.42, r = w / 2;
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(boxMesh(0.3, legH, 0.3, '#4a3b2c', sx * r * 0.65, 0, sz * r * 0.65));
+      g.add(boxMesh(w * 0.9, 0.12, 0.12, '#4a3b2c', 0, legH * 0.5, 0));
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(r, r, tankH, 14), M('#9a6b45'));
+      tank.position.y = legH + tankH / 2; g.add(tank);
+      for (const k of [0.25, 0.7]) { const band = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.05, r + 0.05, 0.15, 14), M('#4a3b2c')); band.position.y = legH + tankH * k; g.add(band); }
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 1.05, h - legH - tankH, 14), M('#5b4636'));
+      cap.position.y = legH + tankH + (h - legH - tankH) / 2; g.add(cap);
+      break;
+    }
+    case 'dish': {
+      g.add(boxMesh(0.3, h * 0.55, 0.3, '#8a8f93'));
+      const dish = new THREE.Mesh(new THREE.SphereGeometry(w / 2, 14, 6, 0, Math.PI * 2, 0, Math.PI / 3.2), new THREE.MeshLambertMaterial({ color: '#ecebe4', side: THREE.DoubleSide }));
+      dish.position.y = h * 0.62; dish.rotation.x = Math.PI / 2 + 0.6; g.add(dish);
+      g.add(boxMesh(0.08, 0.08, w * 0.45, '#5b6266', 0, h * 0.62, w * 0.2));
+      break;
+    }
+    case 'stack': {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, h, 10), M('#8a8f93'));
+      pipe.position.y = h / 2; g.add(pipe);
+      const hat = new THREE.Mesh(new THREE.ConeGeometry(w * 0.8, 0.5, 10), M('#5b6266'));
+      hat.position.y = h + 0.45; g.add(hat);
+      break;
+    }
+    case 'stairhut':
+      g.add(boxMesh(w, h, d, '#c9bfae'));
+      g.add(boxMesh(w + 0.5, 0.3, d + 0.5, '#8a7f6e', 0, h, 0));
+      g.add(boxMesh(1.8, 3.4, 0.12, '#6b5440', -w * 0.2, 0, d / 2 + 0.06));       // door, facing the launch
+      g.add(boxMesh(0.15, 0.15, 0.1, '#f2c94c', -w * 0.2 + 0.6, 1.6, d / 2 + 0.14));
+      break;
     default:
       g.add(boxMesh(w, h, d, '#999999'));
   }
@@ -569,6 +613,23 @@ function buildMover(m) {
         rotor.position.set(sx * 0.8, 0.5, sz * 0.8); g.add(rotor);
         spin.push({ o: rotor, axis: 'y', rate: 30 });
       }
+      break;
+    }
+    case 'pigeons': {
+      // A loose flock; wings flap (see the flap entries)
+      const spots = [[0, 0.7, 0], [-1.6, 0.4, 0.8], [1.5, 0.9, -0.6], [-0.7, 1.1, -1], [0.9, 0.2, 1], [-2.1, 0.9, -0.3]];
+      spots.forEach(([x, y, z], i) => {
+        const b = new THREE.Group(); b.position.set(x, y, z);
+        b.add(boxMesh(0.35, 0.3, 0.7, '#8a8f9a', 0, -0.15, 0));
+        b.add(boxMesh(0.25, 0.25, 0.25, '#6b7280', 0, 0.05, -0.4));
+        for (const sx of [-1, 1]) {
+          const wing = new THREE.Group(); wing.position.set(sx * 0.15, 0.05, 0);
+          wing.add(boxMesh(0.8, 0.04, 0.45, '#a3a8b2', sx * 0.4, 0, 0));
+          b.add(wing);
+          spin.push({ o: wing, axis: 'z', flap: 0.8 * sx, rate: 14 + i, ph: i });
+        }
+        g.add(b);
+      });
       break;
     }
     default:
@@ -744,6 +805,81 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   let shakeAmt = 0;
   const shake = m => { if (!reduceMotion) shakeAmt = Math.min(0.6, shakeAmt + m); };
 
+  /* ---------------------------------------------------------- rooftop --- */
+  // Building faces: rows of windows, a few lit
+  function facadeTexture(wall, cols, rows) {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+    const g = c.getContext('2d');
+    g.fillStyle = wall; g.fillRect(0, 0, 256, 256);
+    const cw = 256 / cols, rh = 256 / rows;
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+      g.fillStyle = Math.random() < 0.18 ? '#f4dc8a' : '#7f97a8';
+      g.fillRect(i * cw + cw * 0.2, j * rh + rh * 0.22, cw * 0.6, rh * 0.5);
+      g.strokeStyle = '#2c2416'; g.lineWidth = 2; g.strokeRect(i * cw + cw * 0.2, j * rh + rh * 0.22, cw * 0.6, rh * 0.5);
+    }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+  // One building: gravel roof on top, windowed walls down to the street
+  function building(x0, x1, z0, z1, top, bottom, wall, roofTex) {
+    const w = x1 - x0, d = z1 - z0, h = top - bottom;
+    const tex = facadeTexture(wall, 4, 4);
+    const sideTex = tex.clone(); sideTex.needsUpdate = true; sideTex.repeat.set(d / 14, h / 14);
+    const endTex = tex.clone(); endTex.needsUpdate = true; endTex.repeat.set(w / 14, h / 14);
+    const mSide = new THREE.MeshLambertMaterial({ map: sideTex }), mEnd = new THREE.MeshLambertMaterial({ map: endTex });
+    const roof = new THREE.MeshLambertMaterial({ map: roofTex });
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [mSide, mSide, roof, roof, mEnd, mEnd]);
+    m.position.set((x0 + x1) / 2, (top + bottom) / 2, -(z0 + z1) / 2);
+    env.add(m);
+    return m;
+  }
+  function buildRooftop(f, W, H, L, zBack) {
+    const g = f.gap, street = -g.depth;
+    const gravel = (len) => { const t = speckleTexture(f.carpet, '#3b3f45', 2600, 256, 0); t.repeat.set(W / 10, len / 10); return t; };
+    // The start building and the lower finish building
+    building(-W / 2 - 0.5, W / 2 + 0.5, -zBack - 20, g.z0, 0, street, '#c9bfae', gravel(g.z0 + zBack + 20));
+    building(-W / 2 - 0.5, W / 2 + 0.5, g.z1, L + 30, -g.drop, street, '#b9c3c9', gravel(L + 30 - g.z1));
+    // Roof access hut behind the launch desk (you came up the stairs)
+    env.add(boxMesh(12, 7, 6, '#c9bfae', 0, 0, zBack + 8));
+    env.add(boxMesh(13, 0.4, 7, '#8a7f6e', 0, 7, zBack + 8));
+    env.add(boxMesh(2.2, 4, 0.12, '#6b5440', 0, 0, zBack + 4.94));
+    // The city floor, so nothing floats
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), M('#a39e94'));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(0, street - 0.08, -L / 2); env.add(ground);
+    // The street far below: asphalt, kerbs, and a few parked cars
+    const asphalt = speckleTexture('#666a70', '#3b3f45', 3000, 256, 0); asphalt.repeat.set(30, (g.z1 - g.z0) / 10);
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(600, g.z1 - g.z0), new THREE.MeshLambertMaterial({ map: asphalt }));
+    road.rotation.x = -Math.PI / 2; road.position.set(0, street, -(g.z0 + g.z1) / 2); env.add(road);
+    for (const z of [g.z0 + 4, g.z1 - 4]) env.add(boxMesh(600, 0.4, 8, '#b7b2a8', 0, street, -z));
+    const carCols = ['#c1440e', '#1e4d6b', '#e0a526', '#3d6b52', '#efe6d0'];
+    for (let i = 0; i < 24; i++) {
+      const cz = g.z0 + 14 + ((i * 53) % Math.max(1, g.z1 - g.z0 - 28)), cx = ((i * 97) % 160) - 80;
+      env.add(boxMesh(4.2, 1.4, 2, carCols[i % 5], cx, street, -cz));
+      env.add(boxMesh(2.4, 0.9, 1.8, '#2f3338', cx - 0.3, street + 1.4, -cz));
+    }
+    // Neighbouring towers on both sides and beyond the end
+    const sky = ['#9fb3c4', '#b6c4cf', '#8ea3b5', '#c3cdd5', '#a9b7c2'];
+    for (let i = 0; i < 70; i++) {
+      const side = i % 2 ? 1 : -1, bw = 18 + ((i * 13) % 22), bh = 30 + ((i * 37) % 70);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bw), M(sky[i % 5]));
+      b.position.set(side * (W / 2 + 40 + ((i * 29) % 90)), street + bh / 2, -(-60 + i * ((L + 200) / 70)));
+      b.layers.set(1); env.add(b);
+    }
+    for (let i = 0; i < 9; i++) {
+      const bw = 26 + ((i * 11) % 20), bh = 40 + ((i * 31) % 60);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bw), M(sky[i % 5]));
+      b.position.set(-140 + i * 35, street + bh / 2, -(L + 90 + (i % 3) * 30)); b.layers.set(1); env.add(b);
+    }
+    // Wind in the gap: crosswind streaks, and gust streaks below the roofline
+    const streaks = [];
+    for (let i = 0; i < 70; i++) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.07), streakMat);
+      m.layers.set(1); env.add(m);
+      streaks.push({ m, t: Math.random(), y: -16 + Math.random() * 22, z: g.z0 + Math.random() * (g.z1 - g.z0), x: (Math.random() - 0.5) * W });
+    }
+    anims.gap = { g, W, streaks };
+  }
+
   /* ------------------------------------------------------------ floor --- */
   function setFloor(f) {
     floor = f;
@@ -755,17 +891,36 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     env = new THREE.Group();
     scene.add(env);
     for (const k in anims) anims[k] = [];
-    anims.outside = null;
+    anims.outside = null; anims.gap = null;
 
     const W = f.width, H = f.height, L = f.length;
     const zBack = 24, zEnd = L;
     const len = zEnd + zBack;
     const midZ = -(zEnd - zBack) / 2;
 
+    if (f.open) buildRooftop(f, W, H, L, zBack);
+    else {
     // Carpet
     const carpetTex = speckleTexture(f.carpet, '#2c2416', 2200, 256, 2);
     carpetTex.repeat.set(W / 8, len / 8);
-    const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(W, len), new THREE.MeshLambertMaterial({ map: carpetTex }));
+    // Duct holes are cut right through the floor / ceiling
+    const holes = kind => (f.ducts || []).filter(d => d.kind === kind).flatMap(d => [d.ez, d.xz].map(gz => ({ x: d.x, z: gz, hx: d.half, hz: d.hole })));
+    const holedPlane = (hs, toY) => {
+      if (!hs.length) return new THREE.PlaneGeometry(W, len);
+      const sh = new THREE.Shape();
+      sh.moveTo(-W / 2, -len / 2); sh.lineTo(W / 2, -len / 2); sh.lineTo(W / 2, len / 2); sh.lineTo(-W / 2, len / 2); sh.closePath();
+      for (const h of hs) {
+        const y = toY(h.z), hp = new THREE.Path();
+        hp.moveTo(h.x - h.hx, y - h.hz); hp.lineTo(h.x - h.hx, y + h.hz); hp.lineTo(h.x + h.hx, y + h.hz); hp.lineTo(h.x + h.hx, y - h.hz); hp.closePath();
+        sh.holes.push(hp);
+      }
+      const g = new THREE.ShapeGeometry(sh);
+      // ShapeGeometry UVs are in world units; remap to 0..1 like a PlaneGeometry
+      const uv = g.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + W / 2) / W, (uv.getY(i) + len / 2) / len);
+      return g;
+    };
+    const floorMesh = new THREE.Mesh(holedPlane(holes('floor'), gz => midZ + gz), new THREE.MeshLambertMaterial({ map: carpetTex }));
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.set(0, 0, midZ);
     env.add(floorMesh);
@@ -773,13 +928,13 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     // Ceiling tiles with light panels
     const ceilTex = speckleTexture('#efe9dc', '#8a7a62', 800, 128, 2);
     ceilTex.repeat.set(W / 4, len / 4);
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, len), new THREE.MeshBasicMaterial({ map: ceilTex, side: THREE.DoubleSide, color: '#e6dfcf' }));
+    const ceil = new THREE.Mesh(holedPlane(holes('ceil'), gz => -gz - midZ), new THREE.MeshBasicMaterial({ map: ceilTex, side: THREE.DoubleSide, color: '#e6dfcf' }));
     ceil.rotation.x = Math.PI / 2;
     ceil.position.set(0, H, midZ);
     env.add(ceil);
     for (let z = 0; z < L; z += 22) {
       for (const x of [-11, 11]) {
-        if ((f.ducts || []).some(d => d.kind === 'ceil' && Math.abs(d.x - x) < d.half + 3 && z + 8 > d.z0 - 2 && z + 8 < d.z1 + 2)) continue;
+        if (holes('ceil').some(h => Math.abs(h.x - x) < h.hx + 3.5 && Math.abs(h.z - (z + 8)) < h.hz + 2)) continue;
         const p = new THREE.Mesh(new THREE.BoxGeometry(5, 0.1, 2.4), new THREE.MeshBasicMaterial({ color: '#fffaf0' }));
         p.position.set(x, H - 0.05, -z - 8);
         env.add(p);
@@ -858,41 +1013,32 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       anims.outside = { s, W, depth: Lg.depth, streaks };
     }
 
-    // Ducts: an exposed square metal duct, open at both ends, hung under the
-    // ceiling or propped just off the floor. Built from four slabs so you can
-    // see straight down the tunnel from the mouth.
+    // Ducts: a metal tunnel above the ceiling or under the floor. The holes
+    // cut in the ceiling / floor show straight into it.
     for (const d of f.ducts || []) {
-      const dl = d.z1 - d.z0, dh = d.y1 - d.y0, t = 0.15, cz = -(d.z0 + d.z1) / 2, cy = (d.y0 + d.y1) / 2;
-      const metal = new THREE.MeshLambertMaterial({ color: '#b4bcc2' });
-      const slab = (w, h, x, y) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, dl), metal); m.position.set(x, y, cz); env.add(m); };
-      slab(d.half * 2 + 2 * t, t, d.x, d.y1 + t / 2);            // roof
-      slab(d.half * 2 + 2 * t, t, d.x, d.y0 - t / 2);            // floor
-      slab(t, dh, d.x - d.half - t / 2, cy);                     // sides
-      slab(t, dh, d.x + d.half + t / 2, cy);
-      // Seams around the outside every few feet
-      for (let z = d.z0 + 4; z < d.z1 - 2; z += 6) {
-        for (const [w, h, x, y] of [[d.half * 2 + 0.5, 0.1, d.x, d.y1 + t + 0.03], [d.half * 2 + 0.5, 0.1, d.x, d.y0 - t - 0.03],
-          [0.1, dh + 0.5, d.x - d.half - t - 0.03, cy], [0.1, dh + 0.5, d.x + d.half + t + 0.03, cy]]) {
-          const sm = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.2), M('#7a8590'));
-          sm.position.set(x, y, -z); env.add(sm);
-        }
+      const dl = d.z1 - d.z0, dh = d.y1 - d.y0;
+      const tube = new THREE.Mesh(new THREE.BoxGeometry(d.half * 2, dh, dl), new THREE.MeshLambertMaterial({ color: '#b4bcc2', side: THREE.BackSide }));
+      tube.position.set(d.x, (d.y0 + d.y1) / 2, -(d.z0 + d.z1) / 2);
+      env.add(tube);
+      for (let z = d.z0 + 3; z < d.z1; z += 5) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(d.half * 2 - 0.02, 0.1, 0.18), M('#7a8590'));
+        rib.position.set(d.x, d.kind === 'ceil' ? d.y1 - 0.06 : d.y0 + 0.06, -z);
+        env.add(rib);
       }
-      // Hazard-striped rims on both open mouths
-      for (const mz of [d.z0, d.z1]) {
-        for (const [w, h, x, y] of [[d.half * 2 + 0.7, 0.3, d.x, d.y1 + 0.15], [d.half * 2 + 0.7, 0.3, d.x, d.y0 - 0.15],
-          [0.3, dh + 0.6, d.x - d.half - 0.2, cy], [0.3, dh + 0.6, d.x + d.half + 0.2, cy]]) {
-          const rim = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.3), M('#f2c94c'));
-          rim.position.set(x, y, -mz); env.add(rim);
+      for (const gz of [d.ez, d.xz]) {
+        const gy = d.kind === 'ceil' ? H - 0.03 : 0.03;
+        // Hazard-yellow trim around the hole, flush with the ceiling / floor
+        for (const [ox, oz, w2, d2] of [[0, -d.hole - 0.15, d.half * 2 + 0.6, 0.3], [0, d.hole + 0.15, d.half * 2 + 0.6, 0.3],
+          [-d.half - 0.15, 0, 0.3, d.hole * 2], [d.half + 0.15, 0, 0.3, d.hole * 2]]) {
+          const fr = new THREE.Mesh(new THREE.BoxGeometry(w2, 0.06, d2), M('#f2c94c'));
+          fr.position.set(d.x + ox, gy, -(gz + oz));
+          env.add(fr);
         }
-      }
-      // Hangers to the ceiling, or little stands on the floor
-      for (let z = d.z0 + 6; z < d.z1 - 3; z += 12) {
-        for (const sx of [-1, 1]) {
-          const x = d.x + sx * (d.half - 0.3);
-          const len2 = d.kind === 'ceil' ? H - d.y1 : d.y0;
-          const rod = new THREE.Mesh(new THREE.BoxGeometry(0.1, len2, 0.1), M('#5b6266'));
-          rod.position.set(x, d.kind === 'ceil' ? (d.y1 + H) / 2 : d.y0 / 2, -z); env.add(rod);
-        }
+        // The removed grate, propped beside the hole
+        const g = new THREE.Group();
+        for (let i = -2; i <= 2; i++) g.add(boxMesh(0.12, 0.05, d.hole * 1.6, '#5b6266', i * 0.6, 0, 0));
+        g.position.set(d.x + d.half + 1.6, gy + (d.kind === 'ceil' ? -0.05 : 0.02), -gz);
+        env.add(g);
       }
     }
 
@@ -919,6 +1065,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     num.position.set(0, H * 0.7, zBack - 0.01);
     num.rotation.y = Math.PI;
     env.add(num);
+    }
 
     for (const o of f.objects) {
       const m = buildObject(o);
@@ -939,18 +1086,23 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
 
     // Floor vents: grate plus rising paper streaks
     for (const v of f.vents) {
-      const grate = new THREE.Mesh(new THREE.CylinderGeometry(v.r * 0.55, v.r * 0.55, 0.08, 10), M('#5b6266'));
-      grate.position.set(v.x, 0.04, -v.z);
-      env.add(grate);
-      for (let i = -2; i <= 2; i++) env.add(boxMesh(v.r * 1.0, 0.1, 0.12, '#2f3338', v.x, 0.04, -v.z + i * v.r * 0.18));
+      const base = v.y0 ?? 0;
+      // Gap thermals rise from the street with no grate; AC exhausts blow out of the unit's own fan
+      if (!v.gap && !v.ac) {
+        const grate = new THREE.Mesh(new THREE.CylinderGeometry(v.r * 0.55, v.r * 0.55, 0.08, 10), M('#5b6266'));
+        grate.position.set(v.x, base + 0.04, -v.z);
+        env.add(grate);
+        for (let i = -2; i <= 2; i++) env.add(boxMesh(v.r * 1.0, 0.1, 0.12, '#2f3338', v.x, base + 0.04, -v.z + i * v.r * 0.18));
+      }
+      const y0 = v.gap ? -12 : base + 0.3, y1 = v.gap ? 14 : base + (f.open ? 14 : H * 0.85);
       const streaks = [];
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < (v.gap ? 26 : 16); i++) {
         const s = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.9), streakMat);
         s.layers.set(1);
         env.add(s);
-        streaks.push({ m: s, a: Math.random() * Math.PI * 2, r: Math.random() * v.r * 0.8, y: Math.random() * H * 0.85, sp: 3 + Math.random() * 3 });
+        streaks.push({ m: s, a: Math.random() * Math.PI * 2, r: Math.random() * v.r * 0.8, y: y0 + Math.random() * (y1 - y0), sp: 3 + Math.random() * 3 });
       }
-      anims.vents.push({ v, streaks });
+      anims.vents.push({ v, streaks, y0, y1 });
     }
     // Ceiling fans
     for (const fan of f.fans) {
@@ -1060,8 +1212,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   }
 
   function supportBelow(x, y, z) {
-    let best = 0;
     if (!floor) return 0;
+    let best = groundAt(floor, z);
     for (const b of floor.boxes) {
       if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && b.y1 <= y + 0.05 && b.y1 > best) best = b.y1;
     }
@@ -1101,7 +1253,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       k = 9;   // snap in: the tunnel is too tight for a lazy camera
     } else if (floor) {
       const outX = p.out && floor.ledge ? floor.ledge.depth + 1 : 0;
-      pos.y = Math.max(0.8, Math.min(pos.y, floor.height - 0.6));
+      const gnd = floor.gap ? Math.min(groundAt(floor, -pos.z), groundAt(floor, p.z)) : 0;
+      pos.y = Math.max(gnd + 0.8, Math.min(pos.y, floor.height - 0.6));
       const lo = -floor.width / 2 + 1 - (floor.ledge?.side < 0 ? outX : 0), hi = floor.width / 2 - 1 + (floor.ledge?.side > 0 ? outX : 0);
       pos.x = Math.max(lo, Math.min(hi, pos.x));
       pos.z = Math.min(pos.z, 22);
@@ -1120,8 +1273,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     const side = cx > 0 ? -1 : 1;                 // shoot from the roomier side
     const W = floor ? floor.width / 2 - 1.5 : 20;
     const dist = 8 + spread * 0.6;
-    const pos = new THREE.Vector3(Math.max(-W, Math.min(W, cx + side * dist)), Math.max(1.2, cy + 1.6), -(cz - 2 + Math.sin(time * 0.6) * 1.5));
-    const look = new THREE.Vector3(cx, Math.max(0.4, cy - 0.2), -cz);
+    const pos = new THREE.Vector3(Math.max(-W, Math.min(W, cx + side * dist)), Math.max((floor?.gap ? groundAt(floor, cz) : 0) + 1.2, cy + 1.6), -(cz - 2 + Math.sin(time * 0.6) * 1.5));
+    const look = new THREE.Vector3(cx, Math.max((floor?.gap ? groundAt(floor, cz) : 0) + 0.4, cy - 0.2), -cz);
     aimCamera(dt, pos, look, 2.2);
   }
 
@@ -1152,7 +1305,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       const minZ = Math.min(...set.map(p => p.z));
       const camZ = Math.min(cz - back, minZ - 6);
       pos = new THREE.Vector3(cx, cy + up + Math.max(0, (cz - back) - camZ) * 0.15, -camZ);
-      look = new THREE.Vector3(cx, Math.max(0.5, cy - 0.5), -(cz + (allDown ? 2 : 7)));
+      look = new THREE.Vector3(cx, Math.max((floor?.gap ? -floor.gap.depth : 0) + 0.5, cy - 0.5), -(cz + (allDown ? 2 : 7)));
     }
     if (floor) {
       const anyOut = race.planes.some(q => q.out) && floor.ledge ? floor.ledge.depth + 1 : 0;
@@ -1232,9 +1385,20 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     for (const v of anims.vents) {
       for (const s of v.streaks) {
         s.y += s.sp * dt; s.a += dt * 1.5;
-        if (s.y > floor.height * 0.85) s.y = 0.3;
+        if (s.y > v.y1) s.y = v.y0;
         s.m.position.set(v.v.x + Math.cos(s.a) * s.r, s.y, -v.v.z + Math.sin(s.a) * s.r);
         s.m.lookAt(camera.position.x, s.y, camera.position.z);
+      }
+    }
+    if (anims.gap && floor?.gap) {
+      const w = gapWind(floor.gap, race ? race.t : time), G = anims.gap;
+      for (const st of G.streaks) {
+        // sideways with the crosswind, rising harder when a gust pulses below the roofline
+        st.x += w.side * floor.gap.cross * 4 * dt;
+        st.y += (st.y < 0 ? 1 + 7 * w.up : 0.6) * dt;
+        if (Math.abs(st.x) > G.W / 2 + 6 || st.y > 8) { st.x = (Math.random() - 0.5) * G.W; st.y = -16 + Math.random() * 6; }
+        st.m.position.set(st.x, st.y, -st.z);
+        st.m.lookAt(camera.position.x, st.y, camera.position.z);
       }
     }
     for (const bl of anims.blowers) {
@@ -1260,7 +1424,10 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     for (const a of anims.movers) {
       const c = moverAt(a.m, rt);
       a.g.position.set(c.x, c.y, -c.z);
-      for (const sp of a.spin) sp.o.rotation[sp.axis] += sp.rate * dt;
+      for (const sp of a.spin) {
+        if (sp.flap) sp.o.rotation[sp.axis] = Math.sin(time * sp.rate + sp.ph) * sp.flap;
+        else sp.o.rotation[sp.axis] += sp.rate * dt;
+      }
     }
     for (const c of anims.clips) {
       const taken = race && race.clips[c.i] && race.clips[c.i].taken >= 0;

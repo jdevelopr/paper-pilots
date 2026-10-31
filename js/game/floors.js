@@ -30,15 +30,21 @@ export function ringAt(zn, x, z) {
   return RINGS.findIndex(g => rr <= g.r);
 }
 
-// Floor 1 is 400 long; each floor above it is 25% longer than the one below.
-const BASE_LENGTH = 400, GROWTH = 1.25;
+// Floor 1 is 800 long; each floor above it is 25% longer than the one below.
+const BASE_LENGTH = 800, GROWTH = 1.25;
 
 // Where each tier's landing zone goes. Tier 0 always sits where a stock plane
 // with a plain throw can land (55-80 out). The others spread out along the rest
 // of the floor, ending near the far wall, so on long floors the far zones need
 // vents, a clean line through the hallways, and upgrades.
-function tierBand(tier, L) {
+function tierBand(tier, L, gap) {
   if (tier === 0) return [58, 78];
+  if (gap) {
+    // Rooftop: every zone past the first sits on the far roof
+    const near = gap.z1 + 22, far = L - 14;
+    const c = near + (far - near) * Math.pow((tier - 1) / 3, 1.1);
+    return [c - 10, Math.min(L - 10, c + 10)];
+  }
   const far = L * 0.92, near = 78;
   const c = near + (far - near) * Math.pow(tier / 4, 1.25);
   const half = Math.min(18, (far - near) * 0.05);
@@ -74,7 +80,24 @@ function tools(rng) {
 /* --------------------------------------------------------- collisions --- */
 
 const SOLID = new Set(['hallwall', 'lintel', 'counter', 'cubicle', 'pillar', 'plant', 'cabinet', 'couch', 'cooler',
-  'printer', 'vending', 'fridge', 'rack', 'shelf', 'glass', 'crate', 'copier', 'tv']);
+  'printer', 'vending', 'fridge', 'rack', 'shelf', 'glass', 'crate', 'copier', 'tv',
+  'acunit', 'watertower', 'dish', 'stack', 'stairhut', 'parapet']);
+
+// Height of the ground under a point. Indoors that's always the floor (0).
+// On the Rooftop the run starts on one roof, crosses a gap down to the street
+// far below, and ends on a second, lower roof.
+// Gusts in the gap between the Rooftop's buildings, as a pure function of race
+// time so the sim, the bots' look-ahead and the renderer agree.
+//   up: 0..1 strength of the updraft pulse; side: -1..1 crosswind
+export function gapWind(gap, t) {
+  const u = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / gap.period);
+  return { up: u * u, side: Math.sin(2 * Math.PI * t / gap.crossPeriod) };
+}
+export function groundAt(f, z) {
+  const g = f.gap;
+  if (!g) return 0;
+  return z < g.z0 ? 0 : z < g.z1 ? -g.depth : -g.drop;
+}
 
 function boxesFor(o) {
   const hw = o.w / 2, hd = o.d / 2;
@@ -129,6 +152,8 @@ const M = {
   // Executive Suite: automatic sliding glass doors, and the CEO's camera drone
   slidedoor: (x, z, T, H) => ({ type: 'slidedoor', x, z, y: 0, w: T.r(6, 8), d: 0.4, h: H, axis: 'x', from: -T.r(5, 8), to: T.r(5, 8), period: T.r(4, 6) }),
   drone: (x, z, T) => ({ type: 'drone', x, z, y: T.r(5, 9), w: 2.2, d: 2.2, h: 0.7, axis: 'x', from: -T.r(9, 14), to: T.r(9, 14), period: T.r(3.5, 5) }),
+  // Rooftop: a flock of pigeons wheeling across the run (y is above the local ground)
+  pigeons: (x, z, T) => ({ type: 'pigeons', x, z, y: T.r(2.5, 8), w: 5, d: 3, h: 1.6, axis: 'x', from: -T.r(10, 16), to: T.r(10, 16), period: T.r(4.5, 7) }),
 };
 
 /* -------------------------------------------------------------- themes --- */
@@ -149,6 +174,12 @@ const F = {
   shelf: (x, z, T) => ({ type: 'shelf', x, z, w: T.r(6, 9), d: 2, h: T.pick([5, 6, 7]) }),
   crate: (x, z, T) => ({ type: 'crate', x, z, w: T.r(2.5, 4.5), d: T.r(2.5, 3.5), h: T.r(1.8, 3) }),
   rack: (x, z, T, d) => ({ type: 'rack', x, z, w: 3, d: d ?? T.r(16, 30), h: 9 }),
+  // Rooftop gear
+  acunit: (x, z, T) => ({ type: 'acunit', x, z, w: T.r(5, 7), d: T.r(3.5, 4.5), h: 2.8 }),
+  watertower: (x, z) => ({ type: 'watertower', x, z, w: 6, d: 6, h: 14 }),
+  dish: (x, z, T) => ({ type: 'dish', x, z, w: 3.2, d: 3.2, h: T.r(3.5, 4.5) }),
+  stack: (x, z, T) => ({ type: 'stack', x, z, w: 1.2, d: 1.2, h: T.r(5, 7.5) }),
+  stairhut: (x, z) => ({ type: 'stairhut', x, z, w: 7, d: 6, h: 5.5 }),
 };
 
 // A partition or glass wall across the floor with 1-2 random doorways.
@@ -268,6 +299,28 @@ export const THEMES = [
     vents: [3, 4], fans: [1, 2], blowers: [0, 0], hallways: 2, shortcuts: true,
     movers: [M.slidedoor, M.drone, M.drone], moverCount: [2, 3],
   },
+  {
+    // Open sky. The middle half of the run is the gap between two buildings:
+    // dive into it for clips and the gusts push you back up, but drop too far
+    // and you hit the far building or end up on the street.
+    id: 'rooftop', number: 6, name: 'Rooftop',
+    carpet: '#9a978f', wall: '#c9bfae', accent: '#c1440e', height: 26,
+    open: true, gap: { from: 0.25, to: 0.75, depth: 40, drop: 7 },
+    zoneNames: [['Roof Hatch', 'Gravel Patch'], ['Rooftop Garden', 'Picnic Table'], ['Sun Deck', 'Hot Tub'], ['Satellite Pad', 'Penthouse Patio'], ['Helipad', 'Sky Lounge']],
+    perches: [
+      { name: 'Stairwell Roof', make: (x, z) => F.stairhut(x, z), tiers: [3, 4] },
+      { name: 'AC Unit', make: (x, z, T) => F.acunit(x, z, T), tiers: [3] },
+    ],
+    rows: [
+      (z, W, T) => [F.acunit(T.r(-14, 14), z, T), ...(T.chance(0.5) ? [F.stack(T.r(-16, 16), z + T.r(3, 6), T)] : [])],
+      (z, W, T) => [F.watertower(T.pick([-1, 1]) * T.r(10, 15), z), F.dish(T.r(-8, 8), z + 4, T)],
+      (z, W, T) => scatter(z, W, T, [F.stack, F.dish, F.acunit], T.ri(2, 3)),
+      (z, W, T) => [F.stairhut(T.pick([-1, 1]) * T.r(8, 14), z)],
+    ],
+    rowGap: [22, 30],
+    vents: [1, 2], fans: [0, 0], blowers: [0, 0],
+    movers: [M.pigeons], moverCount: [3, 4],
+  },
 ];
 
 for (const t of THEMES) t.length = Math.round(BASE_LENGTH * GROWTH ** (t.number - 1));
@@ -283,6 +336,13 @@ export function generateFloor(theme, seed = 1) {
   const W = 44, H = theme.height, L = theme.length || 200;
   const k = L / 200;   // how many reference-length floors this is (content density)
   const many = ([a, b]) => T.ri(Math.round(a * k), Math.round(b * k));
+  const gap = theme.gap ? {
+    z0: L * theme.gap.from, z1: L * theme.gap.to, depth: theme.gap.depth, drop: theme.gap.drop,
+    // gusts between the buildings: updrafts pulse, the crosswind swings side to side
+    period: T.r(2.6, 3.4), cross: T.r(2.2, 3.2), crossPeriod: T.r(4.5, 6),
+  } : null;
+  const G = z => groundAt({ gap }, z);
+  const inGap = (z0, z1 = z0) => gap && z1 > gap.z0 - 3 && z0 < gap.z1 + 3;
 
   // The clear lane: random control points, linear in between.
   const ctrl = [[0, 0]];
@@ -294,7 +354,7 @@ export function generateFloor(theme, seed = 1) {
   /* Landing zones, one per tier */
   const zones = [];
   for (let tier = 0; tier < 5; tier++) {
-    const [b0, b1] = tierBand(tier, L);
+    const [b0, b1] = tierBand(tier, L, gap);
     const hosts = theme.perches.filter(p => (p.tiers || [3, 4]).includes(tier));
     const usePerch = tier >= 3 && hosts.length > 0 && T.chance(tier === 4 ? 0.5 : 0.6);
     for (let attempt = 0; attempt < 30; attempt++) {
@@ -304,12 +364,13 @@ export function generateFloor(theme, seed = 1) {
         const host = T.pick(hosts);
         const o = host.make(0, z, T);
         o.x = T.r(-W / 2 + o.w / 2 + 2, W / 2 - o.w / 2 - 2);
-        zn = { tier, label: host.name, x: o.x, z: o.z, w: o.w, d: o.d, y: o.h, pay: payFor(tier, theme), host: o };
+        o.y = G(z);
+        zn = { tier, label: host.name, x: o.x, z: o.z, w: o.w, d: o.d, y: o.y + o.h, perch: true, pay: payFor(tier, theme), host: o };
       } else {
         // Target mats (centre pays double)
         const w = Math.min(W - 6, 1.05 * (tier === 0 ? T.r(14, 18) : tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier));
         const d = 1.05 * (tier === 0 ? T.r(12, 16) : tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5);
-        zn = { tier, label: T.pick(theme.zoneNames[tier]), x: tier === 0 ? T.r(-6, 6) : T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: 0, pay: payFor(tier, theme) };
+        zn = { tier, label: T.pick(theme.zoneNames[tier]), x: tier === 0 ? T.r(-6, 6) : T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: G(z), pay: payFor(tier, theme) };
       }
       const clash = zones.some(o => Math.abs(o.x - zn.x) < (o.w + zn.w) / 2 + 1.5 && Math.abs(o.z - zn.z) < (o.d + zn.d) / 2 + 1.5);
       if (!clash || attempt === 29) { zones.push(zn); break; }
@@ -334,7 +395,7 @@ export function generateFloor(theme, seed = 1) {
     }
     gaps.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]));
     for (const [g0, g1] of gaps.slice(0, nHalls)) {
-      const len = Math.min(240, (g1 - g0) * T.r(0.75, 0.9));
+      const len = Math.min(190, (g1 - g0) * T.r(0.75, 0.9));
       const zs = g0 + T.r(0, g1 - g0 - len), ze = zs + len;
       const cw = T.r(12, 15);                    // corridor width
       // Each turn sidesteps 9-18 units; the open jog is long enough to make
@@ -410,20 +471,33 @@ export function generateFloor(theme, seed = 1) {
      Window run: fly out an open window, along the outside ledge in a crosswind
      that shoves you away from the building, and back in through a second open
      window farther down. Miss it and you're stuck outside (crumpled).
-     Duct run: an exposed, open-ended square duct running down the room, either
-     hung just under the ceiling (a vent in front lifts you up to its mouth) or
-     propped just above the floor. Fly in the open mouth, thread the tight
-     tunnel past the furniture and traffic below, and shoot out the far end.
+     Duct run: an open hole in the ceiling (ride the vent under it up) or in
+     the floor (dive into it) leads into a tight square duct that runs above
+     the ceiling / under the floor, skipping a hallway, and comes out another
+     open hole farther on.
      Scraping the duct walls costs durability; airflow speeds you along. */
   const windows = [], ducts = [];
   let ledge = null;
   if (theme.shortcuts) {
     const halls = [...hallSpans].sort((a, b) => a[0] - b[0]);
+    // Shortcuts keep a fixed length (150-200) however long the floor is.
+    // They skip a hallway when one fits, otherwise any clear stretch.
+    const SC = [150, 200];
+    const clearZ = z => z > 40 && z < L - 30 && !hallSpans.some(([a, b]) => z > a - 10 && z < b + 10);
     const pickStretch = (avoid) => {
-      const h = halls.find(x => x !== avoid);
-      if (h) return [h, Math.max(40, h[0] - T.r(6, 14)), Math.min(L - 30, h[1] + T.r(6, 14))];
-      const z0 = T.r(L * 0.15, L * 0.4);
-      return [null, z0, z0 + T.r(90, 130)];
+      for (const h of T.chance(0.5) ? halls : [...halls].reverse()) {
+        if (h === avoid || h[1] - h[0] + 12 > SC[1]) continue;
+        const len = T.r(Math.max(SC[0], h[1] - h[0] + 12), SC[1]), pad = (len - (h[1] - h[0])) / 2;
+        const z0 = h[0] - pad, z1 = h[1] + pad;
+        if (clearZ(z0) && clearZ(z1)) return [h, z0, z1];
+      }
+      for (let t = 0; t < 80; t++) {
+        const z0 = T.r(60, L - SC[1] - 40), z1 = z0 + T.r(SC[0], SC[1]);
+        if (avoid && z1 > avoid[0] - 20 && z0 < avoid[1] + 20) continue;
+        if (clearZ(z0) && clearZ(z1)) return [null, z0, z1];
+      }
+      const z0 = T.r(60, L - SC[1] - 40);
+      return [null, z0, z0 + SC[0]];
     };
     // Window run alongside one hallway
     const [hw, wz0, wz1] = pickStretch(null);
@@ -432,34 +506,40 @@ export function generateFloor(theme, seed = 1) {
     windows.push({ id: 'out', side, z: wz0, half: 3.6, y0: wy0, y1: wy1 });
     windows.push({ id: 'in', side, z: wz1, half: 3.6, y0: wy0, y1: wy1 });
     ledge = { side, z0: wz0 - 4, z1: wz1 + 4, depth: 9, wind: T.r(2.5, 3.6), sill: wy0 - 0.6 };
-    // Duct: an open stretch of room clear of hallways, the window run and zones
+    // Duct: a square duct hidden above the ceiling (or under the floor), with
+    // an open hole at each end. It skips a hallway when it can.
     const kind = T.pick(['ceil', 'floor']);
-    const half = 2.1, tall = 4.0;
-    const blocked = (z0, z1, x) =>
-      hallSpans.some(([a, b]) => z1 > a - 12 && z0 < b + 12) ||
-      (z1 > wz0 - 10 && z0 < wz1 + 10 && Math.abs(x - side * W / 2) < 16) ||
-      zones.some(zn => z1 > zn.z - zn.d / 2 - 6 && z0 < zn.z + zn.d / 2 + 6 && Math.abs(zn.x - x) < zn.w / 2 + half + 3);
-    for (let tries = 0; tries < 80 && !ducts.length; tries++) {
-      const dl = T.r(70, 110), z0 = T.r(60, L - dl - 40), z1 = z0 + dl;
-      const x = Math.max(-W / 2 + half + 3, Math.min(W / 2 - half - 3, laneX(z0) + T.r(-4, 4)));
-      if (blocked(z0, z1, x)) continue;
+    const half = 2.1, hole = 3.5, deep = 3.8;
+    const clearAt = (x, gz) =>
+      !hallSpans.some(([a, b]) => gz > a - hole - 4 && gz < b + hole + 4) &&
+      !windows.some(w => Math.abs(gz - w.z) < w.half + hole + 6 && Math.abs(x - w.side * W / 2) < 12) &&
+      !zones.some(zn => Math.abs(zn.z - gz) < zn.d / 2 + hole + 4 && Math.abs(zn.x - x) < zn.w / 2 + half + 4);
+    const tryDuct = (ez, xz) => {
+      if (ez < 50 || xz > L - 30) return;
+      const x = Math.max(-W / 2 + half + 3, Math.min(W / 2 - half - 3, laneX(ez)));
+      if (!clearAt(x, ez) || !clearAt(x, xz)) return;
       ducts.push(kind === 'ceil'
-        ? { kind, x, half, z0, z1, y0: H - 0.4 - tall, y1: H - 0.4, ez: z0, xz: z1 }
-        : { kind, x, half, z0, z1, y0: 0.6, y1: 0.6 + tall, ez: z0, xz: z1 });
+        ? { kind, x, half, hole, z0: ez - hole - 2.5, z1: xz + hole + 2.5, y0: H, y1: H + deep, ez, xz }
+        : { kind, x, half, hole, z0: ez - hole - 2.5, z1: xz + hole + 2.5, y0: -deep, y1: 0, ez, xz });
+    };
+    for (const h of halls.filter(h => h !== hw && h[1] - h[0] + 16 <= SC[1])) for (let t = 0; t < 8 && !ducts.length; t++) {
+      const len = T.r(Math.max(SC[0], h[1] - h[0] + 16), SC[1]), pad = (len - (h[1] - h[0])) / 2;
+      tryDuct(h[0] - pad, h[1] + pad);
     }
+    for (let t = 0; t < 120 && !ducts.length; t++) { const ez = T.r(60, L - SC[1] - 40); tryDuct(ez, ez + T.r(SC[0], SC[1])); }
   }
-  // Nothing may stand in the duct's way (or poke into it)
-  const inDuct = o => ducts.some(d => overlapsRect(o, d.x - d.half - 1.5, d.x + d.half + 1.5, d.z0 - 4, d.z1 + 1)
-    && (o.y || 0) < d.y1 + 0.5 && (o.y || 0) + o.h > d.y0 - 0.5);
-  const nearGrate = o => inDuct(o) || ducts.some(d => overlapsRect(o, d.x - d.half - 3, d.x + d.half + 3, d.z0 - 14, d.z0));
+  // Keep the duct holes clear
+  const nearGrate = o => ducts.some(d => [d.ez, d.xz].some(gz => overlapsRect(o, d.x - d.half - 3, d.x + d.half + 3, gz - d.hole - 3, gz + d.hole + 3)));
   const nearWindow = o => windows.some(w => (w.side > 0 ? o.x + o.w / 2 > W / 2 - 6 : o.x - o.w / 2 < -W / 2 + 6) && o.z + o.d / 2 > w.z - w.half - 3 && o.z - o.d / 2 < w.z + w.half + 3);
 
   /* Furniture rows down the floor */
   let objects = [];
   const [g0, g1] = theme.rowGap || [17, 25];
   for (let z = T.r(20, 28); z < L - 14; z += T.r(g0, g1)) objects.push(...T.pick(theme.rows)(z, W, T));
+  // Rooftop gear sits on whichever roof it's on, never out over the gap
+  if (gap) objects = objects.filter(o => !inGap(o.z - o.d / 2 - 4, o.z + o.d / 2 + 4)).map(o => ({ ...o, y: G(o.z) }));
   // Along-the-wall decor
-  for (let z = T.r(8, 20); z < L - 6; z += T.r(18, 32)) {
+  for (let z = T.r(8, 20); z < L - 6 && !gap; z += T.r(18, 32)) {
     const o = T.pick([F.plant, F.cabinet, F.shelf, F.cooler])(0, z, T);
     if (o.type === 'shelf') { o.w = 2; o.d = T.r(6, 10); }
     o.x = T.pick([-1, 1]) * (W / 2 - o.w / 2 - 0.3);
@@ -475,27 +555,38 @@ export function generateFloor(theme, seed = 1) {
     if (o.z - o.d / 2 < 16) return false;
     if (inHall(o)) return false;
     if (nearGrate(o) || nearWindow(o)) return false;
-    if (topOf(o) > TALL && inLane(o)) return false;
+    if (topOf(o) - G(o.z) > TALL && inLane(o)) return false;
     for (const zn of zones) if (overlapsRect(o, zn.x - zn.w / 2 - 1, zn.x + zn.w / 2 + 1, zn.z - zn.d / 2 - 1, zn.z + zn.d / 2 + 1)) return false;
     return true;
   });
   objects.push(...perched, ...hallObjs);
+  if (gap) {
+    // Knee-high parapets along the roof edges (the edges facing the gap are open)
+    const par = (x, z0, z1, y, w = 0.6) => objects.push({ type: 'parapet', x, z: (z0 + z1) / 2, w, d: z1 - z0, h: 1.2, y });
+    for (const sx of [-1, 1]) { par(sx * (W / 2 - 0.3), -4, gap.z0, 0); par(sx * (W / 2 - 0.3), gap.z1, L, -gap.drop); }
+    objects.push({ type: 'parapet', x: 0, z: L - 0.3, w: W, d: 0.6, h: 1.2, y: -gap.drop });
+  }
   objects.unshift({ type: 'desk', x: 0, z: -2.6, w: 13, d: 3, h: 4.2, launch: true });
   const boxes = objects.flatMap(boxesFor);
-  // The duct's metal body is solid from outside; the ends are open
-  for (const d of ducts) boxes.push({ x0: d.x - d.half - 0.15, x1: d.x + d.half + 0.15, y0: d.y0 - 0.15, y1: d.y1 + 0.15, z0: d.z0, z1: d.z1, type: 'duct' });
 
   const freeAt = (x, z, r) => boxes.every(b => x + r < b.x0 || x - r > b.x1 || z + r < b.z0 || z - r > b.z1);
   const solidAt = (x, y, z) => boxes.some(b => x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6 && y > b.y0 - 0.6 && y < b.y1 + 0.6);
 
   /* Air currents */
   const vents = [];
-  // A strong vent in front of a ceiling duct lifts you up to its mouth
-  for (const d of ducts) if (d.kind === 'ceil') vents.push({ x: d.x, z: d.z0 - 9, r: 3.4, s: 10, duct: true, top: (d.y0 + d.y1) / 2 });
-  const nVents = many(theme.vents);
+  // A strong vent right under a ceiling duct's hole carries you up into it
+  for (const d of ducts) if (d.kind === 'ceil') vents.push({ x: d.x, z: d.ez - 2, r: 3.6, s: 1 + H * 0.9, duct: true });
+  if (gap) {
+    // AC units blow their exhaust straight up
+    for (const o of objects) if (o.type === 'acunit') vents.push({ x: o.x, z: o.z, r: Math.min(o.w, o.d) / 2 + 1, s: T.r(6.5, 8), y0: o.y + o.h, ac: true });
+    // Rising air between the buildings: thermal columns along the lane
+    for (let z = gap.z0 + T.r(15, 30); z < gap.z1 - 15; z += T.r(45, 65)) vents.push({ x: laneX(z) + T.r(-3, 3), z, r: T.r(4, 5), s: T.r(7, 9), y0: -gap.depth, gap: true });
+  }
+  const nVents = many(theme.vents) + vents.length;
   for (let tries = 0; vents.length < nVents && tries < 300; tries++) {
     // The first two vents hug the lane so a good line always has lift on it.
-    const z = T.r(30, L * 0.75);
+    const z = gap ? T.r(30, L - 20) : T.r(30, L * 0.75);
+    if (inGap(z - 6, z + 6)) continue;
     const x = vents.length < 2 * k ? laneX(z) + T.r(-2.5, 2.5) : T.r(-W / 2 + 4, W / 2 - 4);
     const r = T.r(3, 4);
     if (Math.abs(x) > W / 2 - r - 0.5 || !freeAt(x, z, r + 0.5)) continue;
@@ -503,7 +594,7 @@ export function generateFloor(theme, seed = 1) {
     // Keep ordinary vents clear of the duct grates (and off the duct's path)
     if (ducts.some(d => Math.abs(x - d.x) < r + d.half + 3 && z > d.ez - r - 8 && z < d.xz + r + 8)) continue;
     if (zones.some(zn => Math.abs(zn.x - x) < zn.w / 2 + r && Math.abs(zn.z - z) < zn.d / 2 + r)) continue;
-    vents.push({ x, z, r, s: T.r(6.5, 9) });
+    vents.push({ x, z, r, s: T.r(6.5, 9), y0: G(z) });
   }
   vents.sort((a, b) => a.z - b.z);
 
@@ -530,6 +621,7 @@ export function generateFloor(theme, seed = 1) {
     for (let tries = 0; movers.length < want && tries < 200; tries++) {
       const z = T.r(30, L * 0.85);
       const m = T.pick(theme.movers)(laneX(z) + T.r(-2, 2), z, T, H);
+      if (gap && !inGap(z)) m.y += G(z);
       m.phase = rng();
       const sw = moverSweep(m);
       if (Math.abs(sw.x) + sw.w / 2 > W / 2 - 0.5) { m.x -= Math.sign(sw.x) * (Math.abs(sw.x) + sw.w / 2 - W / 2 + 0.5); }
@@ -540,6 +632,7 @@ export function generateFloor(theme, seed = 1) {
       if (zones.some(zn => overlapsRect(s2, zn.x - zn.w / 2 - 2, zn.x + zn.w / 2 + 2, zn.z - zn.d / 2 - 2, zn.z + zn.d / 2 + 2))) continue;
       if (movers.some(o => Math.abs(o.z - m.z) < 18)) continue;
       if (vents.some(v => Math.hypot(v.x - s2.x, v.z - s2.z) < v.r + 3 && m.axis !== 'y')) continue;
+      if (ducts.some(d => [d.ez, d.xz].some(gz => overlapsRect(s2, d.x - d.half - 4, d.x + d.half + 4, gz - d.hole - 8, gz + d.hole + 4)))) continue;
       movers.push(m);
     }
   }
@@ -547,10 +640,18 @@ export function generateFloor(theme, seed = 1) {
   /* Paper clips: columns over vents, runs along the lane, one bonus box */
   const clips = [];
   const addClip = (x, y, z, extra = {}) => {
-    if (solidAt(x, y, z) || y > H - 1 || y < 0.8 || Math.abs(x) > W / 2 - 1) return;
+    if (solidAt(x, y, z) || y > H - 1 || y < G(z) + 0.8 || Math.abs(x) > W / 2 - 1) return;
     clips.push({ x, y, z, ...extra });
   };
-  for (const v of vents) for (let i = 0; i < 3; i++) addClip(v.x, 7 + i * 2, v.z);
+  for (const v of vents) for (let i = 0; i < 3; i++) addClip(v.x, (v.gap ? 0 : v.y0 ?? 0) + (v.ac ? 3 : 7) + i * 2, v.z);
+  if (gap) {
+    // Down in the gap: clip arcs that dip below the roofline, for the brave
+    for (let z = gap.z0 + T.r(20, 40); z < gap.z1 - 30; z += T.r(50, 80)) {
+      const x0 = laneX(z) + T.r(-4, 4), deep = T.r(6, 13);
+      for (let i = 0; i <= 6; i++) addClip(x0, -2 - deep * Math.sin(Math.PI * i / 6), z + i * 3.2);
+      if (T.chance(0.4)) addClip(x0, -3 - deep, z + 9.6, { n: 5, big: true });
+    }
+  }
   // Shortcuts are paved with clips
   for (const d of ducts) {
     const mid = (d.y0 + d.y1) / 2;
@@ -566,11 +667,11 @@ export function generateFloor(theme, seed = 1) {
   const runs = many([3, 5]);
   for (let k = 0; k < runs; k++) {
     const z0 = T.r(10, L * 0.48), n = T.ri(3, 5), y = T.r(5, 7.5);
-    for (let i = 0; i < n; i++) addClip(laneX(z0 + i * 3), y - i * 0.2, z0 + i * 3);
+    for (let i = 0; i < n; i++) { const z = z0 + i * 3; addClip(laneX(z), y - i * 0.2 + (inGap(z) ? 0 : G(z)), z); }
   }
   for (let i = 0; i < Math.round(k); i++) {
     const bz = T.r(60, L * 0.7);
-    addClip(laneX(bz) + T.pick([-1, 1]) * T.r(4, 9), T.r(9, H - 2.5), bz, { n: 5, big: true });
+    addClip(laneX(bz) + T.pick([-1, 1]) * T.r(4, 9), T.r(9, H - 2.5) + (gap && !inGap(bz) ? G(bz) : 0), bz, { n: 5, big: true });
   }
 
   const tier4 = zones.find(z => z.tier === 4);
@@ -580,6 +681,7 @@ export function generateFloor(theme, seed = 1) {
     width: W, height: H, length: L, seed,
     stakes: `${tier4.label} pays ${tier4.pay}`,
     objects, boxes, vents, fans, blowers, zones, clips, movers,
+    open: !!theme.open, gap,   // Rooftop: open sky, and the gap between the buildings
     windows, ledge, ducts,   // shortcuts (floor 4+)
     halls: hallSpans,
     doors,              // doorways in the hallways (bots dip under the lintel)   // [zStart, zEnd] of each walled hallway

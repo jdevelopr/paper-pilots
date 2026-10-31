@@ -15,8 +15,9 @@ import { rankOf, RANK_UNLOCKS } from '../shared/ranks.js';
 
 // `rounds` is the number of floors. Each floor is raced RACES_PER_FLOOR times,
 // so match.floors holds one entry per race.
-export function createMatch(rounds = 5) {
-  const picked = rounds >= 5 ? FLOORS.slice() : [FLOORS[0], FLOORS[2], FLOORS[4]];
+export function createMatch(rounds = 6) {
+  // Every match finishes on the Rooftop. The short match: Lobby, Break Room, Rooftop.
+  const picked = rounds >= 5 ? FLOORS.slice() : [FLOORS[0], FLOORS[2], FLOORS[FLOORS.length - 1]];
   const floors = picked.flatMap(f => Array(RACES_PER_FLOOR).fill(f));
   return { round: 0, floors, players: {} };
 }

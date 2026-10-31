@@ -2,9 +2,9 @@
 
 A party game where up to 4 players race paper airplanes through an office building. One screen (a laptop or TV) shows the race. Everyone else plays on their phone by scanning a QR code.
 
-Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips. Floor 1 is 400 long and each floor above it is 25% longer (400 → 500 → 625 → 781 → 977). Planes fly the same on every floor, so the extra length is what you grow into.
+Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips. Floor 1 is 800 long and each floor above it is 25% longer (800 → 1,000 → 1,250 → 1,563 → 1,953 → 2,441). Planes fly the same on every floor, so the extra length is what you grow into.
 
-**Landing zones are spread along the whole floor.** The first zone always sits 58–78 out, where a stock plane with a controlled throw can land. The rest step out toward the far wall, so a fresh plane reaches the first one or two, and reaching the far zones takes vents, clean flying and upgrades. Higher floors pay more: zone and placement payouts are 25% bigger per floor (Floor 5 pays double).
+**Landing zones are spread along the whole floor.** The first zone always sits 58–78 out, where a stock plane with a controlled throw can land. The rest step out toward the far wall, so a fresh plane reaches the first one or two, and reaching the far zones takes vents, clean flying and upgrades. Higher floors pay more: zone and placement payouts are 25% bigger per floor (Floor 5 pays double, the Rooftop 2.25×).
 
 **Floor 2 and up** have moving obstacles: life-size office chairs and the mail cart in the Cubicle Farm, the snack trolley and a bouncing ball in the Break Room, a patrolling robot and a cable lift in the Server Room, and sliding glass doors and the CEO's camera drone in the Executive Suite.
 
@@ -91,9 +91,19 @@ Computer rivals each commit to a path too, so their builds differ.
 
 Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nose clip and so on.
 
+### The Rooftop (Floor 6, the finale)
+
+Every match ends up on the roof, under open sky. The middle half of the run isn't over a building at all: it's the gap down to the street between the start building and a second, lower building where the rest of the landing zones are.
+
+- **The first roof** has AC units (their exhaust fans blow updrafts), water towers, satellite dishes, vent stacks and stairwell huts, with knee-high parapets along the edges. The easy first zone is here, 58–78 out as always.
+- **The gap.** Rising air columns between the buildings (streaks coming up from the street) carry you across. A crosswind swings you left and right in slow pulses. Dive below the roofline for the paper clip arcs and bonus boxes down there, and gusts push you back up. Go deeper than the gusts reach and you're on your own: crash into the far building's wall, or end up on the street with no zone.
+- **The far roof** is 7 lower, so the jump is a glide down. Zones 2–5 are all here, including the Stairwell Roof and AC Unit perches.
+- **Pigeons.** Flocks wheel back and forth across the run, over both roofs and the gap.
+- At the edges of the roofs there's no wall, just a wall of wind that turns you back in without damage. The sky has no ceiling to scrape.
+
 ### Shortcuts (Floor 4 and up)
 
-The Server Room and Executive Suite each have two risky shortcuts. Both are lined with paper clips.
+The Server Room and Executive Suite each have two risky shortcuts. Both are lined with paper clips, and both stay 150–200 long however long the floor is.
 
 - **Window run.** One side wall has an open window (hazard tape on the sill) before one of the hallways, and a second open window after it. Fly out the first, ride the outside ledge past the hallway, and fly back in through the second. Outside, a crosswind shoves you away from the building, so you have to steer into it. Air rising up the facade holds you roughly level. Re-entering earns **Window Washer** (8 clips, part of the combo) and a speed burst. If you drift too far out, a wall of wind turns you back toward the building, with no damage. Drop too low or overshoot the re-entry window and you're **stuck outside**: crumpled, wedged on the ledge.
 - **Duct run.** An open hole with a yellow trim, its grate pulled off and set beside it, is cut into the ceiling (or the floor). It leads into a tight square air duct hidden above the ceiling (or under the floor) that usually skips right over a hallway. A ceiling hole has a strong vent under it that carries you up, and the duct's suction pulls you in once you're close. A floor hole you dive into. Inside, airflow speeds you along, but the duct is barely wider than your wings and every scrape costs durability. A second open hole farther on drops (or blows) you back into the room with a speed burst and **Duct Rat** (8 clips).
@@ -123,7 +133,7 @@ Flashy flying pays **bonus paper clips**. These go to the shop and toward promot
 | Zigzag | 2 | Flip your bank hard left/right 4 times within 3 s (max 2) |
 | Speed Demon | 3 | Hit top speed in a dive (once per flight) |
 | Stall Recovery | 3 | Stall out, then dive back to full speed without hitting anything (max 2) |
-| Hang Time | 4 | Stay airborne for a long time (scales with floor length) |
+| Hang Time | 4 | Stay airborne for a long time (floor length ÷ 26 seconds) |
 | Traffic Dodger | 3 | Skim past a moving obstacle (chair, cart) at speed (max 2) |
 | Clip Sweep | 3 | Grab 5 paper clips within 3 s (once per flight) |
 | Slipstream | 4 | Tuck in right behind a rival's plane, then pass them (max 2) |
@@ -152,7 +162,7 @@ With "reduce motion" on, the screen shake, field-of-view changes, wobble and fla
 
 ## Solo flight (no phone needed)
 
-On the home screen, click **Solo flight**. Pick 0–3 computer rivals and either 3 or 5 floors (9 or 15 races). The phone controller appears as a panel in the corner of the screen, and you can use it with the mouse or the keyboard. This is the quickest way to try out the gameplay.
+On the home screen, click **Solo flight**. Pick 0–3 computer rivals and either 3 or 6 floors (9 or 18 races). Both end on the Rooftop: the short match is Lobby, Break Room, Rooftop. The phone controller appears as a panel in the corner of the screen, and you can use it with the mouse or the keyboard. This is the quickest way to try out the gameplay.
 
 ## Run it locally
 
