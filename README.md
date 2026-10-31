@@ -10,7 +10,7 @@ Each floor of the building is raced **3 times** before the elevator goes up, and
 
 **Floor 3 and up** add **hallways**: floor-to-ceiling walled corridors (1 on the Break Room, 2 on the floors above) between landing zones. Each is a single path with S-bend turns and usually a doorway you have to duck under. No dead ends, no maze: just steering.
 
-**Career progression.** Every clip you earn counts toward a promotion: Intern → Temp → Associate → Supervisor → Manager → Director → VP → CEO. Your title shows on the host screen, promotions get announced after a race, and your phone shows how many clips you need for the next title. The game also tracks your personal-best distance on each floor and flags a new best.
+**Career progression.** Every clip you earn counts toward a promotion: Intern → Temp → Associate → Supervisor → Manager → Director → VP → CEO. The ladder gets steep: Temp takes 30 clips, Manager 280, Director 450, VP 700, and CEO 1,000. Early promotions come fast, but the top floors of the org chart take a near-perfect match. Your title shows on the host screen, promotions get announced after a race, and your phone shows how many clips you need for the next title. The game also tracks your personal-best distance on each floor and flags a new best.
 
 You throw your plane from the launch desk, then glide it the rest of the way. Paper planes can't fly forever, so you want to land in the best landing zone you can reach. Zones farther away pay more paper clips. Along the way you can grab clips floating in the air, ride the floor vents to gain height, stay away from the ceiling fans that push you down, and avoid crashing into the furniture.
 

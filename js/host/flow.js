@@ -69,7 +69,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     raceOverAt = null;
 
     renderer.setFloor(floor);
-    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
+    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
     hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title, best: match.players[seat].best[floor.id] ?? 0 })), `Race ${legOf(match)}/${RACES_PER_FLOOR}`);
 
     const ms = match.round === 0 ? INTRO_FIRST_MS : INTRO_MS;
@@ -249,7 +249,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     sfx.fanfare();
     hud.results(rows, layout, isLastRound(match), legOf(match), RACES_PER_FLOOR);
     const promos = rows.filter(r => r.promoted);
-    if (promos.length) later(1800, () => { sfx.fanfare(); hud.banner(promos.map(r => `${r.name} promoted to ${r.promoted}`).join(' · '), 3500); });
+    if (promos.length) later(1800, () => { sfx.fanfare(); hud.banner(promos.map(r => `${r.name} promoted to ${r.promoted}`).join(' · '), 3500);
+      if (promos.length === 1) later(3600, () => hud.banner(promos[0].unlock, 3000)); });
     hud.setHint('Enter to skip');
     broadcastPhase();
     sendMeAll();
@@ -267,11 +268,11 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     shopDone = new Set();
     for (const [seat, b] of bots) {
       const pl = match.players[seat];
-      for (const id of botShop(b.brain, pl.clips, pl.owned)) buy(match, seat, id);
+      for (const id of botShop(b.brain, pl.clips, pl.owned, rankOf(pl.career).level)) buy(match, seat, id);
       shopDone.add(seat);
     }
     startsAt = Date.now() + SHOP_MS;
-    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
+    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
     hud.setHint('');
     renderShop();
     broadcastPhase();
@@ -307,7 +308,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     setPhase('final');
     sfx.fanfare();
     hud.setHint('');
-    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
+    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
     hud.final(finalRows, {
       soloMenu: solo,
       onAgain: () => { if (solo) start(roundsWanted); else onExit?.('lobby'); },
@@ -329,7 +330,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         if (r.ok) {
           sfx.buy();
           sendTo(seat, 'fx', { kind: 'bought', id: m.id });
-          renderer.setPlanes(raceSeats.map(s => ({ seat: s, owned: match.players[s].owned })));
+          renderer.setPlanes(raceSeats.map(s => ({ seat: s, owned: match.players[s].owned, rank: rankOf(match.players[s].career).level })));
         } else sendTo(seat, 'fx', { kind: 'nope', reason: r.reason });
         renderShop();
         sendMeAll();

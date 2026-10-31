@@ -13,6 +13,8 @@
 //   basic at level 2, and picking one locks the other two along with their
 //   branch upgrades. Extras hang off particular basics.
 
+import { RANKS, RANK } from './ranks.js';
+
 export const MAX_LEVEL = 5;
 
 // Price of each level relative to the base cost.
@@ -122,7 +124,18 @@ export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 // Why an upgrade can or can't be bought right now. Shared by the host's rules,
 // the bots and the phone shop, so they always agree.
 //   { state: 'open'|'maxed'|'needs'|'lockedOut', cost, reason }
-export function upgradeState(owned = [], id) {
+// Promotion gates: the title needed to buy a given level (1-based) of an upgrade.
+const LEVEL_RANK = [0, 0, 0, RANK.Supervisor, RANK.Manager, RANK.Director];
+function rankNeeded(u, nextLevel) {
+  let need = LEVEL_RANK[nextLevel] || 0;
+  if (u.section === 'extra') need = Math.max(need, RANK.Temp);
+  if (u.section === 'spec') need = Math.max(need, u.parent ? RANK.Supervisor : RANK.Associate);
+  return need;
+}
+
+// `rank` is the buyer's career level (see ranks.js). Leave it out to ignore
+// promotion gates (e.g. when only checking the tree structure).
+export function upgradeState(owned = [], id, rank = Infinity) {
   const u = UPGRADE_BY_ID[id];
   if (!u) return { state: 'lockedOut', reason: 'Unknown upgrade' };
   const lv = levelOf(owned, id);
@@ -137,12 +150,14 @@ export function upgradeState(owned = [], id) {
   }
   const missing = u.req.find(([rid, rl]) => levelOf(owned, rid) < rl);
   if (missing) return { state: 'needs', level: lv, reason: `Needs ${UPGRADE_BY_ID[missing[0]].name} ${ROMAN[missing[1]]}` };
+  const need = rankNeeded(u, lv + 1);
+  if (rank < need) return { state: 'needs', level: lv, rankGate: need, reason: `${lv ? `Level ${ROMAN[lv + 1]} needs` : 'Needs'} ${RANKS[need].title} rank` };
   return { state: 'open', level: lv, cost: u.costs[lv] };
 }
 
 // Cost of the next level, or null when it can't be bought.
-export function nextCost(owned, id) {
-  const s = upgradeState(owned, id);
+export function nextCost(owned, id, rank = Infinity) {
+  const s = upgradeState(owned, id, rank);
   return s.state === 'open' ? s.cost : null;
 }
 

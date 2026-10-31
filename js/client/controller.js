@@ -7,6 +7,7 @@
 
 import { esc, clipIcon, planeIcon, vibrate, keepAwake } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
+import { RANK_UNLOCKS } from '../shared/ranks.js';
 import { statBars, levelOf, MAX_LEVEL, UPGRADES, UPGRADE_BY_ID, SECTIONS, upgradeState } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -292,7 +293,7 @@ export function mountController(root, link, { solo = false } = {}) {
     return out;
   }
   function renderShop(force) {
-    const key = JSON.stringify([me.clips, me.owned]);
+    const key = JSON.stringify([me.clips, me.owned, me.rank?.level]);
     if (!force && key === lastShopKey) return;
     lastShopKey = key;
     const bars = statBars(me.owned);
@@ -321,7 +322,7 @@ export function mountController(root, link, { solo = false } = {}) {
     }
     for (const el of list.querySelectorAll('.upg')) {
       const u = UPGRADE_BY_ID[el.dataset.id];
-      const st = upgradeState(me.owned, u.id);
+      const st = upgradeState(me.owned, u.id, me.rank?.level ?? 0);
       const lv = st.level ?? levelOf(me.owned, u.id);
       const maxed = st.state === 'maxed';
       const open = st.state === 'open';
@@ -384,6 +385,9 @@ export function mountController(root, link, { solo = false } = {}) {
     if (!rk) return;
     qa('.crank').forEach(el => {
       el.querySelector('.ck-t').textContent = rk.next ? `${rk.title} · ${rk.toNext} clips to ${rk.next}` : `${rk.title} · top of the org chart`;
+      let nx = el.querySelector('.ck-n');
+      if (!nx) { nx = document.createElement('small'); nx.className = 'ck-n'; el.appendChild(nx); }
+      nx.textContent = rk.next ? `Next: ${RANK_UNLOCKS[rk.level + 1]}` : '';
       el.querySelector('b').style.transform = `scaleX(${Math.max(0.03, Math.min(1, rk.progress))})`;
     });
   }
@@ -395,7 +399,7 @@ export function mountController(root, link, { solo = false } = {}) {
     q('.r-place').textContent = ord[row.place - 1];
     q('.r-zone').textContent = `+${row.earned.total} clips · +${row.points} ${row.points === 1 ? 'pt' : 'pts'}`;
     q('.r-brk').textContent = (row.crumpled ? 'Crumpled' : row.zone ? row.zone : 'Missed the zones') + (row.pb ? ' · New best' : '');
-    q('.r-promo').textContent = row.promoted ? `Promoted to ${row.promoted}` : '';
+    q('.r-promo').innerHTML = row.promoted ? `Promoted to ${esc(row.promoted)}<small>${esc(row.unlock || '')}</small>` : '';
     if (row.promoted) vibrate([30, 60, 30, 60, 120]);
   }
   function paintFinal() {

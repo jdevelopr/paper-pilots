@@ -192,7 +192,7 @@ const BUILD_PATHS = {
   Dart: ['rubberband', 'rubberband', 'dart', 'glossy', 'pencilnose', 'dart', 'jetstream', 'flaps', 'rudder', 'dart', 'glossy'],
   Tank: ['cardstock', 'tape', 'cardstock', 'laminated', 'bumpers', 'binder', 'laminated', 'paperweight', 'skids', 'widewings', 'tape'],
 };
-export function botShop(bot, clips, owned) {
+export function botShop(bot, clips, owned, rank = Infinity) {
   const path = Object.keys(BUILD_PATHS)[bot.seat % 3];
   const wish = BUILD_PATHS[path];
   const have = [...owned];
@@ -203,15 +203,15 @@ export function botShop(bot, clips, owned) {
   for (const id of wish) {
     want[id] = (want[id] || 0) + 1;
     if (levelOf(have, id) >= want[id]) continue;
-    const cost = nextCost(have, id);
+    const cost = nextCost(have, id, rank);
     if (cost == null) continue;
     if (cost > left) break;              // save up for it rather than skip ahead
     have.push(id); buys.push(id); left -= cost;
   }
   // Wish list done: keep levelling whatever on it is cheapest.
-  if (wish.every(id => nextCost(have, id) == null || levelOf(have, id) >= wish.filter(x => x === id).length)) {
+  if (wish.every(id => nextCost(have, id, rank) == null || levelOf(have, id) >= wish.filter(x => x === id).length)) {
     for (let n = 0; n < 3; n++) {
-      const opts = [...new Set(wish)].map(id => [id, nextCost(have, id)]).filter(([, c]) => c != null && c <= left).sort((a, b) => a[1] - b[1]);
+      const opts = [...new Set(wish)].map(id => [id, nextCost(have, id, rank)]).filter(([, c]) => c != null && c <= left).sort((a, b) => a[1] - b[1]);
       if (!opts.length) break;
       have.push(opts[0][0]); buys.push(opts[0][0]); left -= opts[0][1];
     }

@@ -9,20 +9,9 @@ export const SHOP_MS = 40000;
 
 export const RACES_PER_FLOOR = 3;
 
-// Career ladder. Every clip a pilot earns in a match counts toward promotion,
-// so everyone climbs the org chart as the building gets taller.
-export const RANKS = [
-  { title: 'Intern', at: 0 }, { title: 'Temp', at: 20 }, { title: 'Associate', at: 50 },
-  { title: 'Supervisor', at: 95 }, { title: 'Manager', at: 155 }, { title: 'Director', at: 230 },
-  { title: 'VP', at: 320 }, { title: 'CEO', at: 430 },
-];
-export function rankOf(career = 0) {
-  let i = 0;
-  while (i + 1 < RANKS.length && career >= RANKS[i + 1].at) i++;
-  const next = RANKS[i + 1];
-  return { level: i, title: RANKS[i].title, next: next ? next.title : null, toNext: next ? next.at - career : 0,
-    progress: next ? (career - RANKS[i].at) / (next.at - RANKS[i].at) : 1 };
-}
+// The career ladder lives in shared/ranks.js (the phone needs it too).
+export { RANKS, rankOf } from '../shared/ranks.js';
+import { rankOf, RANK_UNLOCKS } from '../shared/ranks.js';
 
 // `rounds` is the number of floors. Each floor is raced RACES_PER_FLOOR times,
 // so match.floors holds one entry per race.
@@ -58,12 +47,12 @@ export function payout(match, standings) {
     const points = intact ? (PLACE_POINTS[i] ?? 0) : 0;
     const pickup = s.clips;
     const earned = zone + place + pickup;
-    let promoted = null, pb = false, best = 0;
+    let promoted = null, unlock = null, pb = false, best = 0;
     if (pl) {
       const before = rankOf(pl.career).level;
       pl.career += earned;
       const after = rankOf(pl.career);
-      if (after.level > before) promoted = after.title;
+      if (after.level > before) { promoted = after.title; unlock = RANK_UNLOCKS[after.level]; }
       // Personal best distance on this floor (intact landings only)
       const prev = pl.best[floor.id] ?? 0;
       if (intact && s.dist > prev) { pb = prev > 0; pl.best[floor.id] = s.dist; }
@@ -78,7 +67,7 @@ export function payout(match, standings) {
       zone: s.zone?.label ?? null, tier: s.zone?.tier ?? -1, crumpled: s.crumpled,
       dist: s.dist, earned: { zone, place, pickup, total: earned }, points,
       totalPoints: pl?.points ?? 0, clips: pl?.clips ?? 0,
-      rank: rankOf(pl?.career).title, promoted, pb, best: Math.round(best),
+      rank: rankOf(pl?.career).title, promoted, unlock, pb, best: Math.round(best),
     };
   });
   return rows;
@@ -88,7 +77,7 @@ export function buy(match, seat, id) {
   const pl = match.players[seat];
   const up = UPGRADE_BY_ID[id];
   if (!pl || !up) return { ok: false, reason: 'Unknown upgrade' };
-  const st = upgradeState(pl.owned, id);
+  const st = upgradeState(pl.owned, id, rankOf(pl.career).level);
   if (st.state === 'maxed') return { ok: false, reason: 'Already maxed out' };
   if (st.state !== 'open') return { ok: false, reason: st.reason };
   const cost = st.cost;

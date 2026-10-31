@@ -584,3 +584,5 @@ body.solo .hint { right: auto; left: 18px; }
 .upg .pips { gap: 3px; }
 .upg .pips i { width: 9px; height: 9px; }
 .shopcard .path { min-height: 1.2em; font-family: var(--body); font-size: 18px; color: var(--blue); }
+.r-promo small { display: block; font-family: var(--body); font-size: 18px; font-weight: 400; color: var(--ink); }
+.crank .ck-n { font-size: 15px; opacity: .85; }
