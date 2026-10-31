@@ -139,13 +139,29 @@ export const TRICKS = {
   clutch:   { label: 'Running on Fumes',  value: 3 },
   window:   { label: 'Window Washer',     value: 8 },
   duct:     { label: 'Duct Rat',          value: 8 },
+  // Flying style
+  circle:   { label: 'Full Circle',       value: 4 },
+  ceiling:  { label: 'Ceiling Skim',      value: 3 },
+  carpet:   { label: 'Carpet Burner',     value: 3 },
+  zigzag:   { label: 'Zigzag',            value: 2 },
+  speed:    { label: 'Speed Demon',       value: 3 },
+  stall:    { label: 'Stall Recovery',    value: 3 },
+  hang:     { label: 'Hang Time',         value: 4 },
+  dodge:    { label: 'Traffic Dodger',    value: 3 },
+  sweep:    { label: 'Clip Sweep',        value: 3 },
+  slip:     { label: 'Slipstream',        value: 4 },
 };
 // Chain multiplier per trick in a flight: x1, x1.5, x2, x2.5, x3 (cap).
 const chainMult = n => Math.min(3, 1 + 0.5 * (n - 1));
 // Repeatable tricks are capped per flight so one floor full of vents can't
 // outscore the landing zones.
-const PER_FLIGHT = { close: 3, drafts: 2, under: 3 };
-function newTricks() { return { list: [], chain: 0, clips: 0, vents: [], under: [], doors: [], hall: null }; }
+const PER_FLIGHT = { close: 3, drafts: 2, under: 3, circle: 2, ceiling: 2, carpet: 2, zigzag: 2, speed: 1, stall: 2, hang: 1, dodge: 2, sweep: 1, slip: 2 };
+function newTricks() {
+  return {
+    list: [], chain: 0, clips: 0, vents: [], under: [], doors: [], hall: null,
+    turn: 0, turnSign: 0, ceilT: 0, lowT: 0, flips: [], rollSign: 0, stalledAt: null, clipTimes: [], behind: {},
+  };
+}
 
 function trick(race, p, id) {
   const tr = p.tr;
@@ -160,9 +176,10 @@ function trick(race, p, id) {
   race.events.push({ name: 'trick', seat: p.seat, id, label: t.label, value: t.value, mult, clips, x: p.x, y: p.y, z: p.z });
 }
 
-function flightTricks(race, p, px, py, pz) {
+function flightTricks(race, p, px, py, pz, dt, pyaw) {
   const tr = p.tr, f = race.floor;
   if (!tr || p.state !== 'fly' || p.crumpled || p.duct != null || p.out) return;
+  styleTricks(race, p, dt, pyaw);
   // Through a doorway, under the lintel
   (f.doors || []).forEach((d, i) => {
     if (tr.doors.includes(i)) return;
@@ -188,6 +205,59 @@ function flightTricks(race, p, px, py, pz) {
   });
 }
 
+// Flying-style tricks: things you do with the plane rather than places you go.
+function styleTricks(race, p, dt, pyaw) {
+  const tr = p.tr, f = race.floor, t = race.t;
+  const cleanSince = at => (p.lastHit ?? -99) < at;     // no hit since time `at`
+
+  // Full Circle: turn (very nearly) all the way around in one direction without straightening out
+  const dy = Math.atan2(Math.sin(p.yaw - pyaw), Math.cos(p.yaw - pyaw));
+  const sg = Math.sign(dy);
+  if (Math.abs(p.roll) < 0.25 || (sg && sg !== tr.turnSign)) { tr.turn = 0; tr.turnSign = sg; }
+  tr.turn += Math.abs(dy);
+  if (tr.turn >= Math.PI * 1.7) { tr.turn = 0; trick(race, p, 'circle'); }
+
+  // Ceiling Skim: hug the ceiling for 2 s without touching it
+  tr.ceilT = p.y > f.height - 1.4 && cleanSince(t - 2) ? tr.ceilT + dt : 0;
+  if (tr.ceilT >= 2) { tr.ceilT = -3; trick(race, p, 'ceiling'); }
+
+  // Carpet Burner: skim the floor at speed for 1.5 s
+  tr.lowT = p.y < 1.1 && p.v > 10 ? tr.lowT + dt : 0;
+  if (tr.lowT >= 1.5) { tr.lowT = -3; trick(race, p, 'carpet'); }
+
+  // Zigzag: four hard bank reversals inside 3 s
+  const rs = p.roll > 0.45 ? 1 : p.roll < -0.45 ? -1 : 0;
+  if (rs && rs !== tr.rollSign) { if (tr.rollSign) tr.flips.push(t); tr.rollSign = rs; }
+  tr.flips = tr.flips.filter(x => t - x < 3);
+  if (tr.flips.length >= 4) { tr.flips = []; trick(race, p, 'zigzag'); }
+
+  // Speed Demon: hit top speed
+  if (p.v >= 20) trick(race, p, 'speed');
+
+  // Stall Recovery: stall, then dive back up to cruising speed cleanly
+  if (p.v < SIM.vStall) tr.stalledAt ??= t;
+  else if (tr.stalledAt != null && p.v > 10) {
+    if (t - tr.stalledAt < 5 && cleanSince(tr.stalledAt)) trick(race, p, 'stall');
+    tr.stalledAt = null;
+  }
+
+  // Hang Time: stay airborne about as long as it takes to cross the whole floor
+  if (p.thrownAt != null && t - p.thrownAt >= (f.length || 400) / 13) trick(race, p, 'hang');
+
+  // Slipstream: tuck in right behind another plane for 1.5 s, then pass it
+  for (const o of race.planes) {
+    if (o === p || o.state !== 'fly') continue;
+    const fx = Math.sin(o.yaw), fz = Math.cos(o.yaw);
+    const rx = p.x - o.x, ry = p.y - o.y, rz = p.z - o.z;
+    const along = rx * fx + rz * fz;                         // + ahead of o, - behind
+    const side = Math.hypot(rx - along * fx, rz - along * fz, ry);
+    const key = o.seat;
+    if (along < -0.5 && along > -6 && side < 2.2) tr.behind[key] = (tr.behind[key] || 0) + dt;
+    else if (along > 0.5 && (tr.behind[key] || 0) >= 0.75 && side < 6) { tr.behind[key] = 0; trick(race, p, 'slip'); }
+    else if (along < -8 || side > 6) tr.behind[key] = 0;
+  }
+}
+
 function landingTricks(race, p, zn) {
   if (!p.tr || p.crumpled || !zn) return;
   if (zn.ring === 0) trick(race, p, 'bullseye');
@@ -197,14 +267,14 @@ function landingTricks(race, p, zn) {
 }
 
 export function stepPlane(race, p, dt) {
-  const px = p.x, py = p.y, pz = p.z;
+  const px = p.x, py = p.y, pz = p.z, pyaw = p.yaw;
   if (p.state === 'fly') flyStep(race, p, dt);
   else if (p.state === 'slide') slideStep(race, p, dt);
   else if (p.state === 'fall') fallStep(race, p, dt);
   if (p.state === 'landed') return;
   collide(race, p, px, py, pz);
   pickups(race, p);
-  flightTricks(race, p, px, py, pz);
+  flightTricks(race, p, px, py, pz, dt, pyaw);
   p.maxZ = Math.max(p.maxZ, p.z);
 }
 
@@ -562,7 +632,7 @@ function collide(race, p, px, py, pz) {
   if (closeTo && p.lastHit !== race.t && p.state === 'fly') {
     p.lastClose = race.t;
     race.events.push({ name: 'close', seat: p.seat, x: p.x, y: p.y, z: p.z });
-    if (race.t > 1.5) trick(race, p, 'close');
+    if (race.t > 1.5) trick(race, p, closeTo.mover ? 'dodge' : 'close');
   }
 }
 
@@ -602,6 +672,12 @@ function pickups(race, p) {
       const n = (c.n || 1) + (p.st.clipBonus || 0);
       p.clips += n;
       race.events.push({ name: 'clip', seat: p.seat, i, n });
+      // Clip Sweep: five pickups inside 3 s
+      if (p.tr) {
+        p.tr.clipTimes.push(race.t);
+        p.tr.clipTimes = p.tr.clipTimes.filter(x => race.t - x < 3);
+        if (p.tr.clipTimes.length >= 5) { p.tr.clipTimes = []; trick(race, p, 'sweep'); }
+      }
     }
   }
 }

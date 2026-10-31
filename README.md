@@ -116,6 +116,16 @@ Flashy flying pays **bonus paper clips**. These go to the shop and toward promot
 | Stuck It | 4 | Land on a raised zone (desk, fridge, rack top) |
 | Bank Shot | 3 | Land in a zone within 3 s of bouncing off something |
 | Running on Fumes | 3 | Land in a zone with a quarter of your durability or less |
+| Full Circle | 4 | Bank through a complete loop in one direction (max 2) |
+| Ceiling Skim | 3 | Hug the ceiling for 2 s without touching it (max 2) |
+| Carpet Burner | 3 | Fly fast just above the floor for 1.5 s (max 2) |
+| Zigzag | 2 | Flip your bank hard left/right 4 times within 3 s (max 2) |
+| Speed Demon | 3 | Hit top speed in a dive (once per flight) |
+| Stall Recovery | 3 | Stall out, then dive back to full speed without hitting anything (max 2) |
+| Hang Time | 4 | Stay airborne for a long time (scales with floor length) |
+| Traffic Dodger | 3 | Skim past a moving obstacle (chair, cart) at speed (max 2) |
+| Clip Sweep | 3 | Grab 5 paper clips within 3 s (once per flight) |
+| Slipstream | 4 | Tuck in right behind a rival's plane, then pass them (max 2) |
 
 **Combo:** tricks in the same flight chain together, with each one worth more than the last (x1, x1.5, x2, x2.5, then x3). Taking any hit breaks the chain.
 
