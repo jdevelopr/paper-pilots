@@ -46,3 +46,62 @@ body.solo-touch #hud .board-wrap, body.solo-touch #hud .intro, body.solo-touch #
 .upg .delta .dn { color: var(--danger); }
 .upg .why { color: var(--ink-soft); }
 .stats { grid-template-columns: auto 1fr auto 1fr; }
+
+/* ------------------------------------------------------- the hangar --- */
+/* Between races the shop takes the whole screen on every device */
+body #controller[data-view="shop"] {
+  position: fixed; inset: 0 !important; width: auto !important; height: auto !important; z-index: 30;
+  transform: none !important; opacity: 1 !important; pointer-events: auto !important;
+  border: none; border-radius: 0; background: var(--cork); box-shadow: none;
+  padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.cv[data-v="shop"] { gap: 10px; }
+.hg-title { font-size: 36px; font-weight: 700; color: #fff8e6; text-shadow: 0 2px 0 rgba(44,36,22,.6); transform: rotate(-2deg); margin-right: auto; margin-left: 12px; }
+.hangar { flex: 1; min-height: 0; display: grid; gap: 14px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "stage side" "slots side"; }
+.hg-stage { grid-area: stage; position: relative; min-height: 0; border: 3px solid var(--ink); border-radius: 26px 30px 24px 32px;
+  background: radial-gradient(ellipse at 50% 60%, #fffdf6 0%, #f3ead5 55%, #e2d4b4 100%);
+  background-image: radial-gradient(ellipse at 50% 60%, #fffdf6 0%, #f3ead5 55%, #e2d4b4 100%), repeating-linear-gradient(transparent 0 31px, rgba(30,77,107,.10) 31px 32px);
+  box-shadow: 4px 6px 0 rgba(44,36,22,.45); overflow: hidden; }
+.hg-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+.hg-canvas:active { cursor: grabbing; }
+.hg-tip { position: absolute; left: 14px; bottom: 10px; font-family: var(--body); font-size: 16px; color: var(--ink-soft); pointer-events: none; }
+.hg-build { position: absolute; left: 14px; top: 10px; font-size: 26px; font-weight: 700; color: var(--blue); transform: rotate(-1.5deg); pointer-events: none; }
+.hg-slots { grid-area: slots; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.hg-slot { display: grid; gap: 2px; justify-items: start; align-content: start; text-align: left; padding: 8px 10px; min-height: 92px;
+  background: var(--paper); border: 2.5px solid var(--ink); border-radius: 10px 14px 9px 13px; box-shadow: 2px 3px 0 var(--ink);
+  font-family: var(--display); cursor: pointer; transition: transform var(--t-fast) var(--ease-back), background var(--t-base); }
+.hg-slot .sl-n { font-family: var(--body); font-size: 15px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .06em; }
+.hg-slot .sl-p { font-size: 21px; font-weight: 700; line-height: 1.05; }
+.hg-slot:not(.fitted) .sl-p { color: var(--ink-soft); font-weight: 400; }
+.hg-slot .sl-inv { font-family: var(--body); font-size: 13px; color: var(--blue); }
+.hg-slot .pips { margin-left: 0; }
+.hg-slot.sel { background: var(--mustard); transform: translateY(-4px) rotate(-1.5deg); box-shadow: 3px 6px 0 var(--ink); }
+.hg-slot:focus-visible { outline: 3px dashed var(--blue); outline-offset: 3px; }
+.hg-side { grid-area: side; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.hg-side .stats { padding: 10px 12px; background: rgba(44,36,22,.22); border-radius: 14px; }
+.hg-slotname { margin: 4px 0 0; font-size: 30px; color: #fff8e6; text-shadow: 0 2px 0 rgba(44,36,22,.6); }
+.hg-side .shoplist { flex: 1; min-height: 0; }
+.cv[data-v="shop"] .s-done { align-self: center; min-width: 240px; }
+
+/* Phones and narrow windows: plane on top, slots under it, parts below */
+@media (max-width: 860px) {
+  .hg-title { display: none; }
+  .hangar { grid-template-columns: 1fr; grid-template-rows: 30dvh auto minmax(0, 1fr); grid-template-areas: "stage" "slots" "side"; gap: 10px; }
+  .hg-slots { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .hg-slot { min-height: 64px; padding: 6px; }
+  .hg-slot .sl-p { font-size: 15px; }
+  .hg-slot .sl-n { font-size: 11px; }
+  .hg-slot .sl-inv { display: none; }
+  .hg-slot .pips i { width: 8px; height: 8px; }
+  .hg-build { font-size: 20px; }
+  .hg-side .stats { padding: 6px 10px; font-size: 15px; }
+  .hg-slotname { font-size: 24px; }
+  .cv[data-v="shop"] .crank { display: none; }
+}
+.hg-slot .pips { display: inline-flex; gap: 4px; }
+.hg-slot .pips i { width: 10px; height: 10px; border: 2px solid var(--ink); border-radius: 50% 45% 55% 48%; background: #fffdf6; }
+.hg-slot .pips i.on { background: var(--green); }
+.upg.owned[disabled] { opacity: 1; }

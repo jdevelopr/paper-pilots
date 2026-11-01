@@ -86,7 +86,7 @@ Each part goes up to **Mk III**. Mk II needs Associate rank, and Mk III needs Su
 | Gadget | Afterburner Doodle | 38 | Every mid-flight trick gives a burst of speed, with ink slipstream lines off the wing tips | |
 | Gadget | Packing Tape | 32 | Takes much less damage | |
 
-**The shop shows exactly what you're getting.** Six stat bars (Launch, Speed, Glide, Turning, Toughness, Landing) show your current plane. Every row says what tapping it does (Buy, the next Mk level, or Equip) and how each bar would move, as green ▲ and red ▼ marks. Rows that are locked say why.
+**Between races the shop opens as a full-screen Hangar** on every player's screen. Your plane sits on a paper turntable, turning slowly, and you can drag it to spin it. Five slot cards under it show what's fitted and at what Mk, and you pick a slot to see its parts. On a desktop, hovering a part shows the plane with it fitted before you buy. **The shop shows exactly what you're getting.** Six stat bars (Launch, Speed, Glide, Turning, Toughness, Landing) show your current plane. Every row says what tapping it does (Buy, the next Mk level, or Equip) and how each bar would move, as green ▲ and red ▼ marks. Rows that are locked say why.
 
 **Parts change the plane's look**, so builds are easy to tell apart on the host screen. The fold sets the silhouette: wide wings, a long narrow needle, or upturned stunt fins, and higher Mk levels make each one more extreme. Tissue paper goes see-through, glossy paper shines, and cardstock gets a visible second layer. You can also see the pencil nose, magnet, tape, flaps, binder clip, skids, rubber band and doodled flames.
 

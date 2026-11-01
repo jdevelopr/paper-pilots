@@ -668,6 +668,78 @@ function clipGeometry() {
 
 /* ---------------------------------------------------------- renderer --- */
 
+/* ------------------------------------------------------ hangar preview --- */
+// A small standalone view of one plane for the loadout page: it turns slowly
+// on its own, you can drag to spin it, and it rebuilds whenever the loadout
+// changes. Ink outlines come from edge lines rather than the full post-process.
+export function createPlanePreview(canvas, { reduceMotion = false } = {}) {
+  const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  r.outputColorSpace = THREE.SRGBColorSpace;
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+  cam.position.set(0, 2.3, 5.6); cam.lookAt(0, -0.15, 0);
+  scene.add(new THREE.HemisphereLight(0xfffaf0, 0x8a7a62, 1.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(2, 4, 3); scene.add(sun);
+  // a paper disc to stand on, with a soft shadow
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.06, 40), new THREE.MeshLambertMaterial({ color: '#efe6d0' }));
+  disc.position.y = -0.62; scene.add(disc);
+  const ring = new THREE.LineSegments(new THREE.EdgesGeometry(disc.geometry), new THREE.LineBasicMaterial({ color: '#2c2416' }));
+  ring.position.copy(disc.position); scene.add(ring);
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24), new THREE.MeshBasicMaterial({ color: '#2c2416', transparent: true, opacity: 0.18 }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = -0.585; scene.add(shadow);
+  const lineMat = new THREE.LineBasicMaterial({ color: '#2c2416' });
+  const holder = new THREE.Group(); scene.add(holder);
+  let plane = null, key = '', yaw = 0.6, spin = reduceMotion ? 0 : 0.5, drag = null, pop = 0;
+
+  function set(seat, owned = [], rank = 0) {
+    const k = JSON.stringify([seat, owned, rank]);
+    if (k === key) return;
+    key = k;
+    if (plane) holder.remove(plane);
+    plane = buildPlane(seat, owned, rank);
+    plane.userData.body.traverse(o => {
+      if (o.isMesh) o.add(new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 25), lineMat));
+    });
+    plane.scale.setScalar(1.15);
+    holder.add(plane);
+    pop = 1;
+  }
+  canvas.style.touchAction = 'none';
+  canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, yaw }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', e => { if (drag) yaw = drag.yaw + (e.clientX - drag.x) * 0.012; });
+  const up = () => { drag = null; };
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    r.setSize(w, h, false);
+    cam.aspect = w / h;
+    // keep the whole plane in frame on tall, narrow screens too
+    cam.fov = w / h < 1.1 ? 30 * Math.min(1.7, 1.1 / (w / h)) : 30;
+    cam.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(canvas);
+  let last = performance.now(), t = 0;
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
+    if (canvas.offsetParent !== null) {
+      if (!drag) yaw += spin * dt;
+      holder.rotation.set(0, yaw, 0);
+      pop *= Math.pow(0.02, dt);
+      const s = 1 + Math.sin(pop * Math.PI) * 0.12;
+      holder.scale.setScalar(s);
+      if (plane) { plane.position.y = Math.sin(t * 1.6) * 0.05; plane.rotation.z = Math.sin(t * 1.1) * 0.06; }
+      r.render(scene, cam);
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  resize();
+  return { set, resize };
+}
+
 export function createRenderer(canvas, { reduceMotion = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   // Phones: a lighter pixel ratio keeps the ink pass smooth

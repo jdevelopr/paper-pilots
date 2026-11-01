@@ -8,7 +8,7 @@
 import { esc, clipIcon, planeIcon, vibrate, keepAwake } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
 import { RANK_UNLOCKS } from '../shared/ranks.js';
-import { statBars, MAX_LEVEL, MK, UPGRADES, UPGRADE_BY_ID, SLOTS, partState, equippedList } from '../shared/upgrades.js';
+import { statBars, MAX_LEVEL, MK, UPGRADES, UPGRADE_BY_ID, SLOTS, SLOT_BY_ID, partState, equippedList } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -45,10 +45,17 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
       <div class="crank"><span class="ck-t"></span><i><b></b></i></div>
     </div>
     <div class="cv" data-v="shop">
-      <div class="chead"><span class="cname"></span><span class="ctimer"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
+      <div class="chead"><span class="cname"></span><span class="hg-title">Hangar</span><span class="ctimer"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
       <div class="crank"><span class="ck-t"></span><i><b></b></i></div>
-      <div class="stats"></div>
-      <div class="shoplist"></div>
+      <div class="hangar">
+        <div class="hg-stage"><canvas class="hg-canvas" aria-label="Your plane, drag to spin"></canvas><span class="hg-tip">Drag to spin</span><span class="hg-build"></span></div>
+        <div class="hg-slots" role="tablist" aria-label="Plane slots"></div>
+        <div class="hg-side">
+          <div class="stats"></div>
+          <h4 class="hg-slotname"></h4>
+          <div class="shoplist"></div>
+        </div>
+      </div>
       <button class="btn primary s-done">Done</button>
     </div>
     <div class="cv" data-v="final">
@@ -311,46 +318,81 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     if (st.state !== 'open') return { kind: 'locked', reason: st.reason, after: me.owned };
     return { kind: lv ? 'upgrade' : 'buy', cost: st.cost, next: lv + 1, after: equippedList({ ...parts, [id]: lv + 1 }, { ...loadout, [u.slot]: id }) };
   }
+  // The hangar: a big turning model of your plane, five slot cards, and the
+  // parts for whichever slot you've picked.
+  let selSlot = 'paper', preview = null, previewOwned = null;
+  const slotsEl = q('.hg-slots'), canvas = q('.hg-canvas');
+  function ensurePreview() {
+    if (preview) return;
+    preview = 'loading';
+    import('../host/render3d.js').then(m => {
+      preview = m.createPlanePreview(canvas, { reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
+      paintPreview();
+    }).catch(() => { preview = null; });
+  }
+  function paintPreview() {
+    if (preview && preview !== 'loading') preview.set(me.seat, previewOwned || me.owned || [], me.rank?.level ?? 0);
+  }
+  function renderSlots() {
+    slotsEl.innerHTML = SLOTS.map(sl => {
+      const id = me.loadout?.[sl.id], u = id && UPGRADE_BY_ID[id], lv = u ? (me.parts?.[id] || 1) : 0;
+      const pips = u ? `<span class="pips">${Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('')}</span>` : '';
+      const inv = UPGRADES.filter(x => x.slot === sl.id && me.parts?.[x.id]).length;
+      return `<button class="hg-slot${sl.id === selSlot ? ' sel' : ''}${u ? ' fitted' : ''}" role="tab" aria-selected="${sl.id === selSlot}" data-slot="${sl.id}">
+        <span class="sl-n">${esc(sl.name)}</span><span class="sl-p">${esc(u ? u.name : sl.stock)}</span>${pips}${inv > (u ? 1 : 0) ? `<span class="sl-inv">${inv} owned</span>` : ''}</button>`;
+    }).join('');
+    for (const b of slotsEl.querySelectorAll('.hg-slot')) b.onclick = () => {
+      if (selSlot === b.dataset.slot) return;
+      selSlot = b.dataset.slot; vibrate(8);
+      list.innerHTML = ''; renderShop(true);
+    };
+  }
   function renderShop(force) {
-    const key = JSON.stringify([me.clips, me.parts, me.loadout, me.rank?.level]);
+    const key = JSON.stringify([me.clips, me.parts, me.loadout, me.rank?.level, selSlot]);
     if (!force && key === lastShopKey) return;
     lastShopKey = key;
+    ensurePreview();
+    previewOwned = null; paintPreview();
     const now = statBars(me.owned);
     stats.innerHTML = BAR_KEYS.map(k => `<span>${k}</span><i><b style="transform:scaleX(${now[k].toFixed(2)})"></b></i>`).join('');
+    const fold = UPGRADE_BY_ID[me.loadout?.fold];
+    q('.hg-build').textContent = fold ? `${fold.name} build` : 'Stock plane';
+    renderSlots();
+    const sl = SLOT_BY_ID[selSlot];
+    q('.hg-slotname').textContent = `${sl.name} parts`;
     if (!list.children.length) {
-      let i = 0;
-      for (const sl of SLOTS) {
-        const h = document.createElement('div');
-        h.className = 'shead';
-        h.textContent = sl.name;
-        list.appendChild(h);
-        for (const id of [`stock:${sl.id}`, ...UPGRADES.filter(u => u.slot === sl.id).map(u => u.id)]) {
-          const el = document.createElement('button');
-          el.className = 'upg';
-          el.dataset.id = id;
-          el.style.setProperty('--i', Math.min(i++, 12));
-          el.onclick = () => {
-            if (el.disabled) return;
-            const a = actionFor(id);
-            vibrate(10);
-            if (a.kind === 'equip') link.input({ k: 'equip', id });
-            else if (a.kind === 'buy' || a.kind === 'upgrade') link.input({ k: 'buy', id });
-          };
-          list.appendChild(el);
-        }
-      }
+      [`stock:${sl.id}`, ...UPGRADES.filter(u => u.slot === sl.id).map(u => u.id)].forEach((id, i) => {
+        const el = document.createElement('button');
+        el.className = 'upg';
+        el.dataset.id = id;
+        el.style.setProperty('--i', i);
+        el.onclick = () => {
+          if (el.disabled) return;
+          const a = actionFor(id);
+          vibrate(10);
+          if (a.kind === 'equip') link.input({ k: 'equip', id });
+          else if (a.kind === 'buy' || a.kind === 'upgrade') link.input({ k: 'buy', id });
+        };
+        // Hover (or keyboard focus) a row to see the plane with that part on
+        const show = () => { const a = actionFor(id); if (a.after) { previewOwned = a.after; paintPreview(); } };
+        const hide = () => { previewOwned = null; paintPreview(); };
+        el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') show(); });
+        el.addEventListener('pointerleave', hide);
+        el.addEventListener('focus', show);
+        el.addEventListener('blur', hide);
+        list.appendChild(el);
+      });
     }
     for (const el of list.querySelectorAll('.upg')) {
       const id = el.dataset.id, stock = id.startsWith('stock:');
       const u = stock ? null : UPGRADE_BY_ID[id];
-      const sl = stock ? SLOTS.find(x => x.id === id.slice(6)) : null;
       const lv = stock ? 0 : (me.parts?.[id] || 0);
       const a = actionFor(id);
       const on = stock ? a.kind === 'on' : me.loadout?.[u.slot] === id;
       const afford = (a.kind === 'buy' || a.kind === 'upgrade') ? me.clips >= a.cost : a.kind === 'equip';
       el.classList.toggle('owned', on);
       el.classList.toggle('inv', !on && lv > 0);
-      el.classList.toggle('locked', a.kind === 'locked');
+      el.classList.toggle('locked', a.kind === 'locked' && !on);
       el.disabled = !afford;
       const pips = stock ? '' : `<span class="pips">${Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('')}</span>`;
       const right = a.kind === 'buy' || a.kind === 'upgrade' ? `<small>${a.kind === 'buy' ? 'Buy' : MK(a.next)}</small>${a.cost}${clipIcon}`
