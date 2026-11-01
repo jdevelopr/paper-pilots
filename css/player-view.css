@@ -12,3 +12,26 @@ body.pv-touch .floaters .trick { font-size: 70%; }
 /* Between races the controller takes the whole phone screen again */
 body.pv-touch #controller:is([data-view="shop"], [data-view="results"], [data-view="final"]) { top: 0; background: var(--cork); z-index: 3; }
 body.pv:not([data-phase="race"]):not([data-phase="photo"]) .hud-race { display: none; }
+
+/* ------------------------------------------------- match setup picker --- */
+.match-setup { display: grid; gap: 10px; }
+.match-setup legend { width: 100%; }
+.floors-pick span { font-size: 19px; height: 40px; min-width: 0; padding: 0 12px; gap: 6px; grid-auto-flow: column; border-radius: 10px 14px 9px 13px; }
+.floors-pick span b { font-size: 22px; }
+.floors-pick input:checked + span { transform: rotate(-2deg) scale(1.04); }
+.setup-sum { margin: 0; font-family: var(--body); font-size: 18px; color: #fff8e6; text-shadow: 0 1px 0 rgba(44,36,22,.6); }
+.note .setup-sum { color: var(--ink-soft); text-shadow: none; }
+/* Keep the lobby's right column beside the QR note; the floor chips wrap */
+.lobby-side { max-width: 580px; }
+#host-controls .match-setup { width: 100%; }
+#host-controls .match-setup legend { font-size: 26px; }
+
+/* ------------------------------------------- solo on a phone, no host --- */
+/* Same split screen as a player's phone; the host-screen boards and intro
+   card step aside because the controller shows results, shop and final. */
+body.is-host.solo-touch #controller { display: flex; }
+body.solo-touch #hud .board-wrap, body.solo-touch #hud .intro, body.solo-touch #hud .hint, body.solo-touch #hud .hostbar { display: none !important; }
+.f-btns { display: flex; gap: 12px; }
+.f-btns .btn { flex: 1; }
+.f-btns[hidden] { display: none; }
+@media (pointer: coarse) { #solo .keys { display: none; } }

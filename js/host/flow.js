@@ -5,7 +5,7 @@
 //   intro -> race -> results -> shop -> intro (next floor) ... -> final
 
 import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM } from '../game/sim.js';
-import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, finalStandings, SHOP_MS, legOf, RACES_PER_FLOOR, rankOf } from '../game/rules.js';
+import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, finalStandings, SHOP_MS, legOf, rankOf } from '../game/rules.js';
 import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js';
 import { generateFloor } from '../game/floors.js';
 import { UPGRADES } from '../shared/upgrades.js';
@@ -27,7 +27,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   let bots = new Map();          // seat -> bot brain
   let timers = [];
   let startsAt = 0;              // local ms timestamp for intro end / shop end
-  let roundsWanted = 5;
+  let setupWanted = {};
   let shopDone = new Set();
   let lastRows = null, finalRows = null;
   let raceOverAt = null;
@@ -44,10 +44,10 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   function setPhase(p) { phase = p; link.setPhase(p); }
 
   /* ---------------------------------------------------------- start --- */
-  function start(rounds = 5) {
+  function start(setup = {}) {
     clearTimers();
-    roundsWanted = rounds;
-    match = createMatch(rounds);
+    setupWanted = setup;
+    match = createMatch(setup);
     bots = new Map();
     for (const h of humans()) addPlayer(match, h.seat, h.name);
     for (let i = 0; i < botCount; i++) {
@@ -75,11 +75,11 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
     // Every player's own screen builds the exact same layout from the same seed
     lastLayout = {
-      theme: floor.id, seed, label: `Race ${legOf(match)}/${RACES_PER_FLOOR}`, first: match.round === 0,
+      theme: floor.id, seed, label: `Race ${legOf(match)}/${match.racesPerFloor}`, first: match.round === 0,
       seats: raceSeats.map(seat => ({ seat, name: nameOf(seat), owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })),
     };
     if (!solo) broadcast('layout', lastLayout);
-    hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title, best: match.players[seat].best[floor.id] ?? 0 })), `Race ${legOf(match)}/${RACES_PER_FLOOR}`);
+    hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title, best: match.players[seat].best[floor.id] ?? 0 })), `Race ${legOf(match)}/${match.racesPerFloor}`);
 
     const ms = match.round === 0 ? INTRO_FIRST_MS : INTRO_MS;
     startsAt = Date.now() + ms;
@@ -87,7 +87,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     broadcastPhase();
     sfx.elevator();
     hud.showIntro({
-      floor, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: RACES_PER_FLOOR,
+      floor, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: match.racesPerFloor,
       players: raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title })), startsAt: () => startsAt,
     }, label => {
       if (label === 'GO') { sfx.go(); hud.flash('go'); renderer.punch(10); renderer.shake(0.25); }
@@ -371,7 +371,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     const f = layout || currentFloor(match);
     const next = match.floors[match.round + 1];
     broadcast('phase', {
-      phase, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: RACES_PER_FLOOR,
+      phase, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: match.racesPerFloor,
       floor: { number: f.number, name: f.name, stakes: f.stakes },
       next: next ? { number: next.number, name: next.name, leg: legOf(match, match.round + 1) } : null,
       inMs: Math.max(0, startsAt - Date.now()),
@@ -408,7 +408,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     lastRows = rows;
     setPhase('results');
     sfx.fanfare();
-    hud.results(rows, layout, isLastRound(match), legOf(match), RACES_PER_FLOOR);
+    hud.results(rows, layout, isLastRound(match), legOf(match), match.racesPerFloor);
     const promos = rows.filter(r => r.promoted);
     if (promos.length) later(1800, () => { sfx.fanfare(); hud.banner(promos.map(r => `${r.name} promoted to ${r.promoted}`).join(' · '), 3500);
       if (promos.length === 1) later(3600, () => hud.banner(promos[0].unlock, 3000)); });
@@ -444,7 +444,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   function renderShop() {
     const next = match.floors[match.round + 1];
     hud.shop({
-      next, nextLeg: legOf(match, match.round + 1), legs: RACES_PER_FLOOR,
+      next, nextLeg: legOf(match, match.round + 1), legs: match.racesPerFloor,
       players: raceSeats.map(seat => {
         const pl = match.players[seat];
         return { seat, name: pl.name, clips: pl.clips, owned: pl.owned, done: shopDone.has(seat) };
@@ -472,7 +472,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
     hud.final(finalRows, {
       soloMenu: solo,
-      onAgain: () => { if (solo) start(roundsWanted); else onExit?.('lobby'); },
+      onAgain: () => { if (solo) start(setupWanted); else onExit?.('lobby'); },
       onMenu: () => onExit?.('menu'),
     });
     broadcastPhase();

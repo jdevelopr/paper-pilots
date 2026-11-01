@@ -13,13 +13,17 @@ export const RACES_PER_FLOOR = 3;
 export { RANKS, rankOf } from '../shared/ranks.js';
 import { rankOf, RANK_UNLOCKS } from '../shared/ranks.js';
 
-// `rounds` is the number of floors. Each floor is raced RACES_PER_FLOOR times,
-// so match.floors holds one entry per race.
-export function createMatch(rounds = 6) {
-  // Every match finishes on the Rooftop. The short match: Lobby, Break Room, Rooftop.
-  const picked = rounds >= 5 ? FLOORS.slice() : [FLOORS[0], FLOORS[2], FLOORS[FLOORS.length - 1]];
-  const floors = picked.flatMap(f => Array(RACES_PER_FLOOR).fill(f));
-  return { round: 0, floors, players: {} };
+// `opts.floors` lists the floor ids to play (always in building order) and
+// `opts.races` how many races each floor gets. A plain number is the old
+// shorthand: 3 = Lobby, Break Room, Rooftop; anything else = every floor.
+// match.floors holds one entry per race.
+export function createMatch(opts = {}) {
+  if (typeof opts === 'number') opts = { floors: opts >= 5 ? FLOORS.map(f => f.id) : [FLOORS[0].id, FLOORS[2].id, FLOORS[FLOORS.length - 1].id] };
+  const races = Math.max(1, Math.min(5, Math.round(opts.races ?? RACES_PER_FLOOR)));
+  let picked = FLOORS.filter(f => (opts.floors ?? []).includes(f.id));
+  if (!picked.length) picked = FLOORS.slice();
+  const floors = picked.flatMap(f => Array(races).fill(f));
+  return { round: 0, floors, racesPerFloor: races, players: {} };
 }
 
 export function addPlayer(match, seat, name, bot = false) {
@@ -34,7 +38,7 @@ export function addPlayer(match, seat, name, bot = false) {
 export const currentFloor = m => m.floors[m.round];
 export const isLastRound = m => m.round >= m.floors.length - 1;
 // Which race on the current floor this is (1-based), and of how many.
-export const legOf = (m, round = m.round) => (round % RACES_PER_FLOOR) + 1;
+export const legOf = (m, round = m.round) => (round % (m.racesPerFloor || RACES_PER_FLOOR)) + 1;
 
 // Turn race standings into clips and points. Returns rows in finishing order.
 export function payout(match, standings) {

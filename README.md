@@ -6,7 +6,7 @@ A party game where up to 4 players race paper airplanes through an office buildi
 
 The host runs the only simulation. Each race it sends every player the floor and its random seed, so all screens build the exact same layout, then streams plane positions 15 times a second.
 
-Each floor of the building is raced **3 times** before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips. Floor 1 is 800 long and each floor above it is 25% longer (800 → 1,000 → 1,250 → 1,563 → 1,953 → 2,441). Planes fly the same on every floor, so the extra length is what you grow into.
+**Pick your match in the lobby:** tick which floors to play (they're always played bottom to top) and choose 1–5 races per floor. The host lobby and the solo screen both have the picker, and each device remembers its last choice. By default it's all six floors, 3 races each. Each floor is raced that many times before the elevator goes up, and **every race gets a freshly generated layout** of that floor's furniture, vents, fans, landing zones and paper clips. Floor 1 is 800 long and each floor above it is 25% longer (800 → 1,000 → 1,250 → 1,563 → 1,953 → 2,441). Planes fly the same on every floor, so the extra length is what you grow into.
 
 **Landing zones are spread along the whole floor.** The first zone always sits 58–78 out, where a stock plane with a controlled throw can land. The rest step out toward the far wall, so a fresh plane reaches the first one or two, and reaching the far zones takes vents, clean flying and upgrades. Higher floors pay more: zone and placement payouts are 25% bigger per floor (Floor 5 pays double, the Rooftop 2.25×).
 
@@ -95,9 +95,9 @@ Computer rivals each commit to a path too, so their builds differ.
 
 Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nose clip and so on.
 
-### The Rooftop (Floor 6, the finale)
+### The Rooftop (Floor 6)
 
-Every match ends up on the roof, under open sky. The middle half of the run isn't over a building at all: it's the gap down to the street between the start building and a second, lower building where the rest of the landing zones are.
+The top floor is the roof, under open sky. The middle half of the run isn't over a building at all: it's the gap down to the street between the start building and a second, lower building where the rest of the landing zones are.
 
 - **The first roof** has AC units (their exhaust fans blow updrafts), water towers, satellite dishes, vent stacks and stairwell huts, with knee-high parapets along the edges. The easy first zone is here, 58–78 out as always.
 - **The gap.** Rising air columns between the buildings (streaks coming up from the street) carry you across. A crosswind swings you left and right in slow pulses. Dive below the roofline for the paper clip arcs and bonus boxes down there, and gusts push you back up. Go deeper than the gusts reach and you're on your own: crash into the far building's wall, or end up on the street with no zone.
@@ -167,7 +167,9 @@ With "reduce motion" on, the screen shake, field-of-view changes, wobble and fla
 
 ## Solo flight (no phone needed)
 
-On the home screen, click **Solo flight**. Pick 0–3 computer rivals and either 3 or 6 floors (9 or 18 races). Both end on the Rooftop: the short match is Lobby, Break Room, Rooftop. The phone controller appears as a panel in the corner of the screen, and you can use it with the mouse or the keyboard. This is the quickest way to try out the gameplay.
+On the home screen, click **Solo flight**. Pick 0–3 computer rivals, which floors to play and how many races per floor. The phone controller appears as a panel in the corner of the screen, and you can use it with the mouse or the keyboard. This is the quickest way to try out the gameplay.
+
+**On a phone, solo is fully self-contained:** no host screen or second device needed. Open the site on the phone and tap **Solo flight**. The race fills the top half of the screen, following your plane, with the throw pad and joystick underneath. Results and the final standings take over the screen between races, and the final card has **Play again** and **Menu**. The phone goes full screen where the browser allows it, and renders at a lighter resolution to stay smooth.
 
 ## Run it locally
 
@@ -239,6 +241,7 @@ To tune the game, edit:
 - `js/game/sim.js` for flight physics (`SIM` constants)
 - `js/game/floors.js` for floor themes and the random layout generator (zone distance bands, the guaranteed-clear lane, vent and fan counts)
 - `js/shared/upgrades.js` for upgrade costs, per-level effects and `MAX_LEVEL`
-- `js/game/rules.js` for payouts and `RACES_PER_FLOOR` (races on each floor)
+- `js/game/rules.js` for payouts and `RACES_PER_FLOOR` (the default races per floor)
+- `js/shared/setup.js` for the lobby's floor and races-per-floor picker
 
 The rendering style is a custom post-process in `js/host/ink.js`. It draws ink outlines from depth and normal edges, adds pencil crosshatching in the shadows, and puts paper grain over everything, with lines that "boil" at 6 fps like a hand-drawn animation.

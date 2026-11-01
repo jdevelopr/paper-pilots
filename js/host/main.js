@@ -9,6 +9,7 @@ import { createRenderer } from './render3d.js';
 import { createHud } from './hud.js';
 import { createFlow } from './flow.js';
 import { initAudio } from './audio.js';
+import { mountSetup } from '../shared/setup.js';
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -46,6 +47,7 @@ export async function startHost() {
   $('#home-status').textContent = 'Opening a room…';
   const host = createHost({ slug: SLUG, maxPlayers: MAX_PLAYERS, minPlayers: MIN_PLAYERS, peerOptions: PEER_OPTIONS });
   let flow = null, stage = null;
+  const setup = mountSetup($('#host-setup'), 'host');
 
   host.on('open', async code => {
     const url = joinUrl(code);
@@ -94,10 +96,10 @@ export async function startHost() {
       runLoop(flow);
       bindHostKeys(flow);
     }
-    const rounds = +document.querySelector('input[name=hfloors]:checked').value;
+    const choice = setup.read();
     await show('game');
     stage.renderer.resize();
-    flow.start(rounds);
+    flow.start(choice);
   };
 
   window.addEventListener('beforeunload', e => {
@@ -108,9 +110,15 @@ export async function startHost() {
 }
 
 /* --------------------------------------------------------------- solo --- */
-export async function startSolo({ name, bots, floors }) {
+// A phone (or small touch tablet) plays solo full screen: the race on top,
+// the controls underneath, no host screen needed.
+const isTouch = () => matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 820;
+
+export async function startSolo({ name, bots, setup }) {
   initAudio();
-  document.body.classList.add('is-host', 'solo');
+  const touch = isTouch();
+  document.body.classList.add('is-host', ...(touch ? ['pv-touch', 'solo-touch'] : ['solo']));
+  if (touch) { try { await document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }); } catch {} }
   const { host, client } = createLocalLink(name);
   await fontsReady();
   const stage = makeStage();
@@ -122,7 +130,9 @@ export async function startSolo({ name, bots, floors }) {
   host.on('hello', seat => flow.onHello(seat));
 
   const { mountController } = await import('../client/controller.js');
-  mountController($('#controller'), client, { solo: true });
+  mountController($('#controller'), client, touch
+    ? { solo: true, onAgain: () => flow.start(setup), onMenu: () => location.reload() }
+    : { solo: true });
   client.connect();
   host.open();
 
@@ -130,7 +140,7 @@ export async function startSolo({ name, bots, floors }) {
   stage.renderer.resize();
   runLoop(flow);
   bindHostKeys(flow);
-  flow.start(floors);
+  flow.start(setup);
 }
 
 function bindHostKeys(flow) {

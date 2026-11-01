@@ -654,7 +654,8 @@ function clipGeometry() {
 
 export function createRenderer(canvas, { reduceMotion = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  // Phones: a lighter pixel ratio keeps the ink pass smooth
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 1.25 : 1.75));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const ink = createInk(renderer);
 

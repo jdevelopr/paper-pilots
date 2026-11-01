@@ -3,6 +3,7 @@
 //   no param    -> home screen: host a room, play solo, or type a code
 import { roomFromUrl } from './net.js';
 import { $, show } from './ui.js';
+import { mountSetup } from './shared/setup.js';
 
 const room = roomFromUrl();
 
@@ -11,7 +12,9 @@ if (room) {
 } else {
   show('home');
   $('#host-btn').onclick = () => import('./host/main.js').then(m => m.startHost()).catch(fatal);
+  let soloSetup = null;
   $('#solo-btn').onclick = () => {
+    soloSetup ||= mountSetup($('#solo-setup'), 'solo');
     $('#solo-name').value = localStorage.getItem('name') || '';
     show('solo');
     setTimeout(() => $('#solo-name').focus(), 250);
@@ -22,8 +25,8 @@ if (room) {
     const name = $('#solo-name').value.trim().slice(0, 12) || 'Pilot';
     localStorage.setItem('name', name);
     const bots = +document.querySelector('input[name=bots]:checked').value;
-    const floors = +document.querySelector('input[name=floors]:checked').value;
-    import('./host/main.js').then(m => m.startSolo({ name, bots, floors })).catch(fatal);
+    const setup = soloSetup.read();
+    import('./host/main.js').then(m => m.startSolo({ name, bots, setup })).catch(fatal);
   };
   $('#join-form').onsubmit = e => {
     e.preventDefault();

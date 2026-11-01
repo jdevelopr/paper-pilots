@@ -12,7 +12,7 @@ import { statBars, levelOf, MAX_LEVEL, UPGRADES, UPGRADE_BY_ID, SECTIONS, upgrad
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
-export function mountController(root, link, { solo = false } = {}) {
+export function mountController(root, link, { solo = false, onAgain = null, onMenu = null } = {}) {
   root.innerHTML = `
     <div class="cv" data-v="wait"><div class="cfill"><div><h3 class="w-t">Watch the screen</h3></div></div></div>
     <div class="cv" data-v="intro"><div class="cfill"><div><div class="csub i-floor"></div><h3 class="i-name"></h3><div class="cbig i-count"></div></div></div></div>
@@ -53,6 +53,7 @@ export function mountController(root, link, { solo = false } = {}) {
     </div>
     <div class="cv" data-v="final">
       <div class="cfill f-fill"><div><div class="csub">Final</div><div class="cbig f-place"></div><h3 class="f-pts"></h3></div></div>
+      <div class="f-btns" ${onAgain ? '' : 'hidden'}><button class="btn ghost f-menu">Menu</button><button class="btn primary f-again">Play again</button></div>
     </div>`;
 
   const q = s => root.querySelector(s);
@@ -484,6 +485,9 @@ export function mountController(root, link, { solo = false } = {}) {
     root.appendChild(t);
     setTimeout(() => t.remove(), 1000);
   }
+
+  // Solo on a phone has no host screen, so the final card carries the menu
+  if (onAgain) { q('.f-again').onclick = () => onAgain(); q('.f-menu').onclick = () => onMenu?.(); }
 
   paintHeader();
   setView('wait');

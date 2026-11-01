@@ -73,11 +73,7 @@
       <label><input type="radio" name="bots" value="2"><span>2</span></label>
       <label><input type="radio" name="bots" value="3" checked><span>3</span></label>
     </fieldset>
-    <fieldset class="seg">
-      <legend>Floors</legend>
-      <label><input type="radio" name="floors" value="3"><span>3</span></label>
-      <label><input type="radio" name="floors" value="6" checked><span>6</span></label>
-    </fieldset>
+    <div class="match-setup" id="solo-setup"></div>
     <div class="row">
       <button type="button" id="solo-back" class="btn ghost">Back</button>
       <button type="submit" class="btn primary">Take off</button>
@@ -98,11 +94,7 @@
     <div class="lobby-side">
       <ul id="roster" aria-live="polite"></ul>
       <div id="host-controls">
-        <fieldset class="seg">
-          <legend>Floors</legend>
-          <label><input type="radio" name="hfloors" value="3"><span>3</span></label>
-          <label><input type="radio" name="hfloors" value="6" checked><span>6</span></label>
-        </fieldset>
+        <div class="match-setup" id="host-setup"></div>
         <button id="start-btn" class="btn primary" disabled>Start game</button>
       </div>
       <div id="joiner-controls">
