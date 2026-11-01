@@ -4,12 +4,14 @@
 import { esc, clipIcon, planeIcon, reduceMotion } from '../ui.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM } from '../game/sim.js';
-import { UPGRADE_BY_ID, UPGRADES, levelOf, ROMAN } from '../shared/upgrades.js';
+import { UPGRADE_BY_ID, SLOTS, MK } from '../shared/upgrades.js';
 
-const pathOf = owned => UPGRADES.find(u => u.group === 'spec' && owned.includes(u.id))?.path ?? '';
+// A short "build" line from the loadout: the fold names the style
+const pathOf = p => { const f = UPGRADE_BY_ID[p.loadout?.fold]; return f ? `${f.name} build` : ''; };
 
 // One chip per upgrade, with its level: "Packing Tape II".
-const upChips = owned => [...new Set(owned)].map(id => ({ id, text: `${UPGRADE_BY_ID[id]?.name ?? id}${levelOf(owned, id) > 1 ? ` ${ROMAN[levelOf(owned, id)]}` : ''}` }));
+// One chip per equipped slot: "Cardstock Mk II"
+const upChips = p => SLOTS.filter(sl => p.loadout?.[sl.id]).map(sl => { const id = p.loadout[sl.id]; return { id: sl.id, text: `${UPGRADE_BY_ID[id]?.name ?? id} ${MK(p.parts?.[id] || 1)}` }; });
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
@@ -294,8 +296,8 @@ export function createHud(root) {
         <div class="shopcard ${p.done ? 'done' : ''}" data-seat="${p.seat}" style="--c:${colorFor(p.seat)};--i:${i}">
           <div class="nm">${esc(p.name)}</div>
           <div class="cl">${clipIcon}<span>${p.clips}</span></div>
-          <div class="path">${pathOf(p.owned) ? `${pathOf(p.owned)} path` : ''}</div>
-          <div class="ups">${upChips(p.owned).map(c => `<span data-id="${c.id}">${esc(c.text)}</span>`).join('')}</div>
+          <div class="path">${esc(pathOf(p))}</div>
+          <div class="ups">${upChips(p).map(c => `<span data-id="${c.id}">${esc(c.text)}</span>`).join('')}</div>
           <div class="state">${p.done ? 'Done' : 'Shopping'}</div>
         </div>`).join('')}</div>
       <div class="foot"><span>Next: Floor ${state.next.number} · ${esc(state.next.name)} · Race ${state.nextLeg} of ${state.legs}</span></div>`;
@@ -307,10 +309,12 @@ export function createHud(root) {
       if (!card) { showBoard(html); return; }
       card.classList.toggle('done', p.done);
       card.querySelector('.cl span').textContent = p.clips;
-      card.querySelector('.path').textContent = pathOf(p.owned) ? `${pathOf(p.owned)} path` : '';
+      card.querySelector('.path').textContent = pathOf(p);
       card.querySelector('.state').textContent = p.done ? 'Done' : 'Shopping';
       const ups = card.querySelector('.ups');
-      for (const c of upChips(p.owned)) {
+      const chips = upChips(p);
+      for (const el of [...ups.children]) if (!chips.some(c => c.id === el.dataset.id)) el.remove();
+      for (const c of chips) {
         let chip = ups.querySelector(`[data-id="${c.id}"]`);
         if (!chip) { chip = document.createElement('span'); chip.dataset.id = c.id; ups.appendChild(chip); }
         if (chip.textContent !== c.text) {

@@ -1,6 +1,6 @@
 // rules.js: match-level rules (rounds, payouts, the shop). Pure, no DOM, no network.
 
-import { UPGRADE_BY_ID, upgradeState } from '../shared/upgrades.js';
+import { UPGRADE_BY_ID, SLOT_BY_ID, partState, equippedList } from '../shared/upgrades.js';
 import { FLOORS, floorPayMult } from './floors.js';
 
 export const PLACE_CLIPS = [8, 5, 3, 1];
@@ -28,7 +28,7 @@ export function createMatch(opts = {}) {
 
 export function addPlayer(match, seat, name, bot = false) {
   if (!match.players[seat]) {
-    match.players[seat] = { seat, name, bot, clips: 0, points: 0, owned: [], wins: 0, history: [], career: 0, best: {}, zoneStreak: 0, cleanStreak: 0 };
+    match.players[seat] = { seat, name, bot, clips: 0, points: 0, owned: [], parts: {}, loadout: {}, wins: 0, history: [], career: 0, best: {}, zoneStreak: 0, cleanStreak: 0 };
   } else {
     match.players[seat].name = name;
   }
@@ -90,17 +90,37 @@ export function payout(match, standings) {
   return rows;
 }
 
+// Buy a part (it goes straight into its slot) or level up one you own.
 export function buy(match, seat, id) {
   const pl = match.players[seat];
   const up = UPGRADE_BY_ID[id];
-  if (!pl || !up) return { ok: false, reason: 'Unknown upgrade' };
-  const st = upgradeState(pl.owned, id, rankOf(pl.career).level);
-  if (st.state === 'maxed') return { ok: false, reason: 'Already maxed out' };
+  if (!pl || !up) return { ok: false, reason: 'Unknown part' };
+  const st = partState(pl.parts, id, rankOf(pl.career).level);
+  if (st.state === 'maxed') return { ok: false, reason: 'Already Mk III' };
   if (st.state !== 'open') return { ok: false, reason: st.reason };
-  const cost = st.cost;
-  if (pl.clips < cost) return { ok: false, reason: 'Not enough clips' };
-  pl.clips -= cost;
-  pl.owned.push(id);
+  if (pl.clips < st.cost) return { ok: false, reason: 'Not enough clips' };
+  pl.clips -= st.cost;
+  pl.parts[id] = (pl.parts[id] || 0) + 1;
+  pl.loadout[up.slot] = id;
+  pl.owned = equippedList(pl.parts, pl.loadout);
+  return { ok: true };
+}
+
+// Swap a slot to a part already in your inventory (free), or back to stock
+// with id 'stock:<slot>'.
+export function equip(match, seat, id) {
+  const pl = match.players[seat];
+  if (!pl) return { ok: false, reason: 'No player' };
+  if (String(id).startsWith('stock:')) {
+    const slot = String(id).slice(6);
+    if (!SLOT_BY_ID[slot]) return { ok: false, reason: 'Unknown slot' };
+    delete pl.loadout[slot];
+  } else {
+    const up = UPGRADE_BY_ID[id];
+    if (!up || !pl.parts[id]) return { ok: false, reason: 'You don’t own that part' };
+    pl.loadout[up.slot] = id;
+  }
+  pl.owned = equippedList(pl.parts, pl.loadout);
   return { ok: true };
 }
 

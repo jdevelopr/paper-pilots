@@ -134,10 +134,19 @@ function speckleTexture(base, dot, n = 2500, size = 256, grid = 0) {
 
 /* ------------------------------------------------------------- planes --- */
 
+// The fold decides the plane's silhouette, and higher Mk levels exaggerate it:
+// Wide Glider spreads the wings, Needle Dart is long and narrow, Stunt Fold
+// tips its wings up.
+const lvOf = (owned, id) => owned.reduce((n, x) => n + (x === id), 0);
+function foldShape(owned) {
+  const w = lvOf(owned, 'widewings'), n = lvOf(owned, 'needle'), st = lvOf(owned, 'stunt');
+  const wide = (w ? 1.25 + 0.12 * w : 1) * (n ? 0.84 - 0.04 * n : 1) * (st ? 0.95 : 1);
+  return { wide, L: n ? 1.0 + 0.06 * n : 0.85, D: st ? 0.24 + 0.06 * st : 0.14 };
+}
 function planeGeometry(owned) {
-  const wide = (owned.includes('widewings') ? 1.35 : 1) * (owned.includes('swallowtail') ? 1.15 : 1) * (owned.includes('dart') ? 0.82 : 1);
-  const thick = owned.includes('cardstock') ? 0.09 : 0.0;
-  const S = 0.75 * wide, L = owned.includes('dart') ? 1.0 : 0.85, K = 0.28, D = owned.includes('swallowtail') ? 0.22 : 0.14;
+  const { wide, L, D } = foldShape(owned);
+  const thick = lvOf(owned, 'cardstock') * 0.05;
+  const S = 0.75 * wide, K = 0.28;
   // Nose at -z. Classic dart: two wing panels and a folded keel.
   const v = [
     0, 0, -L,          // 0 nose
@@ -220,7 +229,7 @@ function paperMaterial(seat, owned, rank) {
   const base = new THREE.Color(colorFor(seat));
   if (owned.includes('cardstock')) base.multiplyScalar(0.9);
   const map = paperTexture(rank);
-  const shiny = owned.includes('glossy') || owned.includes('laminated');
+  const shiny = owned.includes('glossy');
   if (rank >= 6) {
     // Foil: metallic, but keep a hint of the player's colour
     const metal = new THREE.Color(rank === 7 ? '#e8b830' : '#d6dce3');
@@ -231,7 +240,7 @@ function paperMaterial(seat, owned, rank) {
   }
   const color = map ? base.lerp(new THREE.Color('#ffffff'), rank === 5 ? 0.55 : 0.25) : base;
   const opts = { color, map, flatShading: true, side: THREE.DoubleSide };
-  if (owned.includes('featherweight')) Object.assign(opts, { transparent: true, opacity: 0.82 });
+  if (owned.includes('tissue')) Object.assign(opts, { transparent: true, opacity: 0.86 - 0.08 * lvOf(owned, 'tissue') });
   return shiny
     ? new THREE.MeshPhongMaterial({ ...opts, shininess: 90, specular: 0x777777 })
     : new THREE.MeshLambertMaterial(opts);
@@ -243,23 +252,30 @@ function buildPlane(seat, owned, rank = 0) {
   const body = new THREE.Mesh(planeGeometry(owned), mat);
   group.add(body);
 
-  const wide = (owned.includes('widewings') ? 1.35 : 1) * (owned.includes('swallowtail') ? 1.15 : 1) * (owned.includes('dart') ? 0.82 : 1);
-  if (owned.includes('bumpers')) {
+  const { wide, L: noseL, D: tipD } = foldShape(owned);
+  if (owned.includes('stunt')) {
+    // Stunt Fold: little upturned fins on the wing tips
     for (const s of [-1, 1]) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.3), M('#ef8fa8'));
-      b.position.set(s * 0.74 * wide, 0.14, 0.8);
-      group.add(b);
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.18 + 0.06 * lvOf(owned, 'stunt'), 0.4), M('#f6efdc'));
+      fin.position.set(s * 0.75 * wide, tipD + 0.08, 0.7);
+      fin.rotation.z = s * -0.25;
+      group.add(fin);
     }
+  }
+  if (owned.includes('pencil')) {
+    // Pencil Tip: a sharpened pencil stub for a nose
+    const len = 0.35 + 0.08 * lvOf(owned, 'pencil');
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, len, 6), M('#f2c94c'));
+    body.rotation.x = Math.PI / 2; body.position.set(0, -0.02, -noseL + len / 2 - 0.05); group.add(body);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 6), M('#e8d2a8'));
+    tip.rotation.x = -Math.PI / 2; tip.position.set(0, -0.02, -noseL - 0.12); group.add(tip);
+    const lead = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.06, 6), M('#2c2416'));
+    lead.rotation.x = -Math.PI / 2; lead.position.set(0, -0.02, -noseL - 0.21); group.add(lead);
   }
   if (owned.includes('skids')) {
     const sk = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.9), M('#ef8fa8'));
     sk.position.set(0, -0.27, 0.35);
     group.add(sk);
-  }
-  if (owned.includes('rudder')) {
-    const r = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.3, 0.3), M('#c8f04a'));
-    r.position.set(0, 0.16, 0.75);
-    group.add(r);
   }
   if (owned.includes('noseclip')) {
     const clip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.34), M('#b9c1c9'));
@@ -320,8 +336,8 @@ function buildPlane(seat, owned, rank = 0) {
   const root = new THREE.Group();
   root.add(group, ball);
   // Wing tips (just outside the outer edges) for the slipstream doodle lines
-  const tipS = 0.75 * wide + 0.04, tipL = owned.includes('dart') ? 1.0 : 0.85, tipD = owned.includes('swallowtail') ? 0.22 : 0.14;
-  const tips = [new THREE.Vector3(-tipS, tipD, tipL * 0.92), new THREE.Vector3(tipS, tipD, tipL * 0.92)];
+  const tipS = 0.75 * wide + 0.04;
+  const tips = [new THREE.Vector3(-tipS, tipD, noseL * 0.92), new THREE.Vector3(tipS, tipD, noseL * 0.92)];
   root.userData = { body: group, ball, seat, tips };
   return root;
 }

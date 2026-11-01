@@ -8,7 +8,7 @@
 import { esc, clipIcon, planeIcon, vibrate, keepAwake } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
 import { RANK_UNLOCKS } from '../shared/ranks.js';
-import { statBars, levelOf, MAX_LEVEL, UPGRADES, UPGRADE_BY_ID, SECTIONS, upgradeState } from '../shared/upgrades.js';
+import { statBars, MAX_LEVEL, MK, UPGRADES, UPGRADE_BY_ID, SLOTS, partState, equippedList } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -281,71 +281,91 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
   /* ------------------------------------------------------------- shop --- */
   const list = q('.shoplist'), doneBtn = q('.s-done'), stats = q('.stats');
   let shopDone = false, lastShopKey = '';
-  // The shop is the upgrade tree: Basics, then the three specialty paths (pick
-  // one, the others lock), then Extras. Every row shows why it's locked if it is.
-  const PATH_NOTE = { Glider: 'Glider path', Dart: 'Dart path', Tank: 'Tank path' };
-  function shopOrder() {
+  // The shop is the plane's loadout: five slots, each with a free stock part
+  // and three parts to buy. Bought parts stay in your inventory, so swapping
+  // back is free. Each row says what tapping it does and how your stats move.
+  const BAR_KEYS = ['Launch', 'Speed', 'Glide', 'Turning', 'Toughness', 'Landing'];
+  function deltaText(before, after) {
     const out = [];
-    for (const sec of SECTIONS) {
-      out.push({ head: sec.title, key: `h-${sec.id}` });
-      for (const u of UPGRADES.filter(x => x.section === sec.id && !x.parent)) {
-        if (u.path) out.push({ sub: PATH_NOTE[u.path], key: `p-${u.path}` });
-        out.push({ u, depth: 0 });
-        for (const c of UPGRADES.filter(x => x.parent === u.id)) out.push({ u: c, depth: 1 });
-      }
+    for (const k of BAR_KEYS) {
+      const d = after[k] - before[k];
+      if (Math.abs(d) < 0.025) continue;
+      const n = Math.min(3, Math.ceil(Math.abs(d) / 0.08));
+      out.push(`<span class="${d > 0 ? 'up' : 'dn'}">${k} ${(d > 0 ? '▲' : '▼').repeat(n)}</span>`);
     }
-    return out;
+    return out.join(' ');
+  }
+  // What tapping a row would do, and the loadout afterwards
+  function actionFor(id) {
+    const parts = me.parts || {}, loadout = me.loadout || {};
+    if (id.startsWith('stock:')) {
+      const slot = id.slice(6);
+      const on = !loadout[slot];
+      const lo = { ...loadout }; delete lo[slot];
+      return { kind: on ? 'on' : 'equip', after: equippedList(parts, lo) };
+    }
+    const u = UPGRADE_BY_ID[id], lv = parts[id] || 0, equipped = loadout[u.slot] === id;
+    if (lv && !equipped) return { kind: 'equip', after: equippedList(parts, { ...loadout, [u.slot]: id }) };
+    const st = partState(parts, id, me.rank?.level ?? 0);
+    if (st.state === 'maxed') return { kind: 'maxed', after: me.owned };
+    if (st.state !== 'open') return { kind: 'locked', reason: st.reason, after: me.owned };
+    return { kind: lv ? 'upgrade' : 'buy', cost: st.cost, next: lv + 1, after: equippedList({ ...parts, [id]: lv + 1 }, { ...loadout, [u.slot]: id }) };
   }
   function renderShop(force) {
-    const key = JSON.stringify([me.clips, me.owned, me.rank?.level]);
+    const key = JSON.stringify([me.clips, me.parts, me.loadout, me.rank?.level]);
     if (!force && key === lastShopKey) return;
     lastShopKey = key;
-    const bars = statBars(me.owned);
-    stats.innerHTML = Object.entries(bars).map(([k, v]) => `<span>${k}</span><i><b style="transform:scaleX(${v.toFixed(2)})"></b></i>`).join('');
+    const now = statBars(me.owned);
+    stats.innerHTML = BAR_KEYS.map(k => `<span>${k}</span><i><b style="transform:scaleX(${now[k].toFixed(2)})"></b></i>`).join('');
     if (!list.children.length) {
-      shopOrder().forEach((row, i) => {
-        if (row.head || row.sub) {
-          const h = document.createElement('div');
-          h.className = row.head ? 'shead' : 'spath';
-          h.textContent = row.head || row.sub;
-          list.appendChild(h);
-          return;
+      let i = 0;
+      for (const sl of SLOTS) {
+        const h = document.createElement('div');
+        h.className = 'shead';
+        h.textContent = sl.name;
+        list.appendChild(h);
+        for (const id of [`stock:${sl.id}`, ...UPGRADES.filter(u => u.slot === sl.id).map(u => u.id)]) {
+          const el = document.createElement('button');
+          el.className = 'upg';
+          el.dataset.id = id;
+          el.style.setProperty('--i', Math.min(i++, 12));
+          el.onclick = () => {
+            if (el.disabled) return;
+            const a = actionFor(id);
+            vibrate(10);
+            if (a.kind === 'equip') link.input({ k: 'equip', id });
+            else if (a.kind === 'buy' || a.kind === 'upgrade') link.input({ k: 'buy', id });
+          };
+          list.appendChild(el);
         }
-        const u = row.u;
-        const el = document.createElement('button');
-        el.className = `upg${row.depth ? ' child' : ''}`;
-        el.dataset.id = u.id;
-        el.style.setProperty('--i', Math.min(i, 12));
-        el.onclick = () => {
-          if (el.disabled) return;
-          vibrate(10);
-          link.input({ k: 'buy', id: u.id });
-        };
-        list.appendChild(el);
-      });
+      }
     }
     for (const el of list.querySelectorAll('.upg')) {
-      const u = UPGRADE_BY_ID[el.dataset.id];
-      const st = upgradeState(me.owned, u.id, me.rank?.level ?? 0);
-      const lv = st.level ?? levelOf(me.owned, u.id);
-      const maxed = st.state === 'maxed';
-      const open = st.state === 'open';
-      const afford = open && me.clips >= st.cost;
-      el.classList.toggle('owned', maxed);
-      el.classList.toggle('locked', st.state === 'needs');
-      el.classList.toggle('lockedout', st.state === 'lockedOut');
+      const id = el.dataset.id, stock = id.startsWith('stock:');
+      const u = stock ? null : UPGRADE_BY_ID[id];
+      const sl = stock ? SLOTS.find(x => x.id === id.slice(6)) : null;
+      const lv = stock ? 0 : (me.parts?.[id] || 0);
+      const a = actionFor(id);
+      const on = stock ? a.kind === 'on' : me.loadout?.[u.slot] === id;
+      const afford = (a.kind === 'buy' || a.kind === 'upgrade') ? me.clips >= a.cost : a.kind === 'equip';
+      el.classList.toggle('owned', on);
+      el.classList.toggle('inv', !on && lv > 0);
+      el.classList.toggle('locked', a.kind === 'locked');
       el.disabled = !afford;
-      const pips = Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('');
-      const right = maxed ? '<svg aria-hidden="true"><use href="#i-check"/></svg>'
-        : open ? `${st.cost}${clipIcon}`
-        : '<svg aria-hidden="true" class="lock"><use href="#i-lock"/></svg>';
-      const desc = open || maxed
-        ? `<b>${esc(u.pro)}</b>${u.con ? ` · <em>${esc(u.con)}</em>` : ''}`
-        : `<span class="why">${esc(st.reason)}</span>`;
-      el.setAttribute('aria-label', `${u.name}, level ${lv} of ${MAX_LEVEL}${open || maxed ? '' : `, ${st.reason}`}`);
-      el.innerHTML = `<span class="un">${esc(u.name)}<span class="pips">${pips}</span></span>
+      const pips = stock ? '' : `<span class="pips">${Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('')}</span>`;
+      const right = a.kind === 'buy' || a.kind === 'upgrade' ? `<small>${a.kind === 'buy' ? 'Buy' : MK(a.next)}</small>${a.cost}${clipIcon}`
+        : a.kind === 'equip' ? '<small>Equip</small>'
+        : a.kind === 'locked' ? '<svg aria-hidden="true" class="lock"><use href="#i-lock"/></svg>'
+        : on ? '<svg aria-hidden="true"><use href="#i-check"/></svg>' : '';
+      const name = stock ? sl.stock : `${u.name}${lv ? ` <span class="mk">${MK(lv)}</span>` : ''}`;
+      const desc = stock ? '<span class="why">Stock part, free</span>'
+        : a.kind === 'locked' ? `<b>${esc(u.pro)}</b> · <span class="why">${esc(a.reason)}</span>`
+        : `<b>${esc(u.pro)}</b>${u.con ? ` · <em>${esc(u.con)}</em>` : ''}`;
+      const delta = (a.kind === 'buy' || a.kind === 'upgrade' || a.kind === 'equip') ? deltaText(now, statBars(a.after)) : '';
+      el.setAttribute('aria-label', `${stock ? sl.stock : u.name}${lv ? `, ${MK(lv)}` : ''}${on ? ', equipped' : ''}${a.kind === 'locked' ? `, ${a.reason}` : ''}`);
+      el.innerHTML = `<span class="un">${name}${pips}</span>
         <span class="uc">${right}</span>
-        <span class="ud">${desc}</span>`;
+        <span class="ud">${desc}${delta ? `<span class="delta">${delta}</span>` : ''}</span>`;
     }
   }
 

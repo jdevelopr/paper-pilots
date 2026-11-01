@@ -35,3 +35,14 @@ body.solo-touch #hud .board-wrap, body.solo-touch #hud .intro, body.solo-touch #
 .f-btns .btn { flex: 1; }
 .f-btns[hidden] { display: none; }
 @media (pointer: coarse) { #solo .keys { display: none; } }
+
+/* ------------------------------------------------- loadout shop rows --- */
+.upg .mk { font-size: 18px; color: var(--blue); margin-left: 4px; }
+.upg .uc small { font-size: 16px; margin-right: 4px; font-family: var(--body); }
+.upg.inv { background: #eef1f7; }
+.upg .delta { display: block; margin-top: 2px; font-size: 14px; }
+.upg .delta span { margin-right: 8px; white-space: nowrap; }
+.upg .delta .up { color: var(--green); }
+.upg .delta .dn { color: var(--danger); }
+.upg .why { color: var(--ink-soft); }
+.stats { grid-template-columns: auto 1fr auto 1fr; }

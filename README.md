@@ -18,16 +18,16 @@ The host runs the only simulation. Each race it sends every player the floor and
 
 | Title | Unlocks | Plane paper |
 |---|---|---|
-| Intern | Basics, levels I–II | Plain copy paper |
-| Temp | Extras | Lined notebook |
-| Associate | Specialty paths (keystones) | Graph paper |
-| Supervisor | Level III of any upgrade, and the branch upgrades under your specialty | Legal pad |
-| Manager | Level IV | Kraft paper |
-| Director | Level V | Blueprint |
+| Intern | Every part at Mk I | Plain copy paper |
+| Temp | | Lined notebook |
+| Associate | Mk II of any part | Graph paper |
+| Supervisor | Mk III of any part | Legal pad |
+| Manager | | Kraft paper |
+| Director | | Blueprint |
 | VP | | Silver foil |
 | CEO | | Gold foil |
 
-Locked shop items say which title they need (for example "Level IV needs Manager rank"), and the phone's rank bar shows what your next promotion unlocks. Computer rivals follow the same rules.
+Locked shop items say which title they need (for example "Mk III needs Supervisor rank"), and the phone's rank bar shows what your next promotion unlocks. Computer rivals follow the same rules.
 
 The ladder gets steep: Temp takes 30 clips, Manager 280, Director 450, VP 700, and CEO 1,000. Early promotions come fast, but the top floors of the org chart take a near-perfect match. Your title shows on the host screen, promotions get announced after a race, and your phone shows how many clips you need for the next title. The game also tracks your personal-best distance on each floor and flags a new best.
 
@@ -62,38 +62,37 @@ Raised zones (desk tops, the fridge, a rack) are targets too.
 
 **Ranking within a race:** the best zone wins; within the same zone, the landing closer to the centre wins; then whoever flew farther. Missing every zone ranks below any zone landing, and crumpling ranks last.
 
-### Upgrade tree
+### Upgrades: your plane's loadout
 
-Every upgrade has **5 levels**, bought one at a time (costs ×1, ×1.8, ×2.9, ×4.4, ×6.5 of the base, so maxing one out is a real commitment). Each level adds a smaller step, and the downsides stack. The phone shop shows the whole tree: locked items say what they need, and locked-out items say what you chose instead.
+Your plane has **five slots**, and each one holds one part. Every slot starts with a free stock part, and there are three parts to buy for each slot. **Buying a part puts it straight into its slot.** Whatever it replaced goes into your **inventory**: everything you've bought stays yours for the rest of the match, so you can swap back for free between races. Only equipped parts do anything.
 
-**Basics** are open to everyone:
+Each part goes up to **Mk III**. Mk II needs Associate rank, and Mk III needs Supervisor. Prices are ×1, ×2.2 and ×4 the part's base price. Upgrades reset every match, so everyone starts with a plain plane.
 
-| Upgrade | Base cost | Effect | Notes |
-|---|---|---|---|
-| Cardstock | 17 | More durability, heavier | |
-| Rubber Band Launcher | 14 | Faster start | |
-| Wide Wing Fold | 20 | Glides longer, turns slower | |
-| Glossy Paper | 14 | Less drag, slides farther on landing | |
-| Binder Clip Brake | 8 | Sticks the landing | |
-| Sticky Note Flaps | 11 | Sharper turns, a little more drag | |
-| Nose Clip | 11 | Fans push you less, slightly heavier | |
-| Packing Tape | 13 | Takes less damage | |
-| Fridge Magnet | 10 | Pulls in paper clips | |
-| Afterburner Doodle | 15 | Every mid-flight trick gives a burst of speed: +2.5 at level I, rising to +5.5 at level V, with inked slipstream lines trailing off the wing tips. Without it, tricks give no boost. | |
+| Slot | Part | Base price | Does | Catch |
+|---|---|---|---|---|
+| Paper | Cardstock | 35 | Much more durability | Heavier, sinks faster |
+| Paper | Tissue Paper | 38 | Floats much longer | Fragile |
+| Paper | Glossy Photo Paper | 35 | Keeps its speed | Slides far on landing |
+| Fold | Wide Glider | 42 | Glides much farther | Turns slower |
+| Fold | Needle Dart | 42 | Fast and slippery | Sinks a bit faster |
+| Fold | Stunt Fold | 38 | Very sharp turns | More drag |
+| Nose | Paper Clip Nose | 29 | Fans and wind barely push you | Slightly heavier |
+| Nose | Pencil Tip | 32 | Bounce off walls keeping speed | |
+| Nose | Fridge Magnet | 29 | Pulls in clips from far away (Mk III: +1 per pickup) | |
+| Tail | Sticky Note Flaps | 29 | Sharper turns | A little drag |
+| Tail | Binder Clip Brake | 26 | Stops dead on landing | |
+| Tail | Eraser Skids | 26 | Hard landings don't hurt | |
+| Gadget | Rubber Band Launcher | 32 | Much harder launch | |
+| Gadget | Afterburner Doodle | 38 | Every mid-flight trick gives a burst of speed, with ink slipstream lines off the wing tips | |
+| Gadget | Packing Tape | 32 | Takes much less damage | |
 
-**Specialty: pick one path.** Keystones cost 25 and branch upgrades 20–22 at level I. Buying any keystone locks the other two keystones and everything in their branches for the rest of the match.
+**The shop shows exactly what you're getting.** Six stat bars (Launch, Speed, Glide, Turning, Toughness, Landing) show your current plane. Every row says what tapping it does (Buy, the next Mk level, or Equip) and how each bar would move, as green ▲ and red ▼ marks. Rows that are locked say why.
 
-| Path | Keystone (needs) | Branch upgrades |
-|---|---|---|
-| Glider | Swallowtail Fold: much slower sink (Wide Wing Fold II) | Thermal Sense: vents lift you higher · Tissue Paper: much lighter but fragile (Swallowtail II) |
-| Dart | Dart Fold: much less drag (Rubber Band II) | Pencil Nose: keep speed when bouncing off walls · Jet Stream Crease: even harder launch (Dart II) |
-| Tank | Laminated: huge durability (Cardstock II + Packing Tape I) | Eraser Bumpers: shrug off hits · Paperweight Drop: stall and drop like a stone for precise landings (Laminated II) |
+**Parts change the plane's look**, so builds are easy to tell apart on the host screen. The fold sets the silhouette: wide wings, a long narrow needle, or upturned stunt fins, and higher Mk levels make each one more extreme. Tissue paper goes see-through, glossy paper shines, and cardstock gets a visible second layer. You can also see the pencil nose, magnet, tape, flaps, binder clip, skids, rubber band and doodled flames.
 
-**Extras** (14–17 at level I) hang off particular basics: Highlighter Rudder (needs Sticky Note Flaps II), Clip Collector, which gives an extra clip per pickup (needs Fridge Magnet II), and Eraser Skids, which make hard landings harmless (needs Binder Clip Brake I).
+The host's Supply closet board shows each player's equipped parts and their Mk levels.
 
-Computer rivals each commit to a path too, so their builds differ.
-
-Upgrades show up on your plane in 3D: the magnet, tape strips, yellow flaps, nose clip and so on.
+In a simulated 6-floor match, the best computer pilot finished with a nearly maxed loadout only on the last floors, and weaker ones still had gaps. Computer rivals each build toward a style: a glider, a fast dart, or a tough brick.
 
 ### The Rooftop (Floor 6)
 

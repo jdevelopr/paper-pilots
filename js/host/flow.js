@@ -5,7 +5,7 @@
 //   intro -> race -> results -> shop -> intro (next floor) ... -> final
 
 import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM } from '../game/sim.js';
-import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, finalStandings, SHOP_MS, legOf, rankOf } from '../game/rules.js';
+import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, equip, finalStandings, SHOP_MS, legOf, rankOf } from '../game/rules.js';
 import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js';
 import { generateFloor } from '../game/floors.js';
 import { UPGRADES } from '../shared/upgrades.js';
@@ -358,7 +358,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       if (!pl) continue;
       const p = race?.planes.find(q => q.seat === h.seat);
       sendTo(h.seat, 'me', {
-        seat: h.seat, name: pl.name, clips: pl.clips, points: pl.points, owned: pl.owned,
+        seat: h.seat, name: pl.name, clips: pl.clips, points: pl.points, owned: pl.owned, parts: pl.parts, loadout: pl.loadout,
         state: p?.state ?? 'none', hp: p ? Math.round(p.hp) : 0, maxHp: p?.maxHp ?? 100,
         run: (p?.clips ?? 0) + (p?.tr?.clips ?? 0), chain: p?.tr?.chain ?? 0, crumpled: !!p?.crumpled, zone: p?.zone ?? null,
         dist: p ? Math.round(p.z) : 0, best: Math.round(pl.best[currentFloor(match).id] ?? 0),
@@ -429,7 +429,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     shopDone = new Set();
     for (const [seat, b] of bots) {
       const pl = match.players[seat];
-      for (const id of botShop(b.brain, pl.clips, pl.owned, rankOf(pl.career).level)) buy(match, seat, id);
+      for (const id of botShop(b.brain, pl.clips, pl.parts, rankOf(pl.career).level)) buy(match, seat, id);
       shopDone.add(seat);
     }
     startsAt = Date.now() + SHOP_MS;
@@ -447,7 +447,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       next, nextLeg: legOf(match, match.round + 1), legs: match.racesPerFloor,
       players: raceSeats.map(seat => {
         const pl = match.players[seat];
-        return { seat, name: pl.name, clips: pl.clips, owned: pl.owned, done: shopDone.has(seat) };
+        return { seat, name: pl.name, clips: pl.clips, owned: pl.owned, parts: pl.parts, loadout: pl.loadout, done: shopDone.has(seat) };
       }),
     });
   }
@@ -491,6 +491,15 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         if (r.ok) {
           sfx.buy();
           sendTo(seat, 'fx', { kind: 'bought', id: m.id });
+          renderer.setPlanes(raceSeats.map(s => ({ seat: s, owned: match.players[s].owned, rank: rankOf(match.players[s].career).level })));
+        } else sendTo(seat, 'fx', { kind: 'nope', reason: r.reason });
+        renderShop();
+        sendMeAll();
+      } else if (m.k === 'equip') {
+        const r = equip(match, seat, String(m.id));
+        if (r.ok) {
+          sfx.tick();
+          sendTo(seat, 'fx', { kind: 'equipped', id: m.id });
           renderer.setPlanes(raceSeats.map(s => ({ seat: s, owned: match.players[s].owned, rank: rankOf(match.players[s].career).level })));
         } else sendTo(seat, 'fx', { kind: 'nope', reason: r.reason });
         renderShop();

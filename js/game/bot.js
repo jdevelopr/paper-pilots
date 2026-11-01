@@ -5,7 +5,7 @@
 
 import { stepPlane, createRace, throwPlane, SIM } from './sim.js';
 import { moverBox } from './floors.js';
-import { nextCost, levelOf } from '../shared/upgrades.js';
+import { partState } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -183,38 +183,27 @@ export function botSteer(bot, race, p) {
   return { x: clamp(x + w, -1, 1), y: clamp(y, -1, 1) };
 }
 
-// Shop logic for bots: buy the best-value upgrade they can afford.
-// Each bot follows one of the specialty paths through the upgrade tree, so
-// rivals end up with different builds (and lock themselves out the same way
-// players do). Shopping order is the bot's wish list; levels repeat.
-const BUILD_PATHS = {
-  Glider: ['widewings', 'widewings', 'swallowtail', 'thermal', 'rubberband', 'widewings', 'swallowtail', 'featherweight', 'glossy', 'thermal', 'swallowtail'],
-  Dart: ['rubberband', 'rubberband', 'dart', 'glossy', 'pencilnose', 'dart', 'jetstream', 'afterburner', 'flaps', 'rudder', 'afterburner', 'dart', 'glossy'],
-  Tank: ['cardstock', 'tape', 'cardstock', 'laminated', 'bumpers', 'binder', 'laminated', 'paperweight', 'skids', 'widewings', 'tape'],
-};
-export function botShop(bot, clips, owned, rank = Infinity) {
-  const path = Object.keys(BUILD_PATHS)[bot.seat % 3];
-  const wish = BUILD_PATHS[path];
-  const have = [...owned];
+// Shop logic for bots: each one builds toward a style (one part per slot, so
+// buying never has to swap anything out). The wish list repeats an id to
+// level it up; a level the bot's rank can't buy yet is skipped for now.
+const BUILDS = [
+  ['widewings', 'tissue', 'widewings', 'rubberband', 'magnet', 'widewings', 'tissue', 'flaps', 'rubberband', 'tissue', 'magnet', 'flaps', 'rubberband', 'magnet', 'flaps'],
+  ['needle', 'rubberband', 'needle', 'afterburner', 'flaps', 'needle', 'glossy', 'afterburner', 'flaps', 'rubberband', 'glossy', 'afterburner', 'flaps', 'rubberband', 'glossy'],
+  ['cardstock', 'tape', 'cardstock', 'binder', 'widewings', 'tape', 'cardstock', 'noseclip', 'binder', 'widewings', 'tape', 'noseclip', 'widewings', 'binder', 'noseclip'],
+];
+export function botShop(bot, clips, parts = {}, rank = Infinity) {
+  const wish = BUILDS[bot.seat % BUILDS.length];
+  const have = { ...parts };
   const buys = [];
   let left = clips;
-  // Walk the wish list: buy the first thing not yet at the wished level.
   const want = {};
   for (const id of wish) {
     want[id] = (want[id] || 0) + 1;
-    if (levelOf(have, id) >= want[id]) continue;
-    const cost = nextCost(have, id, rank);
-    if (cost == null) continue;
-    if (cost > left) break;              // save up for it rather than skip ahead
-    have.push(id); buys.push(id); left -= cost;
-  }
-  // Wish list done: keep levelling whatever on it is cheapest.
-  if (wish.every(id => nextCost(have, id, rank) == null || levelOf(have, id) >= wish.filter(x => x === id).length)) {
-    for (let n = 0; n < 3; n++) {
-      const opts = [...new Set(wish)].map(id => [id, nextCost(have, id, rank)]).filter(([, c]) => c != null && c <= left).sort((a, b) => a[1] - b[1]);
-      if (!opts.length) break;
-      have.push(opts[0][0]); buys.push(opts[0][0]); left -= opts[0][1];
-    }
+    if ((have[id] || 0) >= want[id]) continue;
+    const st = partState(have, id, rank);
+    if (st.state !== 'open') continue;
+    if (st.cost > left) break;              // save up for it rather than skip ahead
+    have[id] = (have[id] || 0) + 1; buys.push(id); left -= st.cost;
   }
   return buys;
 }

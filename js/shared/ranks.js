@@ -24,17 +24,15 @@ export function rankOf(career = 0) {
 export const RANK = Object.fromEntries(RANKS.map((r, i) => [r.title, i]));
 
 // What each promotion unlocks. Shown when someone is promoted and in the shop.
-//   Upgrade levels: III needs Supervisor, IV needs Manager, V needs Director.
-//   Specialty keystones need Associate; their branch upgrades need Supervisor.
-//   Extras need Temp.
+//   Mk II parts need Associate; Mk III parts need Supervisor.
 //   Every title also changes the paper your plane is folded from.
 export const RANK_UNLOCKS = [
   'Plain copy paper',
-  'Extras unlocked · Lined notebook paper',
-  'Specialty paths unlocked · Graph paper',
-  'Level III upgrades and branch upgrades unlocked · Legal pad',
-  'Level IV upgrades unlocked · Kraft paper',
-  'Level V upgrades unlocked · Blueprint paper',
+  'Lined notebook paper',
+  'Mk II parts unlocked · Graph paper',
+  'Mk III parts unlocked · Legal pad',
+  'Kraft paper',
+  'Blueprint paper',
   'Silver foil paper',
   'Gold foil paper',
 ];
