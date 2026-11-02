@@ -7,10 +7,17 @@ import { mountSetup } from './shared/setup.js';
 
 const room = roomFromUrl();
 
-if (room) {
-  import('./client/main.js').then(m => m.start(room)).catch(fatal);
-} else {
+if (room) import('./client/main.js').then(m => m.start(room)).catch(fatal);
+else {
   show('home');
+  // A failed join (closed room, wrong code) lands back here with a message
+  let msg = null;
+  try { msg = sessionStorage.getItem('homeMsg'); sessionStorage.removeItem('homeMsg'); } catch {}
+  if (msg) { $('#home-status').textContent = msg; $('#join-code').value = sessionStorage.getItem('room') || ''; }
+}
+
+// The home screen's buttons are always wired up, whatever the address says
+{
   $('#host-btn').onclick = () => import('./host/main.js').then(m => m.startHost()).catch(fatal);
   let soloSetup = null;
   $('#solo-btn').onclick = () => {
@@ -41,6 +48,7 @@ if (room) {
 
 function fatal(err) {
   console.error(err);
+  if (room) { try { sessionStorage.setItem('homeMsg', 'Something failed to load. Check your connection and try again.'); } catch {} location.replace(location.pathname); return; }
   show('home');
   $('#home-status').textContent = 'Something failed to load. Check your connection and reload.';
 }

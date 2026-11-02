@@ -56,11 +56,13 @@ function promptName(code) {
   };
 }
 
+// Couldn't join (room closed, wrong code, connection lost): go back to a clean
+// home page without ?room= in the address, so the home buttons work and a
+// reload doesn't try the dead room again. The message and code carry over.
 function fail(msg) {
-  show('home');
-  $('#home-status').textContent = msg;
-  $('#join-code').value = sessionStorage.getItem('room') || '';
-  // Typing a code on the home screen re-joins via ?room=
+  try { client?.destroy(); } catch {}
+  try { sessionStorage.setItem('homeMsg', msg); } catch {}
+  location.replace(location.pathname);
 }
 
 function connect(code, name) {
