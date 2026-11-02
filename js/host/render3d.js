@@ -569,6 +569,61 @@ function buildPlane(seat, owned, rank = 0, stickers = []) {
 
 /* ----------------------------------------------------------- furniture --- */
 
+// Merge the meshes of many static groups into one mesh per material, layer
+// and 250-unit stretch of floor (so far stretches can still be culled).
+function mergeStatic(groups, chunk = 250) {
+  const bins = new Map();
+  for (const g of groups) {
+    g.updateMatrixWorld(true);
+    const ck = Math.floor(-g.position.z / chunk);
+    g.traverse(o => {
+      if (!o.isMesh) return;
+      const mt = o.material;
+      const mk = mt.map ? mt.uuid : `${mt.type}:${mt.color?.getHexString()}:${mt.transparent}:${mt.opacity}:${mt.side}:${mt.flatShading}:${mt.polygonOffset}:${mt.polygonOffsetFactor}:${mt.depthWrite}`;
+      const key = `${mk}|${o.layers.mask}|${ck}`;
+      if (!bins.has(key)) bins.set(key, { mat: o.material, layers: o.layers.mask, list: [] });
+      bins.get(key).list.push(o);
+    });
+  }
+  const out = [];
+  for (const { mat, layers, list } of bins.values()) {
+    if (list.length === 1) {
+      const o = list[0], m = new THREE.Mesh(o.geometry, mat);
+      o.matrixWorld.decompose(m.position, m.quaternion, m.scale);
+      m.layers.mask = layers;
+      out.push(m);
+      continue;
+    }
+    let n = 0;
+    const parts = list.map(o => {
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      geo.applyMatrix4(o.matrixWorld);
+      n += geo.attributes.position.count;
+      return geo;
+    });
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+    let at = 0;
+    for (const geo of parts) {
+      const c = geo.attributes.position.count;
+      pos.set(geo.attributes.position.array, at * 3);
+      if (geo.attributes.normal) nor.set(geo.attributes.normal.array, at * 3);
+      if (geo.attributes.uv) uv.set(geo.attributes.uv.array, at * 2);
+      at += c;
+      geo.dispose();
+    }
+    for (const o of list) o.geometry.dispose();
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.computeBoundingSphere();
+    const m = new THREE.Mesh(geo, mat);
+    m.layers.mask = layers;
+    out.push(m);
+  }
+  return out;
+}
+
 function buildObject(o) {
   const g = new THREE.Group();
   const { w, d, h } = o;
@@ -861,6 +916,7 @@ function buildObject(o) {
 }
 
 // Meshes for moving obstacles. Origin at the bottom centre of the collision box.
+const lampShadeMat = lam('#e0a21b', { side: THREE.DoubleSide });
 function buildMover(m) {
   const g = new THREE.Group();
   const spin = [];
@@ -964,8 +1020,7 @@ function buildMover(m) {
       const lampY = -(m.rope + m.h);
       g.add(boxMesh(0.09, m.rope, 0.09, '#3b3f45', 0, lampY + m.h, 0));
       g.add(boxMesh(0.6, 0.25, 0.6, '#2f3338', 0, -0.25, 0));                   // ceiling hook
-      const shade = new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.6, 10, 1, true), M('#e0a21b'));
-      shade.material.side = THREE.DoubleSide;
+      const shade = new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.6, 10, 1, true), lampShadeMat);
       shade.position.y = lampY + m.h - 0.3; g.add(shade);
       const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff3c0' }));
       bulb.position.y = lampY + m.h * 0.5; bulb.layers.set(1); g.add(bulb);
@@ -976,6 +1031,11 @@ function buildMover(m) {
       }
       const ringG = new THREE.TorusGeometry(0.55, 0.04, 4, 14);
       for (const y of [lampY + m.h * 0.15, lampY + m.h * 0.45]) { const rg = new THREE.Mesh(ringG, M('#2f3338')); rg.rotation.x = Math.PI / 2; rg.position.y = y; g.add(rg); }
+      // one mesh per material instead of ten (there are dozens of lamps)
+      const parts = [...g.children];
+      g.clear();
+      const tmpG = new THREE.Group(); tmpG.add(...parts);
+      for (const mm of mergeStatic([tmpG], 1e9)) g.add(mm);
       break;
     }
     default:
@@ -1153,9 +1213,11 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   }
   // Shorter draw distance on lower settings, with a haze so the far end fades out
   function setDrawDistance() {
-    camera.far = Math.min(floor.length + 120, 140 + (floor.length + 120) * Q.far);
+    // Even on High, nothing past ~900 units is big enough to see, so the
+    // longest floors stop drawing there (behind a light haze).
+    camera.far = Math.min(floor.length + 120, 140 + (floor.length + 120) * Q.far, 900);
     camera.updateProjectionMatrix();
-    scene.fog = Q.far < 1 ? new THREE.Fog(scene.background, camera.far * 0.55, camera.far) : null;
+    scene.fog = camera.far < floor.length + 120 ? new THREE.Fog(scene.background, camera.far * 0.55, camera.far) : null;
   }
   renderer.setPixelRatio(Q.pr);
   ink.setNormalScale(Q.normal);
@@ -1801,6 +1863,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     env = new THREE.Group();
     scene.add(env);
     for (const k in anims) anims[k] = [];
+    // S(mesh) marks a mesh that never moves; they're all merged at the end of setFloor
+    const S = m => { m.userData.still = true; return m; };
     anims.outside = null; anims.gap = null; anims.trees = null;
     deskTops = (f.objects || []).filter(o => (o.type === 'desk' || o.type === 'table' || o.type === 'counter') && !o.launch);
 
@@ -1858,13 +1922,14 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
           p.rotation.x = Math.PI / 2;
           p.position.set(x, H - dy, -z - 8);
           p.layers.set(1);
-          env.add(p);
+          env.add(S(p));
         }
       }
     }
 
     // Side walls with windows, plus skirting
     const wallMat = M(f.wall);
+    const paneMat = new THREE.MeshBasicMaterial({ color: '#cfe6ee' });
     for (const s of [-1, 1]) {
       // Open shortcut windows punch real holes in the wall
       const holes = (f.windows || []).filter(w => w.side === s).sort((a, b) => a.z - b.z);
@@ -1901,21 +1966,22 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       env.add(Object.assign(boxMesh(0.2, 0.6, len, '#6b5440', s * (W / 2 - 0.05), 0, midZ)));
       // Basement: small high windows at ground level, with a bit of grass outside
       if (f.id === 'basement') for (let z = 10; z < L; z += 26) {
-        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.6, 5), new THREE.MeshBasicMaterial({ color: '#cfe6ee' }));
+        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.6, 5), M('#cfe6ee'));
+        pane.material = paneMat;
         pane.position.set(s * (W / 2 - 0.02), H - 1.6, -z - 2.5);
-        env.add(pane);
-        env.add(boxMesh(0.12, 0.5, 5, '#6f9a5a', s * (W / 2 - 0.03), H - 2.4, -z - 2.5));
-        env.add(boxMesh(0.16, 0.2, 5.4, '#8a8f93', s * (W / 2 - 0.05), H - 2.6, -z - 2.5));
-        env.add(boxMesh(0.16, 0.2, 5.4, '#8a8f93', s * (W / 2 - 0.05), H - 0.8, -z - 2.5));
+        env.add(S(pane));
+        env.add(S(boxMesh(0.12, 0.5, 5, '#6f9a5a', s * (W / 2 - 0.03), H - 2.4, -z - 2.5)));
+        env.add(S(boxMesh(0.16, 0.2, 5.4, '#8a8f93', s * (W / 2 - 0.05), H - 2.6, -z - 2.5)));
+        env.add(S(boxMesh(0.16, 0.2, 5.4, '#8a8f93', s * (W / 2 - 0.05), H - 0.8, -z - 2.5)));
       }
       for (let z = 6; z < L && f.id !== 'basement'; z += 18) {
         if (holes.some(w => Math.abs(w.z - (z + 5)) < w.half + 7)) continue;
-        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.1, H * 0.45, 10), new THREE.MeshBasicMaterial({ color: '#cfe6ee' }));
+        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.1, H * 0.45, 10), paneMat);
         pane.position.set(s * (W / 2 - 0.02), H * 0.55, -z - 5);
-        env.add(pane);
-        env.add(boxMesh(0.15, 0.25, 10.4, '#8a8f93', s * (W / 2 - 0.05), H * 0.32, -z - 5));
-        env.add(boxMesh(0.15, 0.25, 10.4, '#8a8f93', s * (W / 2 - 0.05), H * 0.78 - 0.25, -z - 5));
-        env.add(boxMesh(0.15, H * 0.46, 0.25, '#8a8f93', s * (W / 2 - 0.05), H * 0.32, -z - 5));
+        env.add(S(pane));
+        env.add(S(boxMesh(0.15, 0.25, 10.4, '#8a8f93', s * (W / 2 - 0.05), H * 0.32, -z - 5)));
+        env.add(S(boxMesh(0.15, 0.25, 10.4, '#8a8f93', s * (W / 2 - 0.05), H * 0.78 - 0.25, -z - 5)));
+        env.add(S(boxMesh(0.15, H * 0.46, 0.25, '#8a8f93', s * (W / 2 - 0.05), H * 0.32, -z - 5)));
       }
     }
     // Outside the window run: a stone ledge, the facade below, a city skyline,
@@ -1998,10 +2064,16 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     env.add(num);
     }
 
+    // Furniture never moves, so it's merged into a few big meshes per stretch
+    // of floor (see mergeStatic): thousands of little boxes become a few
+    // hundred draw calls. Only the hanging things that sway stay separate.
+    const still = [];
     for (const o of f.objects) {
       const m = buildObject(o);
-      env.add(m);
-      if (m.userData.hang) anims.sway.push({ o: m.userData.hang, ph: Math.random() * 6, rate: 0.8 + Math.random() * 0.6, amp: 0.05 + Math.random() * 0.05 });
+      if (m.userData.hang && Math.random() < (o.type === 'cable' ? 0.6 : 0.25)) {
+        env.add(m);
+        anims.sway.push({ o: m.userData.hang, ph: Math.random() * 6, rate: 0.8 + Math.random() * 0.6, amp: 0.05 + Math.random() * 0.05 });
+      } else still.push(m);
       if (o.type === 'rack') {
         for (let y = 1; y < o.h - 0.5; y += 0.9) {
           for (const s of [-1, 1]) {
@@ -2016,6 +2088,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       }
     }
 
+    for (const m of mergeStatic(still)) env.add(m);
+
     // Floor vents: grate plus rising paper streaks
     for (const v of f.vents) {
       const base = v.y0 ?? 0;
@@ -2023,8 +2097,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       if (!v.gap && !v.ac) {
         const grate = new THREE.Mesh(new THREE.CylinderGeometry(v.r * 0.55, v.r * 0.55, 0.08, 10), M('#5b6266'));
         grate.position.set(v.x, base + 0.04, -v.z);
-        env.add(grate);
-        for (let i = -2; i <= 2; i++) env.add(boxMesh(v.r * 1.0, 0.1, 0.12, '#2f3338', v.x, base + 0.04, -v.z + i * v.r * 0.18));
+        env.add(S(grate));
+        for (let i = -2; i <= 2; i++) env.add(S(boxMesh(v.r * 1.0, 0.1, 0.12, '#2f3338', v.x, base + 0.04, -v.z + i * v.r * 0.18)));
       }
       const pk = f.gap?.park;
       const y0 = v.gap ? (pk ? pk.floorY + 0.5 : -12) : base + 0.3, y1 = v.gap ? (pk ? pk.cap + 2 : 14) : base + (f.open ? 14 : H * 0.85);
@@ -2132,6 +2206,11 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       env.add(g);
       anims.items.push({ g, i, it, ph: i * 1.3, gone: 0 });
     });
+
+    // Merge everything marked S(...) above into a few big meshes
+    const tagged = env.children.filter(c => c.userData.still);
+    for (const c of tagged) env.remove(c);
+    for (const m of mergeStatic(tagged)) env.add(m);
   }
 
   /* ----------------------------------------------------------- planes --- */
@@ -2559,7 +2638,13 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         s.m.lookAt(camera.position.x, s.y, camera.position.z);
       }
     }
+    // Small animated bits far down the floor are too small to see: hide them
+    // and skip their updates (long floors have hundreds).
+    const far = z => Math.abs(-z - camPos.z) > 110;
     for (const v of anims.vents) {
+      const hide = far(v.v.z);
+      if (hide !== !!v.hidden) { v.hidden = hide; for (const s of v.streaks) s.m.visible = !hide; }
+      if (hide) continue;
       for (const s of v.streaks) {
         s.y += s.sp * dt; s.a += dt * 1.5;
         if (s.y > v.y1) s.y = v.y0;
@@ -2622,7 +2707,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         st.m.rotation.y = 0;
       }
     }
-    for (const sw of anims.sway) { sw.o.rotation.z = Math.sin(time * sw.rate + sw.ph) * sw.amp; sw.o.rotation.x = Math.cos(time * sw.rate * 0.7 + sw.ph) * sw.amp * 0.6; }
+    for (const sw of anims.sway) { if (far(-sw.o.parent.position.z)) continue; sw.o.rotation.z = Math.sin(time * sw.rate + sw.ph) * sw.amp; sw.o.rotation.x = Math.cos(time * sw.rate * 0.7 + sw.ph) * sw.amp * 0.6; }
     for (const l of anims.leds) l.m.visible = Math.sin(time * 3 + l.ph * 5) > -0.6;
     // Movers follow race time, so they're exactly where the sim says they are.
     const rt = race ? race.t : 0;
@@ -2652,7 +2737,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     for (const c of anims.clips) {
       const taken = race && race.clips[c.i] && race.clips[c.i].taken >= 0;
       if (taken) c.gone = Math.min(1, c.gone + dt * 5); else c.gone = 0;
-      c.g.visible = c.gone < 1;
+      c.g.visible = c.gone < 1 && !far(-c.g.position.z);
+      if (!c.g.visible) continue;
       c.g.rotation.y = time * 1.6 + c.ph;
       c.g.position.y = (floor.clips[c.i]?.y ?? 0) + Math.sin(time * 2 + c.ph) * 0.15 + c.gone * 1.2;
       c.g.scale.setScalar(1 + c.gone * 0.6 - c.gone * c.gone * 1.5);
