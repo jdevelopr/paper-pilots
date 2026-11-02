@@ -152,7 +152,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       t: r2(race.t), tl: race.timeLimit, over: race.over,
       p: race.planes.map(q => [q.seat, r2(q.x), r2(q.y), r2(q.z), r2(q.yaw), r2(q.pitch), r2(q.roll), STATES.indexOf(q.state), q.crumpled ? 1 : 0,
         Math.round(q.hp), q.maxHp, r2(q.v), r2(q.aim.yaw), r2(q.aim.pitch), r2(q.aim.power), q.clips,
-        q.zone ? { label: q.zone.label, pay: q.zone.pay, tier: q.zone.tier } : null, q.duct ?? -1, q.out ? 1 : 0]),
+        q.zone ? { label: q.zone.label, pay: q.zone.pay, tier: q.zone.tier, ring: q.zone.ring, par: q.zone.par } : null, q.duct ?? -1, q.out ? 1 : 0,
+        q.thrownAt == null ? -1 : r2(q.thrownAt), r2(q.fatigue || 0), q.landedAt == null ? -1 : r2(q.landedAt)]),
       c: race.clips.reduce((a, c, i) => (c.taken >= 0 && a.push(i), a), []),
     };
   }
@@ -208,7 +209,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     const pk = race.floor.gap?.park, inPark = pk && p && p.z > pk.dive0 && p.z < pk.lift0;
     switch (e.name) {
       case 'clip': bump(e.seat, 'clips', e.n || 1); break;
-      case 'boost': bump(e.seat, e.kind === 'ring' ? 'rings' : 'streams'); if (e.gold) bump(e.seat, 'goldRings'); break;
+      case 'boost': if (e.kind === 'ring' || e.kind === 'stream') bump(e.seat, e.kind === 'ring' ? 'rings' : 'streams'); if (e.gold) bump(e.seat, 'goldRings'); break;
       case 'tree': bump(e.seat, 'parkHits'); break;
       case 'hit': if (inPark) bump(e.seat, 'parkHits'); break;
       case 'crumple': bump(e.seat, 'crumples'); break;

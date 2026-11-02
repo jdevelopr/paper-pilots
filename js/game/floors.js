@@ -51,6 +51,12 @@ function tierBand(tier, L, gap) {
   return [c - half, Math.min(L - 12, c + half)];
 }
 
+// Par time for a target: seconds of flight (from the throw) a quick, clean line
+// needs to land on it. Under par pays the full target bonus; it shrinks to
+// nothing at double par.
+export const PAR = { t0: 2.5, speed: 12 };
+export const parFor = z => Math.round((PAR.t0 + z / PAR.speed) * 10) / 10;
+
 // Higher floors pay more, so the climb up the building feels like a promotion.
 export const floorPayMult = number => 1 + 0.25 * (number - 1);
 const payFor = (tier, theme) => Math.round(ZONE_PAY[tier] * floorPayMult(theme.number));
@@ -251,6 +257,7 @@ export const THEMES = [
       (z, W, T) => scatter(z, W, T, [F.plant, F.cooler, F.pillar], T.ri(2, 4)),
     ],
     vents: [3, 4], fans: [0, 1], blowers: [0, 0], movers: [],
+    halls: { n: 1, len: [80, 130], cw: [15, 17], doors: false },
   },
   {
     id: 'cubicles', number: 2, name: 'Cubicle Farm',
@@ -263,6 +270,7 @@ export const THEMES = [
       (z, W, T) => [{ type: 'cubicle', x: T.r(-12, 12), z: z + 6, w: 0.5, d: T.r(12, 22), h: 4.5 }, ...scatter(z, W, T, [F.desk], 2)],
     ],
     vents: [3, 5], fans: [0, 0], blowers: [0, 0],
+    halls: { n: 1, len: [100, 150], cw: [14, 16], doors: false },
     movers: [M.chair, M.chair, M.mailcart], moverCount: [2, 3],
   },
   {
@@ -275,7 +283,8 @@ export const THEMES = [
       (z, W, T) => [F.counter(T.pick([-1, 1]) * T.r(10, 16), z, T), F.cooler(T.r(-8, 8), z)],
       (z, W, T) => [F.fridge(T.r(-14, 14), z), ...scatter(z, W, T, [F.table], 1)],
     ],
-    vents: [3, 4], fans: [2, 3], blowers: [0, 0], hallways: 1,
+    vents: [3, 4], fans: [2, 3], blowers: [0, 0],
+    halls: { n: 1, len: [150, 200], cw: [12, 14], doors: true },
     movers: [M.trolley, M.ball, M.ball], moverCount: [2, 3],
   },
   {
@@ -293,7 +302,8 @@ export const THEMES = [
       (z, W, T) => scatter(z, W, T, [F.crate, F.crate, F.cabinet], T.ri(2, 3)),
     ],
     rowGap: [26, 34],
-    vents: [4, 6], fans: [0, 0], blowers: [1, 2], hallways: 2, shortcuts: true,
+    vents: [4, 6], fans: [0, 0], blowers: [1, 2], shortcuts: true,
+    halls: { n: 2, len: [190, 250], cw: [10.5, 12], doors: true, split: true }, doorWalls: 2,
     movers: [M.robot, M.robot, M.lift], moverCount: [2, 3],
   },
   {
@@ -305,7 +315,8 @@ export const THEMES = [
       (z, W, T) => [{ ...F.table(T.r(-8, 8), z + 6, T), w: T.r(7, 9), d: T.r(14, 22), h: 3.2 }],
       (z, W, T) => [F.shelf(T.pick([-1, 1]) * T.r(12, 17), z, T), F.plant(T.r(-10, 10), z), F.couch(T.r(-12, 12), z + 5, T)],
     ],
-    vents: [3, 4], fans: [1, 2], blowers: [0, 0], hallways: 2, shortcuts: true,
+    vents: [3, 4], fans: [1, 2], blowers: [0, 0], shortcuts: true,
+    halls: { n: 2, len: [230, 300], cw: [9.5, 11], doors: true, split: true }, doorWalls: 3,
     movers: [M.slidedoor, M.drone, M.drone], moverCount: [2, 3],
   },
   {
@@ -374,71 +385,105 @@ export function generateFloor(theme, seed = 1) {
     for (let attempt = 0; attempt < 30; attempt++) {
       const z = T.r(b0, b1);
       const w = Math.min(W - 6, ZONE_W), d = ZONE_D;
-      const zn = { tier, label: T.pick(theme.zoneNames[tier]), x: tier === 0 ? T.r(-6, 6) : T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: G(z), pay: payFor(tier, theme) };
+      const zn = { tier, label: T.pick(theme.zoneNames[tier]), x: tier === 0 ? T.r(-6, 6) : T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: G(z), pay: payFor(tier, theme), par: parFor(z) };
       const clash = zones.some(o => Math.abs(o.x - zn.x) < (o.w + zn.w) / 2 + 1.5 && Math.abs(o.z - zn.z) < (o.d + zn.d) / 2 + 1.5);
       if (!clash || attempt === 29) { zones.push(zn); break; }
     }
   }
 
-  /* Hallways (floor 3 and up): one set path with turns, walled in floor to
-     ceiling, so steering matters. Each hallway is straight segments joined by
-     open jogs, and usually has a doorway to thread. The lane runs through them. */
-  const hallObjs = [], hallSpans = [], doors = [];
-  const nHalls = theme.hallways || 0;
-  if (nHalls) {
+  /* Hallways: one set path with turns, walled in floor to ceiling, so steering
+     matters. Floors 1-2 get short, wide starter hallways; higher floors get
+     longer, narrower ones with doorways to thread, and from floor 4 a split
+     where you choose a side: a doorway one way, a narrow wall vent (with a
+     fast draft through it) the other. The lane runs through them. */
+  const hallObjs = [], hallSpans = [], doors = [], wallVents = [];
+  const HC = theme.halls;
+  const hwall = (x0, x1, z0, z1, y0 = 0, y1 = H) => { if (x1 - x0 > 0.3 && z1 - z0 > 0.3 && y1 - y0 > 0.2) hallObjs.push({ type: 'hallwall', x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, h: y1 - y0, y: y0 || undefined, color: theme.wall }); };
+  // A doorway in a wall across [x0, x1] at zd: wall either side, a lintel over it
+  const doorway = (x0, x1, zd, dx, dw, dh) => {
+    hwall(x0, dx - dw / 2, zd - 0.3, zd + 0.3);
+    hwall(dx + dw / 2, x1, zd - 0.3, zd + 0.3);
+    hallObjs.push({ type: 'lintel', x: dx, z: zd, w: dw, d: 0.6, y: dh, h: H - dh });
+    hallObjs.push({ type: 'doorframe', x: dx, z: zd, w: dw, d: 0.7, h: dh });
+    doors.push({ x: dx, z: zd, w: dw, h: dh });
+  };
+  // A wall across [x0, x1] at zd with a narrow vent slot in it; air rushes through
+  const ventWall = (x0, x1, zd, vx, vw, vy0, vy1) => {
+    hwall(x0, vx - vw / 2, zd - 0.3, zd + 0.3);
+    hwall(vx + vw / 2, x1, zd - 0.3, zd + 0.3);
+    hwall(vx - vw / 2, vx + vw / 2, zd - 0.3, zd + 0.3, 0, vy0);
+    hwall(vx - vw / 2, vx + vw / 2, zd - 0.3, zd + 0.3, vy1, H);
+    hallObjs.push({ type: 'ventframe', x: vx, z: zd, w: vw, d: 0.8, y: vy0, h: vy1 - vy0 });
+    wallVents.push({ x: vx, z: zd, w: vw, y0: vy0, y1: vy1 });
+  };
+  if (HC?.n) {
     // Hallways fill the long stretches *between* landing zones, so reaching the
     // farther zones means threading a corridor first.
     const marks = [40, ...zones.map(z => [z.z - z.d / 2, z.z + z.d / 2]).flat(), L - 10].sort((a, b) => a - b);
     const gaps = [];
     for (let i = 0; i + 1 < marks.length; i += 2) {
       const g0 = marks[i] + 10, g1 = marks[i + 1] - 10;
-      if (g1 - g0 > 90) gaps.push([g0, g1]);
+      if (g1 - g0 > Math.max(70, HC.len[0] * 0.8)) gaps.push([g0, g1]);
     }
     gaps.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]));
-    for (const [g0, g1] of gaps.slice(0, nHalls)) {
-      const len = Math.min(190, (g1 - g0) * T.r(0.75, 0.9));
+    for (const [g0, g1] of gaps.slice(0, HC.n)) {
+      const len = Math.min(T.r(HC.len[0], HC.len[1]), (g1 - g0) * 0.92);
       const zs = g0 + T.r(0, g1 - g0 - len), ze = zs + len;
-      const cw = T.r(12, 15);                    // corridor width
+      const cw = T.r(HC.cw[0], HC.cw[1]);       // corridor width
       // Each turn sidesteps 9-18 units; the open jog is long enough to make
       // that S-bend at full speed with a decent line.
       const jog = T.r(24, 30);
-      const nSeg = len > 3 * 45 + 2 * jog ? 3 : 2;
+      const nSeg = Math.max(2, Math.min(5, Math.floor((len + jog) / (jog + 50))));
       const segLen = (len - (nSeg - 1) * jog) / nSeg;
-      const lim = W / 2 - cw / 2 - 1.5;
-      const centres = [T.r(-lim, lim)];
+      // One segment splits in two (floor 4+): pick which, and how wide it gets
+      const splitAt = HC.split && nSeg >= 2 && segLen > 34 ? 1 + Math.floor(T.r(0, nSeg - 1)) : -1;
+      const chw = Math.max(7.5, cw * 0.78), div = T.r(3, 4.5), sw = chw * 2 + div;
+      const halfW = i => (i === splitAt ? sw : cw) / 2;
+      const lim = i => W / 2 - halfW(i) - 1.5;
+      const centres = [T.r(-lim(0), lim(0))];
       for (let i = 1; i < nSeg; i++) {
-        const prev = centres[i - 1], step = T.r(9, 18);
+        const prev = centres[i - 1], step = T.r(9, 18), L2 = lim(i);
         let c = prev + T.pick([-1, 1]) * step;
-        if (Math.abs(c) > lim) c = prev - Math.sign(c) * step;   // turn the other way if it won't fit
-        centres.push(Math.max(-lim, Math.min(lim, c)));
+        if (Math.abs(c) > L2) c = prev - Math.sign(c) * step;   // turn the other way if it won't fit
+        centres.push(Math.max(-L2, Math.min(L2, c)));
       }
       const pts = [];
-      const wall = (x0, x1, z0, z1) => { if (x1 - x0 > 0.3 && z1 - z0 > 0.3) hallObjs.push({ type: 'hallwall', x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, h: H, color: theme.wall }); };
       for (let i = 0; i < nSeg; i++) {
-        const c = centres[i];
+        const c = centres[i], hw = halfW(i);
         const s0 = zs + i * (segLen + jog), s1 = s0 + segLen;
         // Straight segment: wall in everything outside the corridor
-        wall(-W / 2, c - cw / 2, s0, s1);
-        wall(c + cw / 2, W / 2, s0, s1);
-        pts.push([s0, c], [s1, c]);
-        // Doorway partway down one segment
-        if (i === (nSeg > 2 ? 1 : 0) && T.chance(0.8)) {
-          const dw = T.r(5.5, 7), dh = T.r(6, 8);
-          const dx = c + T.r(-(cw / 2 - dw / 2 - 0.6), cw / 2 - dw / 2 - 0.6);
-          const zd = s0 + segLen * T.r(0.45, 0.65);
-          wall(c - cw / 2, dx - dw / 2, zd - 0.3, zd + 0.3);
-          wall(dx + dw / 2, c + cw / 2, zd - 0.3, zd + 0.3);
-          hallObjs.push({ type: 'lintel', x: dx, z: zd, w: dw, d: 0.6, y: dh, h: H - dh });
-          hallObjs.push({ type: 'doorframe', x: dx, z: zd, w: dw, d: 0.7, h: dh });
-          doors.push({ x: dx, z: zd, w: dw, h: dh });
-          pts.push([zd - 4, dx], [zd + 4, dx]);
+        hwall(-W / 2, c - hw, s0, s1);
+        hwall(c + hw, W / 2, s0, s1);
+        if (i === splitAt) {
+          // Split: a dividing wall down the middle, a left and a right channel.
+          // One side has a doorway (the lane goes that way), the other a wall vent.
+          const cl = c - div / 2 - chw / 2, cr = c + div / 2 + chw / 2;
+          hwall(c - div / 2, c + div / 2, s0 + 4, s1 - 2);
+          const doorSide = T.pick([-1, 1]);
+          const dc = doorSide < 0 ? cl : cr, vc = doorSide < 0 ? cr : cl;
+          const zd = s0 + segLen * T.r(0.4, 0.6);
+          const dw = Math.min(chw - 1.2, T.r(5, 6)), dh = T.r(5.5, 7);
+          doorway(dc - chw / 2, dc + chw / 2, zd, dc + T.r(-(chw / 2 - dw / 2 - 0.4), chw / 2 - dw / 2 - 0.4), dw, dh);
+          const vy0 = T.r(2.6, 4.2);
+          ventWall(vc - chw / 2, vc + chw / 2, zd + T.r(-6, 6), vc + T.r(-1.5, 1.5), T.r(2.8, 3.4), vy0, vy0 + T.r(2.2, 2.7));
+          pts.push([s0, c], [s0 + 6, dc], [s1 - 4, dc], [s1, c]);
+        } else {
+          pts.push([s0, c], [s1, c]);
+          // Doorway partway down one segment (floor 3+)
+          if (HC.doors && i === (nSeg > 2 ? 1 : 0) + (splitAt === (nSeg > 2 ? 1 : 0) ? 1 : 0) && T.chance(0.85)) {
+            const dw = Math.min(cw - 1.5, T.r(5, 6.5)), dh = T.r(5.5, 7.5);
+            const dx = c + T.r(-(cw / 2 - dw / 2 - 0.6), cw / 2 - dw / 2 - 0.6);
+            const zd = s0 + segLen * T.r(0.45, 0.65);
+            doorway(c - cw / 2, c + cw / 2, zd, dx, dw, dh);
+            pts.push([zd - 4, dx], [zd + 4, dx]);
+          }
         }
         // Jog to the next segment: open between the two corridors, walled outside
         if (i < nSeg - 1) {
-          const n = centres[i + 1];
-          const lo = Math.min(c, n) - cw / 2, hi = Math.max(c, n) + cw / 2;
-          wall(-W / 2, lo, s1, s1 + jog);
-          wall(hi, W / 2, s1, s1 + jog);
+          const n = centres[i + 1], nh = halfW(i + 1);
+          const lo = Math.min(c - hw, n - nh), hi = Math.max(c + hw, n + nh);
+          hwall(-W / 2, lo, s1, s1 + jog);
+          hwall(hi, W / 2, s1, s1 + jog);
         }
       }
       hallSpans.push([zs, ze]);
@@ -472,11 +517,7 @@ export function generateFloor(theme, seed = 1) {
      Window run: fly out an open window, along the outside ledge in a crosswind
      that shoves you away from the building, and back in through a second open
      window farther down. Miss it and you're stuck outside (crumpled).
-     Duct run: an open hole in the ceiling (ride the vent under it up) or in
-     the floor (dive into it) leads into a tight square duct that runs above
-     the ceiling / under the floor, skipping a hallway, and comes out another
-     open hole farther on.
-     Scraping the duct walls costs durability; airflow speeds you along. */
+     (The old hidden duct shortcut is gone; `ducts` stays empty.) */
   const windows = [], ducts = [];
   let ledge = null;
   if (theme.shortcuts) {
@@ -507,28 +548,51 @@ export function generateFloor(theme, seed = 1) {
     windows.push({ id: 'out', side, z: wz0, half: 3.6, y0: wy0, y1: wy1 });
     windows.push({ id: 'in', side, z: wz1, half: 3.6, y0: wy0, y1: wy1 });
     ledge = { side, z0: wz0 - 4, z1: wz1 + 4, depth: 9, wind: T.r(2.5, 3.6), sill: wy0 - 0.6 };
-    // Duct: a square duct hidden above the ceiling (or under the floor), with
-    // an open hole at each end. It skips a hallway when it can.
-    const kind = T.pick(['ceil', 'floor']);
-    const half = 2.1, hole = 3.5, deep = 3.8;
-    const clearAt = (x, gz) =>
-      !hallSpans.some(([a, b]) => gz > a - hole - 4 && gz < b + hole + 4) &&
-      !windows.some(w => Math.abs(gz - w.z) < w.half + hole + 6 && Math.abs(x - w.side * W / 2) < 12) &&
-      !zones.some(zn => Math.abs(zn.z - gz) < zn.d / 2 + hole + 4 && Math.abs(zn.x - x) < zn.w / 2 + half + 4);
-    const tryDuct = (ez, xz) => {
-      if (ez < 50 || xz > L - 30) return;
-      const x = Math.max(-W / 2 + half + 3, Math.min(W / 2 - half - 3, laneX(ez)));
-      if (!clearAt(x, ez) || !clearAt(x, xz)) return;
-      ducts.push(kind === 'ceil'
-        ? { kind, x, half, hole, z0: ez - hole - 2.5, z1: xz + hole + 2.5, y0: H, y1: H + deep, ez, xz }
-        : { kind, x, half, hole, z0: ez - hole - 2.5, z1: xz + hole + 2.5, y0: -deep, y1: 0, ez, xz });
-    };
-    for (const h of halls.filter(h => h !== hw && h[1] - h[0] + 16 <= SC[1])) for (let t = 0; t < 8 && !ducts.length; t++) {
-      const len = T.r(Math.max(SC[0], h[1] - h[0] + 16), SC[1]), pad = (len - (h[1] - h[0])) / 2;
-      tryDuct(h[0] - pad, h[1] + pad);
-    }
-    for (let t = 0; t < 120 && !ducts.length; t++) { const ez = T.r(60, L - SC[1] - 40); tryDuct(ez, ez + T.r(SC[0], SC[1])); }
   }
+  /* Doorway walls (floor 4+): a wall right across the room with two doorways
+     to choose from (the lane goes through one) and a narrow wall vent that
+     shoots skilled pilots through with a burst of speed. */
+  const doorWallZ = [];
+  for (let n = 0, tries = 0; n < (theme.doorWalls || 0) && tries < 200; tries++) {
+    const z = T.r(70, L - 40);
+    if (hallSpans.some(([a, b]) => z > a - 18 && z < b + 18)) continue;
+    if (zones.some(zn => Math.abs(zn.z - z) < zn.d / 2 + 14)) continue;
+    if (windows.some(w => Math.abs(w.z - z) < w.half + 10) || (ledge && z > ledge.z0 - 6 && z < ledge.z1 + 6 && false)) continue;
+    if (doorWallZ.some(o => Math.abs(o - z) < 70)) continue;
+    const dw = T.r(5.5, 7), dh = T.r(6, 8);
+    const d1 = Math.max(-W / 2 + dw / 2 + 2, Math.min(W / 2 - dw / 2 - 2, laneX(z)));
+    let d2 = null;
+    for (let t = 0; t < 20 && d2 == null; t++) { const x = T.r(-W / 2 + dw / 2 + 2, W / 2 - dw / 2 - 2); if (Math.abs(x - d1) > dw + 8) d2 = x; }
+    if (d2 == null) continue;
+    const [da, db] = d1 < d2 ? [d1, d2] : [d2, d1];
+    const dwB = T.r(5, 6.5), dhB = T.r(5.5, 7.5);
+    const wA = da === d1 ? dw : dwB, hA = da === d1 ? dh : dhB, wB = db === d1 ? dw : dwB, hB = db === d1 ? dh : dhB;
+    // the vent slot sits in whichever stretch of wall has room
+    const spans = [[-W / 2, da - wA / 2], [da + wA / 2, db - wB / 2], [db + wB / 2, W / 2]].filter(([a, b]) => b - a > 7);
+    const sp = spans.length ? T.pick(spans) : null;
+    const vw = T.r(2.8, 3.4), vx = sp ? T.r(sp[0] + vw / 2 + 1.5, sp[1] - vw / 2 - 1.5) : null;
+    const vy0 = T.r(2.6, 4.5), vy1 = vy0 + T.r(2.2, 2.7);
+    // build it left to right: wall, door A, wall, door B, wall (with the vent in one stretch)
+    const bounds = [-W / 2, da - wA / 2, da + wA / 2, db - wB / 2, db + wB / 2, W / 2];
+    for (let k = 0; k < 6; k += 2) {
+      const x0 = bounds[k], x1 = bounds[k + 1];
+      if (sp && sp[0] === x0) ventWall(x0, x1, z, vx, vw, vy0, vy1);
+      else hwall(x0, x1, z - 0.3, z + 0.3);
+    }
+    for (const [dx, w, h] of [[da, wA, hA], [db, wB, hB]]) {
+      hallObjs.push({ type: 'lintel', x: dx, z, w, d: 0.6, y: h, h: H - h });
+      hallObjs.push({ type: 'doorframe', x: dx, z, w, d: 0.7, h });
+      doors.push({ x: dx, z, w, h });
+    }
+    // the lane threads the first doorway
+    for (let i = ctrl.length - 2; i > 0; i--) if (Math.abs(ctrl[i][0] - z) < 8) ctrl.splice(i, 1);
+    ctrl.push([z - 6, d1], [z + 6, d1]);
+    ctrl.sort((a, b) => a[0] - b[0]);
+    doorWallZ.push(z);
+    n++;
+  }
+  const nearDoorWall = o => doorWallZ.some(z => Math.abs(o.z - z) < o.d / 2 + 4);
+
   // Keep the duct holes clear
   const nearGrate = o => ducts.some(d => [d.ez, d.xz].some(gz => overlapsRect(o, d.x - d.half - 3, d.x + d.half + 3, gz - d.hole - 3, gz + d.hole + 3)));
   const nearWindow = o => windows.some(w => (w.side > 0 ? o.x + o.w / 2 > W / 2 - 6 : o.x - o.w / 2 < -W / 2 + 6) && o.z + o.d / 2 > w.z - w.half - 3 && o.z - o.d / 2 < w.z + w.half + 3);
@@ -555,7 +619,7 @@ export function generateFloor(theme, seed = 1) {
     if (o.h > H) o.h = H;
     if (o.z - o.d / 2 < 16) return false;
     if (inHall(o)) return false;
-    if (nearGrate(o) || nearWindow(o)) return false;
+    if (nearGrate(o) || nearWindow(o) || nearDoorWall(o)) return false;
     if (topOf(o) - G(o.z) > TALL && inLane(o)) return false;
     for (const zn of zones) if (overlapsRect(o, zn.x - zn.w / 2 - 1, zn.x + zn.w / 2 + 1, zn.z - zn.d / 2 - 1, zn.z + zn.d / 2 + 1)) return false;
     return true;
@@ -754,6 +818,7 @@ export function generateFloor(theme, seed = 1) {
     open: !!theme.open, gap,   // Rooftop: open sky, and the gap between the buildings
     windows, ledge, ducts,   // shortcuts (floor 4+)
     halls: hallSpans,
+    wallVents,          // narrow vent slots in walls: thread one for a burst of speed
     doors,              // doorways in the hallways (bots dip under the lintel)   // [zStart, zEnd] of each walled hallway
     lane: ctrl,   // the guaranteed-clear path, as [z, x] control points (bots follow it)
   };

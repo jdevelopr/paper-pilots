@@ -73,6 +73,7 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
       p.state = STATES[pb[7]]; p.crumpled = !!pb[8]; p.hp = pb[9]; p.maxHp = pb[10]; p.v = pb[11];
       p.aim.yaw = pb[12]; p.aim.pitch = pb[13]; p.aim.power = pb[14];
       p.clips = pb[15]; p.zone = pb[16]; p.duct = pb[17] >= 0 ? pb[17] : null; p.out = pb[18] ? {} : null;
+      p.thrownAt = pb[19] >= 0 ? pb[19] : null; p.fatigue = pb[20] || 0; p.landedAt = pb[21] >= 0 ? pb[21] : null;
     }
     const taken = new Set(B.s.c);
     race.clips.forEach((c, j) => { c.taken = taken.has(j) ? 1 : -1; });

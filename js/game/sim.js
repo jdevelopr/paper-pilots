@@ -28,7 +28,28 @@ export const SIM = {
   clipR: 1.25,       // pickup radius before magnet
   raceTime: 48,      // seconds after GO before stragglers are forced down
   throwWindow: 9,    // seconds to throw before an automatic weak toss
+  // Paper fatigue (see flyStep): below fatigueV of forward speed it builds up
+  fatigueV: 7, fatigueRate: 0.9, fatigueRecover: 0.6, fatigueMax: 3, fatigueSink: 0.9,
 };
+
+// Scoring. A run scores distance points (how far down the floor you got, out
+// of 10, landed on a target or not) plus target points for landing on one,
+// worth the full amount under the target's par time and shrinking to nothing
+// at double par. Bullseyes and inner rings multiply the target points.
+export const TIER_PTS = [3, 5, 8, 11, 15];
+export function scoreRun(floor, p, now) {
+  const L = floor.length || 800;
+  const dist = Math.max(0, p.state === 'landed' ? (p.dist ?? p.z) : p.z);
+  const distPts = Math.round(10 * Math.min(1, dist / L));
+  let targetPts = 0, parFactor = 0, flightT = null, par = null;
+  if (p.zone && !p.crumpled) {
+    flightT = Math.round(((p.landedAt ?? now ?? 0) - (p.thrownAt ?? 0)) * 10) / 10;
+    par = p.zone.par ?? null;
+    parFactor = par ? clamp(2 - flightT / par, 0, 1) : 1;
+    targetPts = Math.round(TIER_PTS[p.zone.tier] * (RINGS[p.zone.ring ?? 2]?.mult ?? 1) * parFactor);
+  }
+  return { distPts, targetPts, total: distPts + targetPts, parFactor, flightT, par };
+}
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -140,7 +161,7 @@ export const TRICKS = {
   bank:     { label: 'Bank Shot',         value: 3 },
   clutch:   { label: 'Running on Fumes',  value: 3 },
   window:   { label: 'Window Washer',     value: 8 },
-  duct:     { label: 'Duct Rat',          value: 8 },
+  duct:     { label: 'Duct Rat',          value: 5 },   // threading a wall vent
   // Flying style
   circle:   { label: 'Full Circle',       value: 4 },
   ceiling:  { label: 'Ceiling Skim',      value: 3 },
@@ -349,9 +370,16 @@ function flyStep(race, p, dt, pz = p.z) {
   p.v = clamp(p.v, 0.5, 40);
 
   const sinkRatio = clamp((vRef / Math.max(p.v, 0.5)) ** 2, 0.55, 5 * st.stallDrop);
-  const sink = SIM.baseSink * st.sink * Math.pow(st.weight, 0.9) * sinkRatio;
+  let sink = SIM.baseSink * st.sink * Math.pow(st.weight, 0.9) * sinkRatio;
 
   const h = p.v * Math.cos(p.pitch);
+  // Paper fatigue: a plane has to keep making headway down the floor. Circling,
+  // hovering in a vent or crawling along builds fatigue, and fatigue makes it
+  // sink faster; flying forward with purpose shakes it off again.
+  const vz = h * Math.cos(p.yaw);
+  if (vz < SIM.fatigueV) p.fatigue = Math.min(SIM.fatigueMax, (p.fatigue || 0) + (1 - Math.max(0, vz) / SIM.fatigueV) * SIM.fatigueRate * dt);
+  else p.fatigue = Math.max(0, (p.fatigue || 0) - SIM.fatigueRecover * dt);
+  sink *= 1 + SIM.fatigueSink * p.fatigue;
   p.x += Math.sin(p.yaw) * h * dt;
   p.z += Math.cos(p.yaw) * h * dt;
   p.y += (p.v * Math.sin(p.pitch) - sink) * dt;
@@ -448,6 +476,20 @@ function flyStep(race, p, dt, pz = p.z) {
         // Hoop Streak: three rings in one flight
         if (p.tr && ++p.tr.rings % 3 === 0) trick(race, p, 'hoops');
       }
+    }
+  }
+  // Wall vents: a narrow slot in a wall with air rushing through it. Line up and
+  // it sucks you in; thread it and the jet on the far side fires you forward.
+  for (const wv of f.wallVents || []) {
+    const dz = p.z - wv.z;
+    if (dz < -8 || dz > 12 || p.duct != null || p.out) continue;
+    if (Math.abs(p.x - wv.x) > wv.w / 2 + 1.4 || p.y < wv.y0 - 1.4 || p.y > wv.y1 + 1.4) continue;
+    if (dz < 0) { p.x += (wv.x - p.x) * 1.6 * dt; p.y += ((wv.y0 + wv.y1) / 2 - p.y) * 1.6 * dt; }
+    if (p.v < 27) p.v += (dz < 0 ? 5 : 15) * dt;
+    if (pz < wv.z && p.z >= wv.z && Math.abs(p.x - wv.x) < wv.w / 2 && p.y > wv.y0 && p.y < wv.y1) {
+      p.v = Math.min(28, p.v + 5);
+      race.events.push({ name: 'boost', seat: p.seat, kind: 'wallvent', amount: 6, x: p.x, y: p.y, z: p.z });
+      trick(race, p, 'duct');
     }
   }
   p.v = Math.min(p.v, 40);
@@ -581,7 +623,7 @@ export function zoneAt(floor, x, y, z) {
   return {
     tier: best.tier, label: best.label, ring, ringName: RINGS[ring].name, base: best.pay,
     pay: Math.round(best.pay * RINGS[ring].mult),
-    x: best.x, z: best.z, w: best.w, d: best.d, y: best.y || 0, perch: !!best.perch || (best.y || 0) > 0.5,
+    x: best.x, z: best.z, w: best.w, d: best.d, y: best.y || 0, perch: !!best.perch || (best.y || 0) > 0.5, par: best.par,
   };
 }
 
@@ -735,10 +777,9 @@ function collide(race, p, px, py, pz) {
   }
   if (p.x < -hw || p.x > hw) {
     const vn = Math.abs(p.v * Math.cos(p.pitch) * Math.sin(p.yaw));
+    const away = p.x > 0 ? -1 : 1;
     p.x = clamp(p.x, -hw, hw);
-    p.yaw = -p.yaw;
-    p.v *= 0.6;
-    if (p.state === 'fly') damage(race, p, vn, 'wall');
+    scrape(race, p, vn, away, 'wall');
   }
   if (p.z > f.length - r && f.open) {
     p.z = f.length - r;
@@ -805,18 +846,18 @@ function collide(race, p, px, py, pz) {
       if (p.state === 'fall') p.v *= 0.3;
       continue;
     }
+    // Walls and furniture don't turn you around any more: you scrape off them,
+    // lose speed and take damage, and carry on the way you were heading.
     if (wasOutX) {
       const vn = Math.abs(h * Math.sin(p.yaw));
       p.x = px;
-      p.yaw = -p.yaw;
-      p.v *= Math.min(0.9, 0.55 * p.st.bounce);
-      damage(race, p, vn, 'hit');
+      scrape(race, p, vn, px < b.x0 ? -1 : 1, 'hit');
     } else {
+      // Nose first into a face: held back, and nudged toward the nearer edge
       const vn = Math.abs(h * Math.cos(p.yaw));
-      p.z = pz;
-      p.yaw = Math.PI - p.yaw;
-      p.v *= Math.min(0.8, 0.35 * p.st.bounce);
-      damage(race, p, vn, 'hit');
+      p.z = pz - Math.sign(Math.cos(p.yaw) || 1) * 0.05;
+      const side = (p.x - b.x0) < (b.x1 - p.x) ? -1 : 1;
+      scrape(race, p, vn, side, 'hit', true);
     }
     if (p.state === 'fall') { p.v *= 0.3; }
   }
@@ -860,6 +901,24 @@ function collide(race, p, px, py, pz) {
     race.events.push({ name: 'close', seat: p.seat, x: p.x, y: p.y, z: p.z });
     if (race.t > 1.5) trick(race, p, closeTo.mover ? 'dodge' : 'close');
   }
+}
+
+// Scrape off a wall or furniture: keep heading down the floor (angled a touch
+// away from what you hit), slow down by how square the hit was, take damage.
+// `away` is the side (-1 left / +1 right) to veer toward.
+function scrape(race, p, vn, away, kind, headOn = false) {
+  const fwd = Math.cos(p.yaw) >= -0.2 ? 1 : -1;
+  if (headOn) {
+    p.yaw = Math.atan2(Math.sin(p.yaw) + away * 0.45, Math.max(0.5, Math.abs(Math.cos(p.yaw))) * fwd);
+    p.v *= Math.min(0.75, 0.45 * p.st.bounce + 0.1);
+  } else {
+    p.yaw = Math.atan2(away * 0.14, fwd);
+    const square = Math.min(1, vn / Math.max(1, p.v));
+    p.v *= Math.max(0.5, 1 - 0.5 * square);
+  }
+  if (race.t - (p.scrapeT ?? -9) < 0.35) return;     // still grinding along the same wall
+  p.scrapeT = race.t;
+  if (p.state === 'fly') damage(race, p, vn, kind);
 }
 
 function damage(race, p, impact, kind) {
@@ -910,19 +969,18 @@ function pickups(race, p) {
 
 /* ------------------------------------------------------------- results --- */
 
-// Ranking: best landing zone first, then distance flown. Crumpled planes rank
-// below everyone who landed intact.
+// Ranking: by score (distance points + target points), then distance flown,
+// then who landed first.
 export function standings(race) {
   return [...race.planes]
     .map(p => ({
       seat: p.seat, zone: p.zone, crumpled: p.crumpled,
       dist: Math.round(p.dist * 10) / 10, clips: p.clips, landedAt: p.landedAt,
       clean: !p.crumpled && p.hp >= p.maxHp, tricks: p.tr ? p.tr.list : [], trickClips: p.tr ? p.tr.clips : 0,
+      score: scoreRun(race.floor, p, race.t),
     }))
     .sort((a, b) =>
-      (a.crumpled - b.crumpled) ||
-      ((b.zone?.tier ?? -1) - (a.zone?.tier ?? -1)) ||
-      ((a.zone?.ring ?? 9) - (b.zone?.ring ?? 9)) ||      // closer to the centre wins
+      (b.score.total - a.score.total) ||
       (b.dist - a.dist) ||
       ((a.landedAt ?? 999) - (b.landedAt ?? 999)));
 }

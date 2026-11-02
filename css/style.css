@@ -747,3 +747,20 @@ body.pv-touch .trick-rail { top: 12%; left: 10px; gap: 8px; }
 body.pv-touch .trick-rail .trick b { font-size: 26px; } body.pv-touch .trick-rail .trick span { font-size: 22px; }
 .sb-sec { grid-column: 1 / -1; margin: 8px 2px 0; font-family: var(--display); font-size: 28px; line-height: 1; }
 .sb-sec small { font-family: var(--body); font-size: 17px; color: var(--ink-soft); margin-left: 8px; }
+
+/* par countdown for the next target, and the fatigue warning */
+.hud-par { display: flex; align-items: center; gap: 8px; font-size: 26px; font-weight: 700; white-space: nowrap; }
+.hud-par[hidden] { display: none; }
+.hud-par i { width: 14px; height: 14px; border-radius: 50%; background: var(--tc); border: 2px solid var(--ink); }
+.hud-par b { font-variant-numeric: tabular-nums; }
+.hud-par.over b { color: var(--danger); }
+.hud-par.gone { opacity: .6; }
+.hud-tired { position: absolute; left: 50%; top: 23%; transform: translateX(-50%) rotate(-2deg); padding: 4px 18px;
+  font-size: 34px; font-weight: 700; color: #fff8e6; background: var(--danger); border: 2.5px solid var(--ink);
+  border-radius: var(--wob-2); box-shadow: 2px 3px 0 var(--ink); animation: tired 0.9s ease-in-out infinite; pointer-events: none; }
+.hud-tired[hidden] { display: none; }
+@keyframes tired { 50% { transform: translateX(-50%) rotate(2deg) scale(1.05); } }
+.rrow .par { padding: 0 6px; border-radius: 6px; background: rgba(184,50,26,.15); }
+.rrow .par.under { background: rgba(61,107,82,.2); }
+body.pv-touch .hud-par { font-size: 20px; } body.pv-touch .hud-tired { font-size: 24px; top: 18%; }
+@media (prefers-reduced-motion: reduce) { .hud-tired { animation: none; } }

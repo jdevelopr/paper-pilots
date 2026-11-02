@@ -465,7 +465,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     const ord = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
     q('.r-place').textContent = ord[row.place - 1];
     q('.r-zone').textContent = `+${row.earned.total} clips · +${row.points} ${row.points === 1 ? 'pt' : 'pts'}`;
-    const extras = [row.pb ? 'New best' : '', row.earned.tricks ? `Tricks +${row.earned.tricks}` : '', row.zoneStreak >= 2 ? `Zone streak x${row.zoneStreak}` : '', row.cleanStreak >= 2 ? `Clean streak x${row.cleanStreak}` : ''].filter(Boolean);
+    const extras = [`Distance ${row.distPts ?? 0}`, row.zone && !row.crumpled ? `Target ${row.targetPts ?? 0} (${row.flightT}s, par ${row.par}s)` : '', row.pb ? 'New best' : '', row.earned.tricks ? `Tricks +${row.earned.tricks}` : '', row.zoneStreak >= 2 ? `Zone streak x${row.zoneStreak}` : '', row.cleanStreak >= 2 ? `Clean streak x${row.cleanStreak}` : ''].filter(Boolean);
     q('.r-brk').textContent = [row.crumpled ? 'Crumpled' : row.zone ? `${row.zone}${row.ring ? ` (${row.ring})` : ''}` : 'Missed the zones', ...extras].join(' · ');
     q('.r-promo').innerHTML = row.promoted ? `Promoted to ${esc(row.promoted)}<small>${esc(row.unlock || '')}</small>` : '';
     if (row.promoted) vibrate([30, 60, 30, 60, 120]);

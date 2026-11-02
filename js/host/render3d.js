@@ -604,6 +604,7 @@ function buildObject(o) {
       // Floor-to-ceiling hallway wall: painted panel, skirting, a chair rail,
       // and the odd framed picture on the long faces.
       g.add(boxMesh(w, h, d, o.color || '#e9e1cf'));
+      if (o.y || h < 6) break;                      // the bits of wall over and under a vent slot stay plain
       g.add(boxMesh(w + 0.12, 0.6, d + 0.12, '#6b5440'));
       g.add(boxMesh(w + 0.08, 0.18, d + 0.08, '#a8794a', 0, 3.4, 0));
       const long = d > w ? 'd' : 'w';
@@ -629,6 +630,19 @@ function buildObject(o) {
       // EXIT-style sign above the doorway
       g.add(boxMesh(1.8, 0.6, 0.12, '#3d6b52', 0, 0.8, -d / 2 - 0.08));
       break;
+    case 'ventframe': {
+      // A metal frame round a narrow wall vent, with a dark throat behind it
+      const t = 0.32, c = '#e0a526';
+      g.add(boxMesh(w + 2 * t, t, d, c, 0, -t, 0));
+      g.add(boxMesh(w + 2 * t, t, d, c, 0, h, 0));
+      for (const sx of [-1, 1]) g.add(boxMesh(t, h, d, c, sx * (w / 2 + t / 2), 0, 0));
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+        const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, d + 0.06, 6), M('#5b6266'));
+        bolt.rotation.x = Math.PI / 2; bolt.position.set(sx * (w / 2 + t / 2), sy > 0 ? h + t / 2 : -t / 2, 0);
+        g.add(bolt);
+      }
+      break;
+    }
     case 'doorframe':
       // Decorative posts at the sides of the opening (the walls do the colliding)
       for (const s of [-1, 1]) g.add(boxMesh(0.35, h, d + 0.25, '#6b5440', s * (w / 2 + 0.17), 0, 0));
@@ -955,7 +969,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   scene.add(planeLayer);
 
   let floor = null;
-  const anims = { fans: [], vents: [], blowers: [], clips: [], signs: [], leds: [], movers: [] };
+  const anims = { fans: [], vents: [], blowers: [], clips: [], signs: [], leds: [], movers: [], wallvents: [] };
   const planes = new Map();   // seat -> { root, shadow, trail, trailPts, aim }
   const TRAIL_N = 26;
   const dotGeo = new THREE.SphereGeometry(0.07, 5, 4);
@@ -1764,6 +1778,16 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       }
       anims.vents.push({ v, streaks, y0, y1 });
     }
+    // Wall vents: air streaks rushing through the slot and out the far side
+    for (const wv of f.wallVents || []) {
+      const streaks = [];
+      for (let i = 0; i < (reduceMotion ? 5 : 14); i++) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.6), streakMat);
+        m.layers.set(1); env.add(m);
+        streaks.push({ m, x: wv.x + (Math.random() - 0.5) * wv.w * 0.8, y: wv.y0 + 0.2 + Math.random() * (wv.y1 - wv.y0 - 0.4), t: Math.random(), sp: 0.7 + Math.random() * 0.5 });
+      }
+      anims.wallvents.push({ wv, streaks });
+    }
     // Ceiling fans
     for (const fan of f.fans) {
       const g = new THREE.Group();
@@ -2061,6 +2085,12 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       for (const fl of G.flows) for (const st of fl.sts) {
         st.z += st.sp * dt; if (st.z > fl.s.z1) st.z = fl.s.z0;
         st.m.position.set(st.x, st.y, -st.z);
+      }
+    }
+    for (const a of anims.wallvents) {
+      for (const st of a.streaks) {
+        st.t += dt * st.sp * 1.6; if (st.t > 1) st.t -= 1;
+        st.m.position.set(st.x, st.y, -(a.wv.z - 6 + st.t * 18));
       }
     }
     for (const bl of anims.blowers) {

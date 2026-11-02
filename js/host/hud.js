@@ -3,7 +3,7 @@
 
 import { esc, clipIcon, planeIcon, reduceMotion } from '../ui.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
-import { SIM } from '../game/sim.js';
+import { SIM, scoreRun } from '../game/sim.js';
 import { UPGRADE_BY_ID, SLOTS, MK } from '../shared/upgrades.js';
 
 // A short "build" line from the loadout: the fold names the style
@@ -19,7 +19,8 @@ export function createHud(root) {
   root.innerHTML = `
     <div class="hud-race" hidden>
       <div class="racers"></div>
-      <div class="hud-top"><div class="hud-chip hud-floor"></div><div class="hud-chip hud-timer"></div><div class="hud-chip hud-clips" hidden>${clipIcon}<span>0</span></div></div>
+      <div class="hud-top"><div class="hud-chip hud-floor"></div><div class="hud-chip hud-timer"></div><div class="hud-chip hud-clips" hidden>${clipIcon}<span>0</span></div><div class="hud-chip hud-par" hidden></div></div>
+      <div class="hud-tired" hidden>Keep moving forward!</div>
       <div class="progress"></div>
       <div class="tags"></div>
     </div>
@@ -39,6 +40,19 @@ export function createHud(root) {
   const myClips = q('.hud-clips'), myClipsN = myClips.querySelector('span');
   let meSeat = null, inFlight = 0;
   const setMe = seat => { meSeat = seat; myClips.hidden = seat == null; };
+  const parEl = q('.hud-par'), tiredEl = q('.hud-tired');
+  // Par for the next target ahead of your plane: time left, or how far over you are
+  function paintPar(p, t) {
+    if (!floor || p.state === 'held' || p.state === 'landed' || p.crumpled || p.thrownAt == null) { parEl.hidden = true; return; }
+    const next = [...floor.zones].sort((a, b) => a.z - b.z).find(zn => zn.z + zn.d / 2 > p.z);
+    if (!next || next.par == null) { parEl.hidden = true; return; }
+    const ft = t - p.thrownAt, left = next.par - ft;
+    parEl.hidden = false;
+    parEl.style.setProperty('--tc', TIER_COLORS[next.tier]);
+    parEl.classList.toggle('over', left < 0);
+    parEl.classList.toggle('gone', ft > next.par * 2);
+    parEl.innerHTML = `<i></i>${esc(next.label)} <b>${ft > next.par * 2 ? 'no bonus' : left >= 0 ? `par ${left.toFixed(1)}s` : `+${(-left).toFixed(1)}s`}</b>`;
+  }
   const shownClips = new Map();
 
   function setRace(f, players, roundLabel) {
@@ -87,13 +101,12 @@ export function createHud(root) {
   const STATE_LABEL = { held: 'Aiming', fly: 'Flying', slide: 'Sliding', fall: 'Falling' };
   const ORD = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
   let lastOrder = '';
-  // Live running order: best zone landed first, then distance. Cards slide
+  // Live running order by score (distance + target points). Cards slide
   // into place when positions change, and the leader's name tag wears a crown.
-  function placeOrder(planes) {
-    return [...planes].sort((a, b) =>
-      ((a.crumpled ? 1 : 0) - (b.crumpled ? 1 : 0)) ||
-      ((b.state === 'landed' && b.zone ? b.zone.tier + 1 : 0) - (a.state === 'landed' && a.zone ? a.zone.tier + 1 : 0)) ||
-      (b.z - a.z));
+  function placeOrder(planes, t) {
+    // the same score the results use: distance points plus par-scaled target points
+    const sc = new Map(planes.map(p => [p, floor ? scoreRun(floor, p, t).total : 0]));
+    return [...planes].sort((a, b) => (sc.get(b) - sc.get(a)) || (b.z - a.z));
   }
 
   function update(raceState, project, players) {
@@ -106,6 +119,8 @@ export function createHud(root) {
       if (p.seat === meSeat) {
         const v = String(Math.max(0, p.clips - inFlight));
         if (myClipsN.textContent !== v) myClipsN.textContent = v;
+        paintPar(p, raceState.t);
+        tiredEl.hidden = !(p.state === 'fly' && (p.fatigue || 0) > 0.6);
       }
       const el = racerEls.get(p.seat);
       if (!el) continue;
@@ -130,7 +145,7 @@ export function createHud(root) {
       const pip = pipEls.get(p.seat);
       pip.style.left = `${Math.max(0, Math.min(100, (p.z / floor.length) * 100))}%`;
     }
-    const order = placeOrder(raceState.planes);
+    const order = placeOrder(raceState.planes, raceState.t);
     const key = order.map(p => p.seat).join(',');
     const anyFlying = raceState.planes.some(p => p.state !== 'held');
     order.forEach((p, i) => {
@@ -313,10 +328,10 @@ export function createHud(root) {
           <div class="pl">${r.place}</div>
           <div class="nm">${esc(r.name)}<div class="rk">${r.promoted ? `<b class="promo">Promoted: ${esc(r.promoted)}</b>` : esc(r.rank)}</div></div>
           <div class="zn">${r.crumpled ? 'Crumpled' : r.zone ? `${esc(r.zone)}${r.ring ? ` <small class="ring">${esc(r.ring)}</small>` : ''}` : `Missed (${Math.round(r.dist)} ft)`}
-            <div class="brk">${Math.round(r.dist)} ft${r.pb ? ' · <b class="pb">New best</b>' : ''} · zone ${r.earned.zone} · place ${r.earned.place} · pickups ${r.earned.pickup}${r.earned.tricks ? ` · tricks ${r.earned.tricks}` : ''}${r.earned.streak ? ` · streak ${r.earned.streak}` : ''}</div>
+            <div class="brk">${Math.round(r.dist)} ft${r.pb ? ' · <b class="pb">New best</b>' : ''} · distance ${plural(r.distPts ?? 0, 'pt')}${r.zone && !r.crumpled ? ` · target ${plural(r.targetPts ?? 0, 'pt')} <span class="par${r.parFactor >= 1 ? ' under' : ''}">${r.flightT}s, par ${r.par}s</span>` : ''}${r.earned.tricks ? ` · tricks ${r.earned.tricks}` : ''}${r.earned.streak ? ` · streak ${r.earned.streak}` : ''}</div>
             ${r.zoneStreak >= 2 || r.cleanStreak >= 2 || r.trickList?.length ? `<div class="badges">${r.zoneStreak >= 2 ? `<span>Zone streak x${r.zoneStreak}</span>` : ''}${r.cleanStreak >= 2 ? `<span>Clean streak x${r.cleanStreak}</span>` : ''}${r.trickList?.length ? `<span class="tk">${r.trickList.length} trick${r.trickList.length > 1 ? 's' : ''}${Math.max(...r.trickList.map(t => t.mult)) > 1 ? `, best x${Math.max(...r.trickList.map(t => t.mult))}` : ''}</span>` : ''}</div>` : ''}</div>
           <div class="earn">+<span data-to="${r.earned.total}">0</span>${clipIcon}</div>
-          <div class="pts">${plural(r.totalPoints, 'pt')}</div>
+          <div class="pts">+${r.points} · ${plural(r.totalPoints, 'pt')}</div>
         </div>`).join('')}</div>`;
     const el = showBoard(html);
     // Count each payout up rather than snapping it

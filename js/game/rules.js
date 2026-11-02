@@ -3,8 +3,11 @@
 import { UPGRADE_BY_ID, SLOT_BY_ID, partState, equippedList } from '../shared/upgrades.js';
 import { FLOORS, floorPayMult } from './floors.js';
 
-export const PLACE_CLIPS = [8, 5, 3, 1];
-export const PLACE_POINTS = [10, 6, 3, 1];
+// Match points are each race's score (distance points + target points, see
+// scoreRun in sim.js); finishing place just falls out of who scored most.
+// Clips: 1.5 per distance point (scaled by floor) plus the target's pay,
+// scaled by how far under par you landed, plus pickups, tricks and streaks.
+export const DIST_CLIPS = 1.5;
 export const SHOP_MS = 40000;
 
 export const RACES_PER_FLOOR = 3;
@@ -47,9 +50,10 @@ export function payout(match, standings) {
   const rows = standings.map((s, i) => {
     const pl = match.players[s.seat];
     const intact = !s.crumpled;
-    const zone = intact && s.zone ? s.zone.pay : 0;
-    const place = intact ? Math.round((PLACE_CLIPS[i] ?? 0) * mult) : 0;
-    const points = intact ? (PLACE_POINTS[i] ?? 0) : 0;
+    const sc = s.score || { distPts: 0, targetPts: 0, total: 0, parFactor: 0 };
+    const zone = intact && s.zone ? Math.round(s.zone.pay * sc.parFactor) : 0;
+    const dist = Math.round(sc.distPts * DIST_CLIPS * mult);
+    const points = sc.total;
     const pickup = s.clips;
     const tricks = s.trickClips || 0;
     // Streaks across races: landing in a zone again and again, and flying clean
@@ -62,7 +66,7 @@ export function payout(match, standings) {
       if (zoneStreak >= 2) streak += Math.round(Math.min(10, 2 * (zoneStreak - 1)) * mult);
       if (cleanStreak >= 2) streak += Math.round(Math.min(8, 2 * (cleanStreak - 1)) * mult);
     }
-    const earned = zone + place + pickup + tricks + streak;
+    const earned = zone + dist + pickup + tricks + streak;
     let promoted = null, unlock = null, pb = false, best = 0;
     if (pl) {
       const before = rankOf(pl.career).level;
@@ -75,13 +79,14 @@ export function payout(match, standings) {
       best = pl.best[floor.id] ?? 0;
       pl.clips += earned;
       pl.points += points;
-      if (i === 0 && intact) pl.wins++;
+      if (i === 0 && points > 0) pl.wins++;
       pl.history.push({ floor: currentFloor(match).id, place: i + 1, zone: s.zone?.label ?? null });
     }
     return {
       seat: s.seat, name: pl?.name ?? '?', place: i + 1,
       zone: s.zone?.label ?? null, ring: s.zone?.ringName ?? null, tier: s.zone?.tier ?? -1, crumpled: s.crumpled,
-      dist: s.dist, earned: { zone, place, pickup, tricks, streak, total: earned }, points,
+      dist: s.dist, earned: { zone, dist, pickup, tricks, streak, total: earned }, points,
+      distPts: sc.distPts, targetPts: sc.targetPts, parFactor: sc.parFactor, flightT: sc.flightT, par: sc.par,
       trickList: s.tricks || [], zoneStreak, cleanStreak,
       totalPoints: pl?.points ?? 0, clips: pl?.clips ?? 0,
       rank: rankOf(pl?.career).title, promoted, unlock, pb, best: Math.round(best),
