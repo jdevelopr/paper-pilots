@@ -2,7 +2,7 @@
 //   ?room=ABCD  -> phone controller (joiner)
 //   no param    -> home screen: host a room, play solo, or type a code
 import { roomFromUrl } from './net.js';
-import { $, show } from './ui.js';
+import { $, show, mountPrefs } from './ui.js';
 import { mountSetup } from './shared/setup.js';
 
 const room = roomFromUrl();
@@ -14,6 +14,7 @@ if (room) {
   $('#host-btn').onclick = () => import('./host/main.js').then(m => m.startHost()).catch(fatal);
   let soloSetup = null;
   $('#solo-btn').onclick = () => {
+    if (!soloSetup) mountPrefs($('#solo-prefs'));
     soloSetup ||= mountSetup($('#solo-setup'), 'solo');
     $('#solo-name').value = localStorage.getItem('name') || '';
     show('solo');

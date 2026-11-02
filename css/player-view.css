@@ -105,3 +105,83 @@ body #controller[data-view="shop"] {
 .hg-slot .pips i { width: 10px; height: 10px; border: 2px solid var(--ink); border-radius: 50% 45% 55% 48%; background: #fffdf6; }
 .hg-slot .pips i.on { background: var(--green); }
 .upg.owned[disabled] { opacity: 1; }
+
+/* -------------------------------------------- phones held sideways --- */
+/* Landscape: the race fills the screen and the controls float over it.
+   Steer with a big joystick bottom-left (anywhere on the left half works);
+   to throw, the angle slider sits on the left and the slingshot pad on the right. */
+@media (orientation: landscape) and (max-height: 600px) {
+  body.pv-touch #stage { height: 100dvh; }
+  body.pv-touch #hud { bottom: 0; }
+  body.pv-touch #controller:not(:is([data-view="shop"], [data-view="results"], [data-view="final"])) {
+    top: 0; background: transparent; pointer-events: none; padding: 0;
+  }
+  body.pv-touch #controller .cv:is([data-v="aim"], [data-v="fly"], [data-v="landed"]) .chead { display: none; }
+  body.pv-touch #controller .cv:is([data-v="aim"], [data-v="fly"], [data-v="landed"], [data-v="wait"], [data-v="intro"]) { position: absolute; inset: 0; display: none; }
+  body.pv-touch #controller .cv.on:is([data-v="aim"], [data-v="fly"], [data-v="landed"], [data-v="wait"], [data-v="intro"]) { display: block; }
+
+  /* flying: the joystick, on your dominant hand's side (right by default) */
+  body.pv-touch .fly { position: absolute; right: 0; top: 0; bottom: 0; width: 48vw; display: block; pointer-events: auto; }
+  body.pv-touch .fly .stick {
+    position: absolute; width: min(48dvh, 240px);
+    right: max(22px, calc(env(safe-area-inset-right) + 12px)); bottom: max(18px, calc(env(safe-area-inset-bottom) + 10px));
+    background-color: rgba(246, 239, 220, .62); border-width: 3.5px; box-shadow: 3px 5px 0 rgba(44,36,22,.45);
+  }
+  body.pv-touch .fly .stick .lbl { font-size: 17px; }
+  body.pv-touch .fly .hpbar {
+    position: absolute; height: 14px; width: min(48dvh, 240px);
+    right: max(22px, calc(env(safe-area-inset-right) + 12px)); bottom: calc(max(18px, calc(env(safe-area-inset-bottom) + 10px)) + min(48dvh, 240px) + 12px);
+  }
+  body.pv-touch.lefty .fly { right: auto; left: 0; }
+  body.pv-touch.lefty .fly .stick, body.pv-touch.lefty .fly .hpbar { right: auto; left: max(22px, calc(env(safe-area-inset-left) + 12px)); }
+
+  /* aiming: slingshot pad on your dominant side, angle slider on the other */
+  body.pv-touch .aim { position: absolute; inset: 0; display: block; }
+  body.pv-touch .aim .angle {
+    position: absolute; left: max(14px, calc(env(safe-area-inset-left) + 8px)); top: 14dvh; bottom: 8dvh; width: 64px;
+    pointer-events: auto; font-size: 18px;
+  }
+  body.pv-touch .aim .vrange { min-height: 0; }
+  body.pv-touch .aim .pad {
+    position: absolute; right: max(14px, calc(env(safe-area-inset-right) + 8px)); bottom: max(12px, env(safe-area-inset-bottom)); top: 16dvh;
+    width: min(38vw, 300px); pointer-events: auto; background-color: rgba(246, 239, 220, .82);
+  }
+  body.pv-touch .aim .pad .padlbl { font-size: 22px; }
+  body.pv-touch.lefty .aim .angle { left: auto; right: max(14px, calc(env(safe-area-inset-right) + 8px)); }
+  body.pv-touch.lefty .aim .pad { right: auto; left: max(14px, calc(env(safe-area-inset-left) + 8px)); }
+
+  /* waiting, countdown and landed: small cards instead of full panels */
+  body.pv-touch .cv:is([data-v="wait"], [data-v="intro"]) .cfill {
+    position: absolute; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    padding: 6px 22px; min-width: 220px; border-radius: 16px;
+  }
+  body.pv-touch .cv:is([data-v="wait"], [data-v="intro"]) .cfill h3 { font-size: 26px; }
+  body.pv-touch .cv[data-v="intro"] .cfill .cbig { font-size: 60px; }
+  body.pv-touch .cv[data-v="intro"] .cfill .csub { font-size: 16px; }
+  body.pv-touch .landed-card {
+    position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom));
+    width: 240px; padding: 10px; gap: 2px;
+  }
+  body.pv-touch .landed-card .zl { font-size: 30px; }
+  body.pv-touch .landed-card .zp { font-size: 40px; }
+  body.pv-touch .landed-card .zp svg { width: 14px; height: 30px; }
+
+  /* trick callouts sit on the side away from the joystick */
+  body.pv-touch .trick-rail { top: 18%; }
+  body.pv-touch.lefty .trick-rail { left: auto; right: 14px; align-items: flex-end; }
+  body.pv-touch.lefty .trick-rail .trick { justify-items: end; }
+  body.pv-touch .hud-tired { top: 30%; }
+  /* banners float mid-screen so they never cover the controls */
+  body.pv-touch .banner { bottom: auto; top: 40%; font-size: 24px; }
+}
+
+/* Left-handed, phone held upright: the slingshot pad on the left, angle slider on the right */
+body.lefty .aim { grid-template-columns: 1fr 70px; }
+body.lefty .aim .angle { order: 2; }
+
+/* settings blocks (controls, graphics) on the solo form and in the lobbies */
+.prefs { display: grid; gap: 8px; }
+.prefs:empty { display: none; }
+.prefs .seg legend { font-size: 22px; min-width: 0; }
+.prefs .seg span { height: 40px; min-width: 0; font-size: 19px; padding: 0 12px; border-radius: 10px 14px 9px 13px; }
+#joiner-controls .prefs .seg legend { color: #fff8e6; text-shadow: 0 1px 0 rgba(44,36,22,.6); }

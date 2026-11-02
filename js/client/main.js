@@ -4,7 +4,7 @@
 
 import { createClient } from '../net.js';
 import { SLUG, MAX_PLAYERS, PEER_OPTIONS } from '../shared/config.js';
-import { $, show, toast, renderRoster, vibrate } from '../ui.js';
+import { $, show, toast, renderRoster, vibrate, mountPrefs } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
 import { mountController } from './controller.js';
 import { placed } from '../shared/stickers.js';
@@ -112,6 +112,7 @@ function connect(code, name) {
   });
   client.on('disconnected', () => { if (everWelcomed) reconnectSoon(code, name); });
 
+  if (!$('#lobby-prefs').childElementCount) mountPrefs($('#lobby-prefs'));
   $('#lobby-stickers').onclick = () => import('./stickerbook.js').then(m => m.openStickerBook({ seat: mySeat ?? 0 }));
   $('#ready-btn').onclick = () => {
     ready = !ready;

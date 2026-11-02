@@ -120,10 +120,13 @@ export function createInk(renderer) {
   quadScene.add(quad);
   const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
+  // The normal pass (used only to find edges) can run at a fraction of the
+  // screen resolution on slower devices; the outlines get a touch softer.
+  let normalScale = 1;
   function resize() {
     renderer.getDrawingBufferSize(size);
     rtColor.setSize(size.x, size.y);
-    rtNormal.setSize(size.x, size.y);
+    rtNormal.setSize(Math.max(1, Math.round(size.x * normalScale)), Math.max(1, Math.round(size.y * normalScale)));
     mat.uniforms.res.value.copy(size);
     mat.uniforms.px.value = Math.max(1, renderer.getPixelRatio() * 1.15);
   }
@@ -152,5 +155,7 @@ export function createInk(renderer) {
     renderer.render(quadScene, quadCam);
   }
 
-  return { resize, render };
+  function setNormalScale(s) { normalScale = s; resize(); }
+
+  return { resize, render, setNormalScale };
 }

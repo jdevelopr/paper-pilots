@@ -773,3 +773,9 @@ body.pv-touch .hud-par { font-size: 20px; } body.pv-touch .hud-tired { font-size
 .hud-buffs .buff i { position: absolute; left: 8px; right: 8px; bottom: 3px; height: 4px; background: rgba(44,36,22,.15); border-radius: 2px; overflow: hidden; }
 .hud-buffs .buff u { position: absolute; inset: 0; background: var(--bc); transform-origin: left; }
 body.pv-touch .hud-buffs { top: 96px; gap: 6px; } body.pv-touch .hud-buffs .buff { font-size: 16px; padding: 2px 8px 7px; }
+
+/* joystick direction marks, and a lit-up look while your thumb is on it */
+.stick .arrows { position: absolute; inset: 0; width: 100%; height: 100%; fill: var(--ink-soft); opacity: .55; pointer-events: none; }
+.stick.held { box-shadow: 0 0 0 4px var(--c, var(--mustard)); }
+.stick.held .thumb { box-shadow: 1px 2px 0 var(--ink); }
+.fly { touch-action: none; }

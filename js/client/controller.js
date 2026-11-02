@@ -35,7 +35,9 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
       <div class="chead"><span class="cname"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
       <div class="fly">
         <div class="hpbar"><i></i></div>
-        <div class="stick" aria-label="Steer"><span class="lbl u">climb</span><span class="lbl d">dive</span><div class="thumb"></div></div>
+        <div class="stick" aria-label="Steer: drag up to climb, down to dive, left and right to turn">
+          <svg class="arrows" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 7l-7 8h14zM50 93l-7-8h14zM7 50l8-7v14zM93 50l-8-7v14z"/></svg>
+          <span class="lbl u">climb</span><span class="lbl d">dive</span><div class="thumb"></div></div>
       </div>
     </div>
     <div class="cv" data-v="landed">
@@ -234,11 +236,14 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     st.x = clamp(x, -1, 1); st.y = clamp(y, -1, 1);
     drawStick(); sendStick();
   }
-  stick.addEventListener('pointerdown', e => { e.preventDefault(); stick.setPointerCapture(e.pointerId); stickPtr = e.pointerId; stickFrom(e); vibrate(6); });
-  stick.addEventListener('pointermove', e => { if (e.pointerId === stickPtr) stickFrom(e); });
-  const stickUp = e => { if (e.pointerId !== stickPtr) return; stickPtr = null; st.x = 0; st.y = 0; drawStick(); sendStick(true); };
-  stick.addEventListener('pointerup', stickUp);
-  stick.addEventListener('pointercancel', stickUp);
+  // The whole fly area is the touch zone (in landscape that's the left side of
+  // the screen), so your thumb doesn't have to land exactly on the stick.
+  const flyZone = q('.fly');
+  flyZone.addEventListener('pointerdown', e => { e.preventDefault(); flyZone.setPointerCapture(e.pointerId); stickPtr = e.pointerId; stick.classList.add('held'); stickFrom(e); vibrate(6); });
+  flyZone.addEventListener('pointermove', e => { if (e.pointerId === stickPtr) stickFrom(e); });
+  const stickUp = e => { if (e.pointerId !== stickPtr) return; stickPtr = null; stick.classList.remove('held'); st.x = 0; st.y = 0; drawStick(); sendStick(true); };
+  flyZone.addEventListener('pointerup', stickUp);
+  flyZone.addEventListener('pointercancel', stickUp);
 
   /* --------------------------------------------------------- keyboard --- */
   const keys = new Set();

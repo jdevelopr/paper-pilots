@@ -4,7 +4,7 @@
 import { createHost, joinUrl } from '../net.js';
 import { createLocalLink } from '../shared/local.js';
 import { SLUG, MAX_PLAYERS, MIN_PLAYERS, PEER_OPTIONS } from '../shared/config.js';
-import { $, show, toast, renderRoster } from '../ui.js';
+import { $, show, toast, renderRoster, mountPrefs } from '../ui.js';
 import { createRenderer } from './render3d.js';
 import { createHud } from './hud.js';
 import { createFlow } from './flow.js';
@@ -48,6 +48,7 @@ export async function startHost() {
   const host = createHost({ slug: SLUG, maxPlayers: MAX_PLAYERS, minPlayers: MIN_PLAYERS, peerOptions: PEER_OPTIONS });
   let flow = null, stage = null;
   const setup = mountSetup($('#host-setup'), 'host');
+  mountPrefs($('#host-prefs'), { hand: false });
 
   host.on('open', async code => {
     const url = joinUrl(code);

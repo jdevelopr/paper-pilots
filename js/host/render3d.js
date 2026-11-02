@@ -1032,12 +1032,65 @@ export function createPlanePreview(canvas, { reduceMotion = false } = {}) {
   return { set, resize, pick, select, editing, setInteract: h => { interact = h; } };
 }
 
+export const GFX_KEY = 'gfx';
 export function createRenderer(canvas, { reduceMotion = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-  // Phones: a lighter pixel ratio keeps the ink pass smooth
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 1.25 : 1.75));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const ink = createInk(renderer);
+
+  /* Graphics quality. "auto" picks a starting level from the device and then
+     watches the frame rate, stepping down while the game runs slowly. The
+     player can also pick a level (saved per device, see GFX_KEY). */
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const dpr = window.devicePixelRatio || 1;
+  const LEVELS = {
+    high:   { pr: Math.min(dpr, coarse ? 1.25 : 1.75), normal: 1,   ink: true,  far: 1,    fx: 1 },
+    medium: { pr: Math.min(dpr, 1),                    normal: 0.5, ink: true,  far: 0.75, fx: 0.7 },
+    low:    { pr: Math.min(dpr, 0.8),                  normal: 0.5, ink: true,  far: 0.5,  fx: 0.4 },
+    lowest: { pr: Math.min(dpr, 0.65),                 normal: 0.5, ink: false, far: 0.4,  fx: 0.25 },
+  };
+  const ORDER = ['high', 'medium', 'low', 'lowest'];
+  let gfxPref = 'auto';
+  try { gfxPref = localStorage.getItem(GFX_KEY) || 'auto'; } catch {}
+  const weakDevice = coarse && ((navigator.deviceMemory || 8) <= 4 || (navigator.hardwareConcurrency || 8) <= 6);
+  let level = gfxPref !== 'auto' && LEVELS[gfxPref] ? gfxPref : weakDevice ? 'medium' : 'high';
+  let Q = LEVELS[level];
+  function applyQuality() {
+    Q = LEVELS[level];
+    renderer.setPixelRatio(Q.pr);
+    ink.setNormalScale(Q.normal);
+    if (canvas.clientWidth) resize();
+    if (floor) setDrawDistance();
+  }
+  // Shorter draw distance on lower settings, with a haze so the far end fades out
+  function setDrawDistance() {
+    camera.far = Math.min(floor.length + 120, 140 + (floor.length + 120) * Q.far);
+    camera.updateProjectionMatrix();
+    scene.fog = Q.far < 1 ? new THREE.Fog(scene.background, camera.far * 0.55, camera.far) : null;
+  }
+  renderer.setPixelRatio(Q.pr);
+  ink.setNormalScale(Q.normal);
+  // Frame-rate watch (auto only): if frames average slower than ~40 fps for
+  // a couple of seconds, drop a level; give each change a few seconds to settle.
+  let fpsAcc = 0, fpsN = 0, fpsSince = performance.now(), lastFrameAt = 0, settleUntil = performance.now() + 4000;
+  function watchFps() {
+    const now = performance.now();
+    if (lastFrameAt) { const d = now - lastFrameAt; if (d < 250) { fpsAcc += d; fpsN++; } }
+    lastFrameAt = now;
+    if (gfxPref !== 'auto' || now < settleUntil || now - fpsSince < 2500) return;
+    const avg = fpsN ? fpsAcc / fpsN : 16;
+    fpsAcc = 0; fpsN = 0; fpsSince = now;
+    const i = ORDER.indexOf(level);
+    if (avg > 25 && i < ORDER.length - 1) { level = ORDER[i + 1]; applyQuality(); settleUntil = now + 3500; }
+  }
+  window.__ppGfx = pref => setGraphics(pref);
+  function setGraphics(pref) {
+    gfxPref = LEVELS[pref] ? pref : 'auto';
+    try { localStorage.setItem(GFX_KEY, gfxPref); } catch {}
+    level = gfxPref === 'auto' ? (weakDevice ? 'medium' : 'high') : gfxPref;
+    settleUntil = performance.now() + 4000;
+    applyQuality();
+  }
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#cfe2ea');   // sky, seen through open windows
@@ -1232,7 +1285,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   }
   let bitIx = 0;
   function burst(x, y, z, color = '#ffffff', n = 14, speed = 4) {
-    const k = reduceMotion ? Math.ceil(n / 3) : n;
+    const k = Math.max(1, Math.round((reduceMotion ? Math.ceil(n / 3) : n) * Q.fx));
     for (let i = 0; i < k; i++) {
       const b = bits[bitIx++ % bits.length];
       b.m.visible = true;
@@ -1246,7 +1299,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   }
   // Fluttering bits: leaves off a tree, scraps off a damaged plane
   function flutter(x, y, z, colors, n = 8, speed = 3, size = 1.6) {
-    const k = reduceMotion ? Math.ceil(n / 3) : n;
+    const k = Math.max(1, Math.round((reduceMotion ? Math.ceil(n / 3) : n) * Q.fx));
     for (let i = 0; i < k; i++) {
       const b = bits[bitIx++ % bits.length];
       b.m.visible = true;
@@ -1652,7 +1705,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   function setFloor(f) {
     floor = f;
     // Long floors: see all the way to the far wall.
-    camera.far = f.length + 120;
+    setDrawDistance();
     camera.updateProjectionMatrix();
     scene.remove(env);
     env.traverse(o => { if (o.geometry && o.geometry !== clipGeo) o.geometry.dispose(); });
@@ -2178,7 +2231,9 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         st.m.lookAt(camera.position.x, st.y, camera.position.z);
       }
       const SC = G.swooshClock; SC.clock += dt;
-      for (const sw of G.swooshes) {
+      const swN = Math.round(G.swooshes.length * Q.fx);
+      G.swooshes.forEach((sw, j) => { if (j >= swN) sw.grp.visible = false; });
+      for (const sw of G.swooshes.slice(0, swN)) {
         const life = (SC.clock - sw.start) / sw.dur;
         if (life >= 1) { G.startSwoosh(sw, SC.clock); continue; }
         if (life < 0) { sw.grp.visible = false; continue; }
@@ -2299,7 +2354,9 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       shakeAmt *= Math.pow(0.02, dt);
     }
     camera.lookAt(camLook);
-    ink.render(scene, camera, time, reduceMotion);
+    if (Q.ink) ink.render(scene, camera, time, reduceMotion);
+    else { renderer.setRenderTarget(null); renderer.render(scene, camera); }
+    watchFps();
   }
 
   function syncPlanes(race, dt) {
@@ -2430,5 +2487,5 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   resize();
   window.addEventListener('resize', resize);
 
-  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, itemPop, get floor() { return floor; } };
+  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, itemPop, setGraphics, get graphics() { return { pref: gfxPref, level }; }, get floor() { return floor; } };
 }

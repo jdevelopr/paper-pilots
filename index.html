@@ -75,6 +75,7 @@
       <label><input type="radio" name="bots" value="3" checked><span>3</span></label>
     </fieldset>
     <div class="match-setup" id="solo-setup"></div>
+    <div class="prefs" id="solo-prefs"></div>
     <div class="row">
       <button type="button" id="solo-back" class="btn ghost">Back</button>
       <button type="submit" class="btn primary">Take off</button>
@@ -96,12 +97,14 @@
       <ul id="roster" aria-live="polite"></ul>
       <div id="host-controls">
         <div class="match-setup" id="host-setup"></div>
+        <div class="prefs" id="host-prefs"></div>
         <button id="start-btn" class="btn primary" disabled>Start game</button>
       </div>
       <div id="joiner-controls">
         <div id="me-chip" class="me-chip"></div>
         <button id="ready-btn" class="btn primary big">Ready</button>
         <button id="lobby-stickers" class="btn ghost small">Sticker book</button>
+        <div class="prefs" id="lobby-prefs"></div>
       </div>
       <p id="lobby-status" class="status" role="status"></p>
     </div>

@@ -74,3 +74,27 @@ export async function keepAwake() {
   try { lock = await navigator.wakeLock.request('screen'); } catch {}
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && lock) keepAwake(); });
+
+/* ---------------------------------------------------- player settings --- */
+// Handedness (which side the joystick and slingshot sit on) and graphics
+// quality, both remembered on this device.
+const getPref = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+export const getHand = () => getPref('hand', 'right');
+export function applyHand(h = getHand()) { document.body.classList.toggle('lefty', h === 'left'); }
+applyHand();
+
+const GFX = [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low'], ['lowest', 'Lowest']];
+let prefN = 0;
+// A little settings block: handedness (for players) and graphics
+export function mountPrefs(el, { hand = true, gfx = true } = {}) {
+  if (!el) return;
+  const n = ++prefN, h = getHand(), g = getPref('gfx', 'auto');
+  el.innerHTML = `${hand ? `<fieldset class="seg prefs-seg"><legend>Controls</legend>
+      <label><input type="radio" name="hand${n}" value="right" ${h === 'right' ? 'checked' : ''}><span>Right-handed</span></label>
+      <label><input type="radio" name="hand${n}" value="left" ${h === 'left' ? 'checked' : ''}><span>Left-handed</span></label></fieldset>` : ''}
+    ${gfx ? `<fieldset class="seg prefs-seg"><legend>Graphics</legend>
+      ${GFX.map(([v, t]) => `<label><input type="radio" name="gfx${n}" value="${v}" ${g === v ? 'checked' : ''}><span>${t}</span></label>`).join('')}</fieldset>` : ''}`;
+  for (const r of el.querySelectorAll(`input[name="hand${n}"]`)) r.onchange = () => { setPref('hand', r.value); applyHand(r.value); vibrate(8); };
+  for (const r of el.querySelectorAll(`input[name="gfx${n}"]`)) r.onchange = () => { setPref('gfx', r.value); window.__ppGfx?.(r.value); vibrate(8); };
+}
