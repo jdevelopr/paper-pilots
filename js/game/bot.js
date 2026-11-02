@@ -4,7 +4,7 @@
 // Pure: given race state, it returns stick input. `rng` is passed in.
 
 import { stepPlane, createRace, throwPlane, SIM } from './sim.js';
-import { moverBox } from './floors.js';
+import { moverBox, treeAt, treeTop, groundAt } from './floors.js';
 import { partState } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -83,6 +83,8 @@ function blocked(floor, x, y, z, t = 0) {
   for (const b of all) {
     if (x > b.x0 - 0.9 && x < b.x1 + 0.9 && z > b.z0 - 0.9 && z < b.z1 + 0.9 && y > b.y0 - 0.9 && y < b.y1 + 0.6) return b;
   }
+  const tree = floor.gap?.park && treeAt(floor, x, y, z, 1.1);
+  if (tree) return { y1: treeTop(tree), tree: true };
   return false;
 }
 
@@ -120,7 +122,7 @@ export function botSteer(bot, race, p) {
   if (!tg) return { x: 0, y: 0 };
 
   // Drop vent waypoints we've passed or ridden high enough in.
-  while (bot.ways.length && (p.z > bot.ways[0].z + 1 || Math.hypot(bot.ways[0].z - p.z, bot.ways[0].x - p.x) > (p.y + Math.max(0, p.v - 11) * 0.6) * 8.5 + 6 || (p.y > f.height * 0.72 && p.z > bot.ways[0].z - 3))) bot.ways.shift();
+  while (bot.ways.length && (p.z > bot.ways[0].z + 1 || Math.hypot(bot.ways[0].z - p.z, bot.ways[0].x - p.x) > (p.y - groundAt(f, p.z) + Math.max(0, p.v - 11) * 0.6) * 8.5 + 6 || (p.y > f.height * 0.72 && p.z > bot.ways[0].z - 3))) bot.ways.shift();
   // Inside a hallway: forget vents and just thread the corridor.
   const hall = inHall(f, p.z, 45);
   const way = hall ? null : bot.ways[0];
@@ -164,6 +166,21 @@ export function botSteer(bot, race, p) {
       bot.planY = clamp(bestY + (bot.rng() - 0.5) * (1 - bot.skill) * 0.5, -1, 1);
     }
     y = bot.planY ?? 0;
+  }
+
+  // Down in the Rooftop park: stay low under the lid of wind, and line up the
+  // wind rings and tailwind streams ahead.
+  const pk = f.gap?.park;
+  if (pk && p.z > pk.dive1 && p.z < pk.lift0 && tg.z > pk.lift0) {
+    const boost = [...pk.rings, ...pk.streams.map(s => ({ x: s.x, y: s.y, z: s.z0 + 2 }))]
+      .filter(g => g.z > p.z + 2 && g.z - p.z < 40 && Math.abs(g.x - laneX(f, g.z)) < 2 + bot.skill * 12)
+      .sort((a, b) => a.z - b.z)[0];
+    const wantY = boost ? boost.y : pk.cruise + 1;
+    // hug the winding lane closely (cutting its corners runs you into trees)
+    x = steerToward(p, laneX(f, p.z + 6), p.z + 6);
+    if (boost && boost.z - p.z < 26) x = steerToward(p, boost.x, boost.z);
+    // (speed first: a slow plane noses down rather than climbing for a ring)
+    y = clamp((p.v - 11.5) * 0.3 + (wantY - p.y) * 0.14 * clamp((p.v - 8) / 3, 0, 1), -1, 1);
   }
 
   // Look ahead along the heading and swerve around tall things.

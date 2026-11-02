@@ -99,6 +99,38 @@ export function groundAt(f, z) {
   return z < g.z0 ? 0 : z < g.z1 ? -g.depth : -g.drop;
 }
 
+// Rooftop park trees. A tree is a trunk plus an egg-shaped canopy; `pad`
+// grows it (the plane's radius, or a safety margin for the bots).
+export function treeHit(t, x, y, z, pad = 0) {
+  const cy = t.y + t.h * 0.62;
+  if (y < cy && (x - t.x) ** 2 + (z - t.z) ** 2 < (0.5 + pad) ** 2 && y > t.y - pad) return true;
+  const rx = t.r * 0.85 + pad, ry = t.r * 0.98 + pad;
+  return ((x - t.x) / rx) ** 2 + ((y - cy) / ry) ** 2 + ((z - t.z) / rx) ** 2 < 1;
+}
+export const treeTop = t => t.y + t.h * 0.62 + t.r * 0.98;
+// Trees near distance z, bucketed so the sim and the bots' look-ahead stay cheap.
+const TREE_CELL = 8, NO_TREES = [], treeGrids = new WeakMap();
+export function treesNear(f, z) {
+  const P = f.gap?.park;
+  if (!P || !P.trees.length) return NO_TREES;
+  let g = treeGrids.get(P);
+  if (!g) {
+    g = new Map();
+    for (const t of P.trees) {
+      for (let i = Math.floor((t.z - t.r - 3) / TREE_CELL); i <= Math.floor((t.z + t.r + 3) / TREE_CELL); i++) {
+        if (!g.has(i)) g.set(i, []);
+        g.get(i).push(t);
+      }
+    }
+    treeGrids.set(P, g);
+  }
+  return g.get(Math.floor(z / TREE_CELL)) || NO_TREES;
+}
+export function treeAt(f, x, y, z, pad = 0) {
+  for (const t of treesNear(f, z)) if (treeHit(t, x, y, z, pad)) return t;
+  return null;
+}
+
 function boxesFor(o) {
   const hw = o.w / 2, hd = o.d / 2;
   const base = { x0: o.x - hw, x1: o.x + hw, z0: o.z - hd, z1: o.z + hd };
@@ -300,9 +332,10 @@ export const THEMES = [
     movers: [M.slidedoor, M.drone, M.drone], moverCount: [2, 3],
   },
   {
-    // Open sky. The middle half of the run is the gap between two buildings:
-    // dive into it for clips and the gusts push you back up, but drop too far
-    // and you hit the far building or end up on the street.
+    // Open sky. The middle half of the run is a city park far below the roofs:
+    // a huge downdraft at the near edge shoves every plane down among the
+    // trees, wind rings and tailwind streams keep you going, and a wall of
+    // updraft at the far end lifts you back over the far roof.
     id: 'rooftop', number: 6, name: 'Rooftop',
     carpet: '#9a978f', wall: '#c9bfae', accent: '#c1440e', height: 26,
     open: true, gap: { from: 0.25, to: 0.75, depth: 40, drop: 7 },
@@ -350,6 +383,14 @@ export function generateFloor(theme, seed = 1) {
   for (let i = 1; i < nCtrl; i++) ctrl.push([L * i / nCtrl, T.r(-14, 14)]);
   ctrl[1][1] = T.r(-10, 10);
   ctrl.push([L, T.r(-12, 12)]);
+  if (theme.gap) {
+    // Over the Rooftop park the lane sweeps in long, gentle bends that any
+    // plane can follow between the trees
+    const z0 = L * theme.gap.from, z1 = L * theme.gap.to;
+    for (let i = ctrl.length - 2; i > 0; i--) if (ctrl[i][0] > z0 - 10 && ctrl[i][0] < z1 + 10) ctrl.splice(i, 1);
+    for (let z = z0; z <= z1; z += T.r(80, 110)) ctrl.push([z, T.r(-12, 12)]);
+    ctrl.sort((a, b) => a[0] - b[0]);
+  }
 
   /* Landing zones, one per tier */
   const zones = [];
@@ -580,7 +621,7 @@ export function generateFloor(theme, seed = 1) {
     // AC units blow their exhaust straight up
     for (const o of objects) if (o.type === 'acunit') vents.push({ x: o.x, z: o.z, r: Math.min(o.w, o.d) / 2 + 1, s: T.r(6.5, 8), y0: o.y + o.h, ac: true });
     // Rising air between the buildings: thermal columns along the lane
-    for (let z = gap.z0 + T.r(15, 30); z < gap.z1 - 15; z += T.r(45, 65)) vents.push({ x: laneX(z) + T.r(-3, 3), z, r: T.r(4, 5), s: T.r(7, 9), y0: -gap.depth, gap: true });
+    for (let z = gap.z0 + 55 + T.r(25, 40); z < gap.z1 - 70 - 20; z += T.r(55, 80)) vents.push({ x: laneX(z) + T.r(-3, 3), z, r: T.r(4, 5), s: T.r(7, 9), y0: -gap.depth, gap: true });
   }
   const nVents = many(theme.vents) + vents.length;
   for (let tries = 0; vents.length < nVents && tries < 300; tries++) {
@@ -597,6 +638,52 @@ export function generateFloor(theme, seed = 1) {
     vents.push({ x, z, r, s: T.r(6.5, 9), y0: G(z) });
   }
   vents.sort((a, b) => a.z - b.z);
+
+  /* Rooftop park: the forced dive, boosts, trees */
+  let park = null;
+  if (gap) {
+    const floorY = -gap.depth;
+    const P = park = gap.park = {
+      dive0: gap.z0, dive1: gap.z0 + 55,         // the big downdraft off the near roof
+      lift0: gap.z1 - 70, lift1: gap.z1,         // the updraft wall at the far end
+      floorY, cruise: floorY + 7, cap: floorY + 11,   // where the dive leaves you; the lid of wind over the park
+      liftTop: 5, diveS: 16, liftS: 20,
+      rings: [], streams: [], trees: [],
+    };
+    const cx = (x, pad) => Math.max(-W / 2 + pad, Math.min(W / 2 - pad, x));
+    const cruiseY = () => P.cruise + T.r(-2.5, 2.5);
+    // Tailwind streams: long ribbons of moving air low over the park
+    for (let z = P.dive1 + T.r(40, 70); z < P.lift0 - 70; z += T.r(150, 210)) {
+      const len = T.r(45, 70), off = T.chance(0.35);
+      const x = laneX(z + len / 2) + (off ? T.pick([-1, 1]) * T.r(6, 10) : T.r(-1.5, 1.5));
+      P.streams.push({ x: cx(x, 4), z0: z, z1: z + len, y: cruiseY(), hw: 3, hh: 2.4, s: 7 });
+    }
+    // Wind rings: on the lane, and out to the side (lower, and worth more) for the brave
+    for (let z = P.dive1 + T.r(20, 35); z < P.lift0 - 20; z += T.r(50, 80)) {
+      if (P.streams.some(s => z > s.z0 - 14 && z < s.z1 + 14)) continue;
+      const off = T.chance(0.5);
+      const x = laneX(z) + (off ? T.pick([-1, 1]) * T.r(7, 14) : T.r(-1.5, 1.5));
+      P.rings.push({ x: cx(x, 4), y: off ? floorY + T.r(3.5, 9.5) : cruiseY(), z, r: 2.6, s: off ? 8 : 6, off });
+    }
+    // Trees in groves, everywhere but a winding lane; never inside a ring,
+    // a stream, a thermal or the plaza under the updraft.
+    const busy = (x, z, rr) =>
+      P.rings.some(g => Math.hypot(g.x - x, g.z - z) < rr + g.r + 3) ||
+      P.streams.some(s => Math.abs(x - s.x) < s.hw + rr + 1.5 && z > s.z0 - rr - 4 && z < s.z1 + rr + 2) ||
+      vents.some(v => v.gap && Math.hypot(v.x - x, v.z - z) < v.r + rr + 1);
+    const ph = T.r(0, 6.28);
+    for (let z = P.dive1 + 14; z < P.lift0 - 4; z += T.r(2.6, 3.6)) {
+      const grove = 0.5 + 0.5 * Math.sin(z * 0.023 + ph) * Math.sin(z * 0.007 + ph * 2);
+      const n = T.ri(1, 2 + Math.round(grove * 3));
+      for (let i = 0; i < n; i++) {
+        const r = T.r(2.4, 4.2), x = T.r(-W / 2 - 3, W / 2 + 3), tz = z + T.r(-1, 1);
+        if (Math.abs(x - laneX(tz)) < r * 0.85 + 3.8) continue;
+        if (busy(x, tz, r)) continue;
+        if (P.trees.slice(-24).some(t => Math.hypot(t.x - x, t.z - tz) < (t.r + r) * 0.8)) continue;
+        P.trees.push({ x, z: tz, y: floorY, h: T.r(8, 17), r });
+      }
+    }
+  }
 
   const fans = [];
   const nFans = many(theme.fans);
@@ -620,6 +707,7 @@ export function generateFloor(theme, seed = 1) {
     const want = many(theme.moverCount);
     for (let tries = 0; movers.length < want && tries < 200; tries++) {
       const z = T.r(30, L * 0.85);
+      if (gap && inGap(z - 8, z + 8)) continue;    // the park gets its own flocks below
       const m = T.pick(theme.movers)(laneX(z) + T.r(-2, 2), z, T, H);
       if (gap && !inGap(z)) m.y += G(z);
       m.phase = rng();
@@ -636,20 +724,42 @@ export function generateFloor(theme, seed = 1) {
       movers.push(m);
     }
   }
+  if (park) {
+    // Pigeon flocks wheeling low across the park, right across the lane
+    for (let z = park.dive1 + T.r(50, 90); z < park.lift0 - 30; z += T.r(80, 130)) {
+      if (park.rings.some(g => Math.abs(g.z - z) < 12) || park.streams.some(s => z > s.z0 - 10 && z < s.z1 + 10)) continue;
+      const m = M.pigeons(laneX(z) + T.r(-2, 2), z, T);
+      m.y = park.floorY + T.r(3.5, 8.5);
+      m.phase = rng();
+      const sw = moverSweep(m);
+      if (Math.abs(sw.x) + sw.w / 2 > W / 2 - 0.5) m.x -= Math.sign(sw.x) * (Math.abs(sw.x) + sw.w / 2 - W / 2 + 0.5);
+      const s2 = moverSweep(m);
+      // clear the flock's flight path through the trees
+      park.trees = park.trees.filter(t => !(overlapsRect(s2, t.x - t.r - 1, t.x + t.r + 1, t.z - t.r - 1, t.z + t.r + 1) && treeTop(t) > m.y - 1));
+      movers.push(m);
+    }
+  }
 
   /* Paper clips: columns over vents, runs along the lane, one bonus box */
   const clips = [];
   const addClip = (x, y, z, extra = {}) => {
     if (solidAt(x, y, z) || y > H - 1 || y < G(z) + 0.8 || Math.abs(x) > W / 2 - 1) return;
+    if (park && treeAt({ gap }, x, y, z, 0.8)) return;
     clips.push({ x, y, z, ...extra });
   };
-  for (const v of vents) for (let i = 0; i < 3; i++) addClip(v.x, (v.gap ? 0 : v.y0 ?? 0) + (v.ac ? 3 : 7) + i * 2, v.z);
-  if (gap) {
-    // Down in the gap: clip arcs that dip below the roofline, for the brave
-    for (let z = gap.z0 + T.r(20, 40); z < gap.z1 - 30; z += T.r(50, 80)) {
-      const x0 = laneX(z) + T.r(-4, 4), deep = T.r(6, 13);
-      for (let i = 0; i <= 6; i++) addClip(x0, -2 - deep * Math.sin(Math.PI * i / 6), z + i * 3.2);
-      if (T.chance(0.4)) addClip(x0, -3 - deep, z + 9.6, { n: 5, big: true });
+  for (const v of vents) for (let i = 0; i < 3; i++) addClip(v.x, (v.gap ? park.floorY - 4 : v.y0 ?? 0) + (v.ac ? 3 : 7) + i * 2, v.z);
+  if (park) {
+    // In the park: a line of clips leads into each wind ring, the side rings
+    // hold a bonus, and the tailwind streams are paved with them
+    for (const g of park.rings) {
+      for (let i = 1; i <= 4; i++) addClip(g.x, g.y, g.z - i * 3);
+      if (g.off) addClip(g.x, g.y, g.z, { n: 3, big: true });
+    }
+    for (const s of park.streams) for (let z = s.z0 + 3; z < s.z1 - 1; z += 5) addClip(s.x, s.y, z);
+    // and a few arcs weaving low between the trees
+    for (let z = park.dive1 + T.r(30, 60); z < park.lift0 - 30; z += T.r(70, 110)) {
+      const x0 = laneX(z), lo = park.floorY + T.r(2.5, 5);
+      for (let i = 0; i <= 6; i++) addClip(laneX(z + i * 3.2), lo + (park.cruise - lo) * (1 - Math.sin(Math.PI * i / 6)), z + i * 3.2);
     }
   }
   // Shortcuts are paved with clips
@@ -667,11 +777,11 @@ export function generateFloor(theme, seed = 1) {
   const runs = many([3, 5]);
   for (let k = 0; k < runs; k++) {
     const z0 = T.r(10, L * 0.48), n = T.ri(3, 5), y = T.r(5, 7.5);
-    for (let i = 0; i < n; i++) { const z = z0 + i * 3; addClip(laneX(z), y - i * 0.2 + (inGap(z) ? 0 : G(z)), z); }
+    for (let i = 0; i < n; i++) { const z = z0 + i * 3; addClip(laneX(z), y - i * 0.2 + (inGap(z) ? park.cruise - 6 : G(z)), z); }
   }
   for (let i = 0; i < Math.round(k); i++) {
     const bz = T.r(60, L * 0.7);
-    addClip(laneX(bz) + T.pick([-1, 1]) * T.r(4, 9), T.r(9, H - 2.5) + (gap && !inGap(bz) ? G(bz) : 0), bz, { n: 5, big: true });
+    addClip(laneX(bz) + T.pick([-1, 1]) * T.r(4, 9), gap && inGap(bz) ? park.floorY + T.r(3, 10) : T.r(9, H - 2.5) + (gap ? G(bz) : 0), bz, { n: 5, big: true });
   }
 
   const tier4 = zones.find(z => z.tier === 4);

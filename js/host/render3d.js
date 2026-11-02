@@ -1012,8 +1012,11 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     for (let tries = 0; trees.length < 2600 && tries < 16000; tries++) {
       const x = rr(-PX + 3, PX - 3), z = rr(pz0 + 3, pz1 - 3);
       if (inPond(x, z, 3) || nearPath(x, z, 4)) continue;
+      if (g.park && Math.abs(x) < W / 2 + 8) continue;          // the flight corridor uses the sim's own trees
       trees.push({ x, z, h: rr(6, 12), r: rr(2.6, 4.6), c: greens[(rnd() * greens.length) | 0] });
     }
+    // The trees down the flight corridor are real obstacles (same shapes as the sim's)
+    for (const t of g.park?.trees || []) trees.push({ x: t.x, z: t.z, h: t.h, r: t.r, c: greens[(rnd() * greens.length) | 0] });
     instanced(new THREE.CylinderGeometry(0.35, 0.5, 1, 6), M('#5b4636'), trees, (o, t) => { o.position.set(t.x, street + t.h * 0.3, -t.z); o.rotation.set(0, 0, 0); o.scale.set(1, t.h * 0.6, 1); });
     instanced(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), trees,
       (o, t) => { o.position.set(t.x, street + t.h * 0.62, -t.z); o.rotation.set(t.x, t.z, 0); o.scale.set(t.r, t.r * 1.15, t.r); });
@@ -1082,14 +1085,89 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: '#ffffff', map: towerTex }), towers,
       (o, t) => { o.position.set(t.x, street + t.h / 2, -t.z); o.rotation.set(0, 0, 0); o.scale.set(t.w, t.h, t.d); });
 
-    // Wind in the gap: crosswind streaks, and gust streaks below the roofline
+    // Wind over the park: the big downdraft off the near roof, crosswind
+    // streaks low over the trees, and the updraft wall at the far end
+    const P = g.park;
     const streaks = [];
-    for (let i = 0; i < 70; i++) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.07), streakMat);
-      m.layers.set(1); env.add(m);
-      streaks.push({ m, t: Math.random(), y: -16 + Math.random() * 22, z: g.z0 + Math.random() * (g.z1 - g.z0), x: (Math.random() - 0.5) * W });
+    const addStreak = (kind, n, geo) => {
+      for (let i = 0; i < n; i++) {
+        const m = new THREE.Mesh(geo, streakMat);
+        m.layers.set(1); env.add(m);
+        const st = { m, kind, x: (Math.random() - 0.5) * W, y: 0, z: 0, sp: 0.8 + Math.random() * 0.5 };
+        respawn(st, true);
+        streaks.push(st);
+      }
+    };
+    const respawn = (st, any) => {
+      if (st.kind === 'dive') { st.z = P.dive0 + Math.random() * (P.dive1 - P.dive0); st.y = any ? P.cruise + Math.random() * (16 - P.cruise) : 16; }
+      else if (st.kind === 'lift') { st.z = P.lift0 + Math.random() * (P.lift1 - P.lift0); st.y = any ? P.floorY + Math.random() * (P.liftTop + 10 - P.floorY) : P.floorY + 1; }
+      else { st.z = P.dive1 + Math.random() * (P.lift0 - P.dive1); st.y = P.floorY + 2 + Math.random() * (P.cap - P.floorY - 1); }
+      st.x = (Math.random() - 0.5) * W;
+    };
+    const vGeo = new THREE.PlaneGeometry(0.08, 2.2), hGeo = new THREE.PlaneGeometry(1.4, 0.07);
+    addStreak('dive', reduceMotion ? 30 : 90, vGeo);
+    addStreak('lift', reduceMotion ? 30 : 110, vGeo);
+    addStreak('cross', reduceMotion ? 30 : 80, hGeo);
+
+    // Curtains of wind with hand-drawn chevrons: down at the near edge, up at the far end
+    const chevronTex = (up) => {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+      const x = c.getContext('2d');
+      x.strokeStyle = 'rgba(255,255,255,0.95)'; x.lineWidth = 9; x.lineCap = 'round'; x.lineJoin = 'round';
+      for (const cy of [36, 96]) {
+        x.beginPath();
+        const d = up ? -1 : 1;
+        x.moveTo(30, cy - 14 * d); x.lineTo(64, cy + 14 * d); x.lineTo(98, cy - 14 * d);
+        x.stroke();
+      }
+      const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    const curtains = [];
+    const curtain = (z, y0, y1, up) => {
+      const tex = chevronTex(up); tex.repeat.set(W / 8, (y1 - y0) / 8);
+      const mat = new THREE.MeshBasicMaterial({ map: tex, color: up ? '#bfe6f5' : '#d8ecf4', transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(W, y1 - y0), mat);
+      m.position.set(0, (y0 + y1) / 2, -z); m.layers.set(1); env.add(m);
+      curtains.push({ tex, up });
+    };
+    if (P) {
+      curtain(P.dive0 + 6, P.cruise, 18, false);
+      curtain(P.dive0 + 30, P.cruise - 2, 12, false);
+      curtain(P.lift0 + 4, P.floorY, P.liftTop + 6, true);
+      curtain(P.lift0 + 34, P.floorY, P.liftTop + 2, true);
     }
-    anims.gap = { g, W, streaks };
+
+    // Wind rings: a spinning hoop of paper streamers. Side rings are gold (worth more).
+    const hoops = [];
+    for (const rg of P?.rings || []) {
+      const grp = new THREE.Group(); grp.position.set(rg.x, rg.y, -rg.z);
+      grp.add(new THREE.Mesh(new THREE.TorusGeometry(rg.r, 0.17, 6, 22), M(rg.off ? '#f2c94c' : '#8fd0ea')));
+      const spin = new THREE.Group();
+      for (let i = 0; i < 10; i++) {
+        const a = i / 10 * Math.PI * 2;
+        const sm = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.09), streakMat);
+        sm.position.set(Math.cos(a) * (rg.r - 0.5), Math.sin(a) * (rg.r - 0.5), 0); sm.rotation.z = a + Math.PI / 2;
+        sm.layers.set(1); spin.add(sm);
+      }
+      grp.add(spin); env.add(grp);
+      hoops.push({ spin, rate: rg.off ? 3.2 : 2.2 });
+    }
+    // Tailwind streams: a pale tunnel of air with streaks racing through it
+    const flows = [];
+    const ribbon = new THREE.BoxGeometry(0.07, 0.07, 2.4);
+    const tunnelMat = new THREE.MeshBasicMaterial({ color: '#9fdcf2', transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
+    for (const sm of P?.streams || []) {
+      const tube = new THREE.Mesh(new THREE.BoxGeometry(sm.hw * 2, sm.hh * 2, sm.z1 - sm.z0), tunnelMat);
+      tube.position.set(sm.x, sm.y, -(sm.z0 + sm.z1) / 2); tube.layers.set(1); env.add(tube);
+      const sts = [];
+      for (let i = 0; i < (reduceMotion ? 10 : 30); i++) {
+        const m = new THREE.Mesh(ribbon, streakMat); m.layers.set(1); env.add(m);
+        sts.push({ m, x: sm.x + (Math.random() - 0.5) * sm.hw * 1.6, y: sm.y + (Math.random() - 0.5) * sm.hh * 1.6, z: sm.z0 + Math.random() * (sm.z1 - sm.z0), sp: 16 + Math.random() * 10 });
+      }
+      flows.push({ s: sm, sts });
+    }
+    anims.gap = { g, W, streaks, respawn, curtains, hoops, flows };
   }
 
   /* ------------------------------------------------------------ floor --- */
@@ -1306,7 +1384,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         env.add(grate);
         for (let i = -2; i <= 2; i++) env.add(boxMesh(v.r * 1.0, 0.1, 0.12, '#2f3338', v.x, base + 0.04, -v.z + i * v.r * 0.18));
       }
-      const y0 = v.gap ? -12 : base + 0.3, y1 = v.gap ? 14 : base + (f.open ? 14 : H * 0.85);
+      const pk = f.gap?.park;
+      const y0 = v.gap ? (pk ? pk.floorY + 0.5 : -12) : base + 0.3, y1 = v.gap ? (pk ? pk.cap + 2 : 14) : base + (f.open ? 14 : H * 0.85);
       const streaks = [];
       for (let i = 0; i < (v.gap ? 26 : 16); i++) {
         const s = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.9), streakMat);
@@ -1602,15 +1681,20 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         s.m.lookAt(camera.position.x, s.y, camera.position.z);
       }
     }
-    if (anims.gap && floor?.gap) {
-      const w = gapWind(floor.gap, race ? race.t : time), G = anims.gap;
+    if (anims.gap && floor?.gap?.park) {
+      const w = gapWind(floor.gap, race ? race.t : time), G = anims.gap, P = floor.gap.park;
       for (const st of G.streaks) {
-        // sideways with the crosswind, rising harder when a gust pulses below the roofline
-        st.x += w.side * floor.gap.cross * 4 * dt;
-        st.y += (st.y < 0 ? 1 + 7 * w.up : 0.6) * dt;
-        if (Math.abs(st.x) > G.W / 2 + 6 || st.y > 8) { st.x = (Math.random() - 0.5) * G.W; st.y = -16 + Math.random() * 6; }
+        if (st.kind === 'dive') { st.y -= 22 * st.sp * dt; if (st.y < P.cruise) G.respawn(st); }
+        else if (st.kind === 'lift') { st.y += 26 * st.sp * dt; if (st.y > P.liftTop + 12) G.respawn(st); }
+        else { st.x += w.side * floor.gap.cross * 2.5 * dt + 0.4 * dt; if (Math.abs(st.x) > G.W / 2 + 6) G.respawn(st); }
         st.m.position.set(st.x, st.y, -st.z);
         st.m.lookAt(camera.position.x, st.y, camera.position.z);
+      }
+      for (const c of G.curtains) c.tex.offset.y += (c.up ? -0.9 : 0.9) * dt;
+      for (const h of G.hoops) h.spin.rotation.z += h.rate * dt;
+      for (const fl of G.flows) for (const st of fl.sts) {
+        st.z += st.sp * dt; if (st.z > fl.s.z1) st.z = fl.s.z0;
+        st.m.position.set(st.x, st.y, -st.z);
       }
     }
     for (const bl of anims.blowers) {

@@ -108,6 +108,7 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
       renderer.punch(2 + d.mult);
       if (d.boost) { renderer.boost(me.seat, d.boost); renderer.burst(me.x, me.y, me.z, '#f08a2c', 12, 3); }
     }
+    if (d.kind === 'boost') { renderer.boost(me.seat, d.amount || 4); renderer.burst(me.x, me.y, me.z, d.ring ? '#8fd0ea' : '#d8ecf4', 10, 3); renderer.punch(d.ring ? 5 : 3); }
     if (d.kind === 'crumple') renderer.shake(0.5);
     if (d.kind === 'throw') renderer.punch(4);
   }

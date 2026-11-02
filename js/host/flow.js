@@ -275,6 +275,27 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         case 'timeout':
           hud.banner(`${nameOf(e.seat)} ran out of air`);
           break;
+        case 'boost':
+          // Rooftop park: threaded a wind ring, or caught a tailwind stream
+          sfx.gust('up');
+          if (p) { renderer.gust(p.x, p.y, p.z, 'side'); renderer.burst(p.x, p.y, p.z, e.kind === 'ring' ? '#8fd0ea' : '#d8ecf4', 10, 3); }
+          renderer.boost(e.seat, e.amount);
+          if (!solo || e.seat === 0) renderer.punch(e.kind === 'ring' ? 5 : 3);
+          sendTo(e.seat, 'fx', { kind: 'boost', amount: e.amount, ring: e.kind === 'ring' });
+          break;
+        case 'tree':
+          renderer.burst(e.x, e.y, e.z, '#5e8a3f', 14, 4);
+          break;
+        case 'parkwind': {
+          // Once per race for each phase: the big gust into the park, the updraft out
+          race.parkBanner ??= {};
+          if (!race.parkBanner[e.phase]) {
+            race.parkBanner[e.phase] = true;
+            hud.banner(e.phase === 'dive' ? 'Big gust! Down into the park' : 'Updraft! Back up to the roof', 1800);
+          }
+          sendTo(e.seat, 'fx', { kind: 'toast', text: e.phase === 'dive' ? 'Big gust! Dodge the trees' : 'Updraft! Hold on' });
+          break;
+        }
         case 'gust':
           sfx.gust(e.dir);
           if (p) renderer.gust(p.x, p.y, p.z, e.dir);

@@ -514,6 +514,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
         break;
       case 'fx':
         if (['hit', 'clip', 'gust'].includes(d.kind)) phoneFlash(d.kind);
+        if (d.kind === 'boost') { phoneFlash('gust'); vibrate(d.ring ? [10, 20, 30] : [8, 16, 8]); }
         if (d.kind === 'trick') { phoneToast(`${d.label} +${d.clips}${d.mult > 1 ? ` x${d.mult}` : ''}${d.boost ? ' · Boost!' : ''}`); phoneFlash('clip'); vibrate([12, 30, 12, 30, 20 + d.mult * 10]); }
         if (d.kind === 'chainbreak') phoneToast(`Chain broken`);
         if (d.kind === 'toast') { phoneToast(d.text); vibrate([10, 20, 10]); }

@@ -12,7 +12,7 @@
 // obstacles decides who reaches the far landing zones.
 
 import { statsFor } from '../shared/upgrades.js';
-import { moverBox, ringAt, RINGS, groundAt, gapWind } from './floors.js';
+import { moverBox, ringAt, RINGS, groundAt, gapWind, treesNear, treeHit } from './floors.js';
 
 export const SIM = {
   dt: 1 / 60,
@@ -343,18 +343,56 @@ function flyStep(race, p, dt, pz = p.z) {
   if (p.out && f.ledge) { p.x += f.ledge.side * f.ledge.wind * st.wind * dt; p.y += 1.25 * dt; }
   // In a duct: the airflow carries you along
   if (p.duct != null && p.v < 21) p.v += 6 * dt;
-  // Out over the gap between the Rooftop's buildings: the crosswind swings you
-  // sideways, and below the roofline gusts push you back up. Go deeper than
-  // the gusts reach and you're on your own.
-  const gp = f.gap;
-  if (gp && p.z > gp.z0 && p.z < gp.z1) {
+  // The Rooftop park. Off the edge of the first roof a huge downdraft shoves
+  // every plane down among the trees, and a lid of wind keeps you there; at
+  // the far end a wall of updraft carries everyone still flying back up over
+  // the far roof. In between, the crosswind swings you about and wind rings
+  // and tailwind streams keep your speed up.
+  const gp = f.gap, pk = gp?.park;
+  if (pk && p.z > gp.z0 && p.z < gp.z1 && !p.crumpled) {
     const w = gapWind(gp, race.t);
-    p.x += w.side * gp.cross * st.wind * dt;
-    if (p.y < 0) {
-      const d = -p.y, reach = clamp((d - 1) / 5, 0, 1) * clamp(1 - (d - 16) / 8, 0, 1);
-      const up = 9 * (0.25 + 0.75 * w.up) * reach;
-      p.y += up * dt;
-      if (up > 3) inDraft = 'up';
+    p.x += w.side * gp.cross * 0.5 * st.wind * dt;
+    if (pz < pk.dive0 + 0.01 && p.z >= pk.dive0) race.events.push({ name: 'parkwind', seat: p.seat, phase: 'dive' });
+    if (pz < pk.lift0 && p.z >= pk.lift0) race.events.push({ name: 'parkwind', seat: p.seat, phase: 'lift' });
+    if (p.z < pk.dive1) {
+      if (p.y > pk.cruise) {
+        p.y -= pk.diveS * clamp((p.y - pk.cruise) / 5, 0.3, 1) * dt;
+        p.pitch = Math.min(p.pitch, 0.05);
+        if (p.v < 16) p.v += 3 * dt;
+        inDraft = 'down';
+      }
+    } else if (p.z < pk.lift0) {
+      if (p.y > pk.cap) { p.y -= (3 + 4 * (p.y - pk.cap)) * dt; p.pitch = Math.min(p.pitch, 0.1); }
+      // warm air off the grass: a gentle cushion that keeps a clean glide going down among the trees
+      else if (p.y < pk.cruise) p.y += 2 * clamp((pk.cruise - p.y) / 5, 0, 1) * dt;
+      // and the big gust keeps blowing down the park, so nobody stalls out among the trees
+      if (p.v < 11.5) p.v += 3 * dt;
+    } else if (p.y < pk.liftTop) {
+      p.y += pk.liftS * clamp((pk.liftTop - p.y) / 8, 0.35, 1) * dt;
+      if (p.v < 17) p.v += 5 * dt;
+      p.pitch = Math.max(p.pitch, -0.15);
+      inDraft = 'up';
+    }
+    // Tailwind streams: ride one for a long push (and it holds you up)
+    let inS = -1;
+    for (let i = 0; i < pk.streams.length; i++) {
+      const s = pk.streams[i];
+      if (p.z > s.z0 && p.z < s.z1 && Math.abs(p.x - s.x) < s.hw && Math.abs(p.y - s.y) < s.hh) { inS = i; break; }
+    }
+    if (inS >= 0) {
+      const s = pk.streams[inS];
+      if (p.v < 24) p.v += s.s * dt;
+      p.y += 1.3 * dt;
+      p.x += (s.x - p.x) * 0.8 * dt;
+      if (p.stream !== inS) race.events.push({ name: 'boost', seat: p.seat, kind: 'stream', amount: 4, x: p.x, y: p.y, z: p.z });
+    }
+    if (inS >= 0) p.stream = inS;
+    // Wind rings: thread one for a burst of speed
+    for (const g of pk.rings) {
+      if (pz < g.z && p.z >= g.z && (p.x - g.x) ** 2 + (p.y - g.y) ** 2 < g.r * g.r) {
+        p.v = Math.min(28, Math.max(p.v, 8) + g.s);
+        race.events.push({ name: 'boost', seat: p.seat, kind: 'ring', amount: g.s, x: p.x, y: p.y, z: p.z });
+      }
     }
   }
   p.v = Math.min(p.v, 40);
@@ -706,6 +744,41 @@ function collide(race, p, px, py, pz) {
     }
     if (p.state === 'fall') { p.v *= 0.3; }
   }
+  // Rooftop park trees: clip a canopy and you bounce off it, scratched and slowed
+  if (f.gap?.park && p.state === 'fly' && !p.crumpled && p.z > f.gap.z0 && p.z < f.gap.z1) {
+    for (const t of treesNear(f, p.z)) {
+      if (!treeHit(t, p.x, p.y, p.z, r)) {
+        if (canClose && !closeTo && treeHit(t, p.x, p.y, p.z, C)) closeTo = t;
+        continue;
+      }
+      // Push back out to the surface (canopy, or the trunk below it)
+      const cy = t.y + t.h * 0.62, rx = t.r * 0.85 + r, ry = t.r * 0.98 + r;
+      let ex = (p.x - t.x) / rx, ey = (p.y - cy) / ry, ez = (p.z - t.z) / rx;
+      const el = Math.hypot(ex, ey, ez);
+      if (p.y < cy && el >= 1) {
+        const hl = Math.hypot(p.x - t.x, p.z - t.z) || 0.01, k = (0.5 + r + 0.02) / hl;
+        p.x = t.x + (p.x - t.x) * k; p.z = t.z + (p.z - t.z) * k; ey = 0;
+      } else {
+        const k = el > 1e-3 ? 1.02 / el : 1;
+        if (el <= 1e-3) { ex = 0; ey = 1; ez = 0; }
+        p.x = t.x + ex * k * rx; p.y = cy + ey * k * ry; p.z = t.z + ez * k * rx;
+      }
+      if (race.t - (p.treeT ?? -9) < 0.5) break;      // still scraping the same branches
+      p.treeT = race.t;
+      const nx = p.x - t.x, nz = p.z - t.z, nl = Math.hypot(nx, nz) || 1;
+      const hx = Math.sin(p.yaw), hz = Math.cos(p.yaw);
+      const into = -(hx * nx + hz * nz) / nl;          // 1 = flying straight at the trunk
+      const h = p.v * Math.cos(p.pitch);
+      // glance off it (a full mirror bounce would just fling you into the next tree)
+      if (into > 0) p.yaw = Math.atan2(hx + 1.25 * into * nx / nl, hz + 1.25 * into * nz / nl);
+      if (ey > 0.6) p.pitch = Math.max(p.pitch, 0.05);
+      else if (ey < -0.6) p.pitch = Math.min(p.pitch, -0.15);
+      p.v *= Math.min(0.8, 0.55 * p.st.bounce);
+      race.events.push({ name: 'tree', seat: p.seat, x: p.x, y: p.y, z: p.z });
+      damage(race, p, Math.max(3.6, 0.8 * h * Math.max(into, 0.35)), 'tree');
+      break;
+    }
+  }
   if (closeTo && p.lastHit !== race.t && p.state === 'fly') {
     p.lastClose = race.t;
     race.events.push({ name: 'close', seat: p.seat, x: p.x, y: p.y, z: p.z });
@@ -725,7 +798,7 @@ function damage(race, p, impact, kind) {
   if (p.hp <= 0) {
     p.crumpled = true;
     if (p.state === 'fly' || p.state === 'slide') {
-      p.state = p.y > SIM.restH + 0.3 ? 'fall' : p.state;
+      p.state = p.y > groundAt(race.floor, p.z) + SIM.restH + 0.3 ? 'fall' : p.state;
       p.vy = 0;
       if (p.state === 'slide') land(race, p);
     }
