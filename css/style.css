@@ -76,6 +76,7 @@ body[data-leaving] .screen { animation: screen-out 180ms var(--ease-in) forwards
    their content is taller (phones, landscape). Auto margins on the first and
    last child centre short content without clipping the top of tall content. */
 #home, #name, #solo, #lobby {
+  height: 100vh;      /* older browsers */
   height: 100dvh;
   flex-direction: column;
   align-items: center;
@@ -84,8 +85,6 @@ body[data-leaving] .screen { animation: screen-out 180ms var(--ease-in) forwards
   padding: max(20px, env(safe-area-inset-top)) 18px max(20px, env(safe-area-inset-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
 }
 :is(#home, #name, #solo, #lobby) > :first-child { margin-top: auto; }
 :is(#home, #name, #solo, #lobby) > :last-child { margin-bottom: auto; }
