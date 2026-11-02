@@ -56,7 +56,11 @@ void main() {
   float d0 = depthAt(uv);
   float dl = depthAt(uv - vec2(o.x, 0.0)), dr = depthAt(uv + vec2(o.x, 0.0));
   float du = depthAt(uv + vec2(0.0, o.y)), dd = depthAt(uv - vec2(0.0, o.y));
-  float dEdge = (abs(dl + dr - 2.0 * d0) + abs(du + dd - 2.0 * d0)) / max(d0, 0.001);
+  // Compare 1/depth, which changes evenly across any flat surface on screen, so
+  // long floors and ceilings seen at a slant don't sprout flickering false edges
+  // (plain depth curves across them). Real depth jumps still stand out.
+  float i0 = 1.0 / max(d0, 0.001);
+  float dEdge = (abs(1.0 / max(dl, 0.001) + 1.0 / max(dr, 0.001) - 2.0 * i0) + abs(1.0 / max(du, 0.001) + 1.0 / max(dd, 0.001) - 2.0 * i0)) / i0;
 
   vec3 n0 = normalAt(uv);
   float nEdge = (1.0 - dot(n0, normalAt(uv - vec2(o.x, 0.0)))) + (1.0 - dot(n0, normalAt(uv + vec2(o.x, 0.0))))

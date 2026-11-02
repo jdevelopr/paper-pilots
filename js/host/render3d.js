@@ -1094,7 +1094,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#cfe2ea');   // sky, seen through open windows
-  const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.1, 320);
+  const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.25, 320);   // a near plane of 0.25 (not 0.1) keeps depth precise on phones
   camera.layers.enable(1);
   camera.position.set(0, 9, 12);
 
@@ -1754,12 +1754,23 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     ceil.rotation.x = Math.PI / 2;
     ceil.position.set(0, H, midZ);
     env.add(ceil);
+    // Light panels: flat glowing sheets just under the ceiling. They're kept out
+    // of the ink pass (layer 1) and pushed forward in depth, because thin boxes
+    // hugging the ceiling outlined and z-fought into a flicker on phones.
+    const lightGeo = new THREE.PlaneGeometry(5, 2.4);
+    const lightMat = new THREE.MeshBasicMaterial({ color: '#fffaf0', side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    const lightRim = new THREE.MeshBasicMaterial({ color: '#cfc6b2', side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const rimGeo = new THREE.PlaneGeometry(5.5, 2.9);
     for (let z = 0; z < L; z += 22) {
       for (const x of [-11, 11]) {
         if (holes('ceil').some(h => Math.abs(h.x - x) < h.hx + 3.5 && Math.abs(h.z - (z + 8)) < h.hz + 2)) continue;
-        const p = new THREE.Mesh(new THREE.BoxGeometry(5, 0.1, 2.4), new THREE.MeshBasicMaterial({ color: '#fffaf0' }));
-        p.position.set(x, H - 0.05, -z - 8);
-        env.add(p);
+        for (const [geo, mat, dy] of [[rimGeo, lightRim, 0.03], [lightGeo, lightMat, 0.06]]) {
+          const p = new THREE.Mesh(geo, mat);
+          p.rotation.x = Math.PI / 2;
+          p.position.set(x, H - dy, -z - 8);
+          p.layers.set(1);
+          env.add(p);
+        }
       }
     }
 
