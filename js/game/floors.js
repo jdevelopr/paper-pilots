@@ -87,7 +87,8 @@ function tools(rng) {
 
 const SOLID = new Set(['hallwall', 'lintel', 'counter', 'cubicle', 'pillar', 'plant', 'cabinet', 'couch', 'cooler',
   'printer', 'vending', 'fridge', 'rack', 'shelf', 'glass', 'crate', 'copier', 'tv',
-  'acunit', 'watertower', 'dish', 'stack', 'stairhut', 'parapet']);
+  'acunit', 'watertower', 'dish', 'stack', 'stairhut', 'parapet',
+  'storagecab', 'lockers', 'boiler', 'pipe', 'hduct', 'bulb', 'cable']);
 
 // Height of the ground under a point. Indoors that's always the floor (0).
 // On the Rooftop the run starts on one roof, crosses a gap down to the street
@@ -146,10 +147,18 @@ function boxesFor(o) {
     if (o.mon) out.push({ x0: o.x - 0.9, x1: o.x + 0.9, z0: o.z + hd - 0.6, z1: o.z + hd - 0.2, y0: o.h, y1: o.h + 1.4 });
     return out;
   }
+  if (o.type === 'ladder') {
+    // Two rails and the rungs; the gaps between rungs are open
+    const out = [];
+    for (const sx of [-1, 1]) out.push({ x0: o.x + sx * (hw - 0.14) - 0.14, x1: o.x + sx * (hw - 0.14) + 0.14, z0: base.z0, z1: base.z1, y0: 0, y1: o.h });
+    for (const y of o.rungs) out.push({ ...base, y0: y - LADDER_RUNG / 2, y1: y + LADDER_RUNG / 2 });
+    return out;
+  }
   if (SOLID.has(o.type)) return [{ ...base, y0: o.y || 0, y1: (o.y || 0) + o.h }];
   return [];
 }
 
+export const LADDER_RUNG = 0.24;
 const topOf = o => (o.y || 0) + o.h + (o.mon ? 1.4 : 0);
 const overlapsRect = (o, x0, x1, z0, z1) =>
   o.x + o.w / 2 > x0 && o.x - o.w / 2 < x1 && o.z + o.d / 2 > z0 && o.z - o.d / 2 < z1;
@@ -159,7 +168,14 @@ const overlapsRect = (o, x0, x1, z0, z1) =>
 // A mover glides back and forth along one axis with an ease-in-out swing.
 // Its position is a pure function of race time, so the host, the bots'
 // look-ahead and the renderer all agree on where it is.
+// A swinging lamp hangs from the ceiling at `pivot` on a `rope`, swinging
+// across the room by up to `amp` radians each side.
+export const moverAngle = (m, t) => m.amp * Math.cos(2 * Math.PI * (t / m.period + m.phase));
 export function moverAt(m, t) {
+  if (m.swing) {
+    const th = moverAngle(m, t);
+    return { x: m.x + m.rope * Math.sin(th), y: m.pivot - m.rope * Math.cos(th) - m.h, z: m.z };
+  }
   const u = 0.5 - 0.5 * Math.cos(2 * Math.PI * (t / m.period + m.phase));
   const off = m.from + (m.to - m.from) * u;
   return { x: m.x + (m.axis === 'x' ? off : 0), y: m.y + (m.axis === 'y' ? off : 0), z: m.z + (m.axis === 'z' ? off : 0) };
@@ -191,6 +207,11 @@ const M = {
   slidedoor: (x, z, T, H) => ({ type: 'slidedoor', x, z, y: 0, w: T.r(6, 8), d: 0.4, h: H, axis: 'x', from: -T.r(5, 8), to: T.r(5, 8), period: T.r(4, 6) }),
   drone: (x, z, T) => ({ type: 'drone', x, z, y: T.r(5, 9), w: 2.2, d: 2.2, h: 0.7, axis: 'x', from: -T.r(9, 14), to: T.r(9, 14), period: T.r(3.5, 5) }),
   // Rooftop: a flock of pigeons wheeling across the run (y is above the local ground)
+  // Basement: a caged work lamp on a long chain, swinging across the aisle
+  lamp: (x, z, T, H) => {
+    const y = T.r(4.2, 6.5), h = 1.5;
+    return { type: 'lamp', swing: true, x, z, y, w: 1.5, d: 1.5, h, pivot: H, rope: H - y - h, amp: T.r(0.55, 0.75), period: T.r(3.4, 4.6), axis: 'x' };
+  },
   pigeons: (x, z, T) => ({ type: 'pigeons', x, z, y: T.r(2.5, 8), w: 5, d: 3, h: 1.6, axis: 'x', from: -T.r(10, 16), to: T.r(10, 16), period: T.r(4.5, 7) }),
 };
 
@@ -218,6 +239,10 @@ const F = {
   dish: (x, z, T) => ({ type: 'dish', x, z, w: 3.2, d: 3.2, h: T.r(3.5, 4.5) }),
   stack: (x, z, T) => ({ type: 'stack', x, z, w: 1.2, d: 1.2, h: T.r(5, 7.5) }),
   stairhut: (x, z) => ({ type: 'stairhut', x, z, w: 7, d: 6, h: 5.5 }),
+  // Basement storage
+  storagecab: (x, z, T) => ({ type: 'storagecab', x, z, w: T.r(3, 4.2), d: 2.2, h: T.pick([6.5, 7.5, 8.5]), tint: T.ri(0, 2) }),
+  lockers: (x, z, T) => ({ type: 'lockers', x, z, w: 2, d: T.r(8, 14), h: 7, tint: T.ri(0, 2) }),
+  boiler: (x, z) => ({ type: 'boiler', x, z, w: 5, d: 5, h: 9 }),
 };
 
 // A partition or glass wall across the floor with 1-2 random doorways.
@@ -337,6 +362,32 @@ export const THEMES = [
     rowGap: [22, 30],
     vents: [1, 2], fans: [0, 0], blowers: [0, 0],
     movers: [M.pigeons], moverCount: [3, 4],
+  },
+  {
+    // Below everything: storage cabinets and lockers, pipes and ducts and bare
+    // bulbs hanging from the ceiling, ladders you can thread between the rungs,
+    // and work lamps swinging on their chains.
+    id: 'basement', number: 7, label: 'B1', name: 'Basement',
+    carpet: '#9d988e', wall: '#cbc5b7', accent: '#e0a21b', height: 14,
+    zoneNames: [['Boot Tray', 'Fuse Box'], ['Storage Cage', 'Mop Sink'], ['Archive Boxes', 'Old Copier'], ['Boiler Room', 'Lost & Found'], ['Loading Bay', 'Vault Door']],
+    rows: [
+      // A row of storage cabinets across the room, with gaps between
+      (z, W, T) => {
+        const out = [];
+        for (let x = -W / 2 + T.r(2, 5); x < W / 2 - 3; x += T.r(6.5, 11)) out.push(F.storagecab(x, z + T.r(-0.6, 0.6), T));
+        return out;
+      },
+      // Lockers running lengthwise make aisles
+      (z, W, T) => [F.lockers(T.r(-16, -6), z + 5, T), F.lockers(T.r(6, 16), z + 5, T), ...scatter(z, W, T, [F.crate], 1)],
+      (z, W, T) => [F.boiler(T.pick([-1, 1]) * T.r(10, 16), z), ...scatter(z, W, T, [F.crate, F.crate, F.storagecab], T.ri(1, 2))],
+      (z, W, T) => [F.shelf(T.r(-14, 14), z, T), ...scatter(z, W, T, [F.crate, F.storagecab], T.ri(1, 3))],
+    ],
+    wallDecor: [F.storagecab, F.shelf, F.cabinet, F.crate],
+    rowGap: [20, 28],
+    vents: [3, 5], fans: [0, 1], blowers: [0, 0],
+    halls: { n: 2, len: [260, 330], cw: [9.5, 11], doors: true, split: true }, doorWalls: 3,
+    hanging: true, ladders: true,
+    movers: [M.lamp], moverCount: [2, 3],
   },
 ];
 
@@ -605,7 +656,7 @@ export function generateFloor(theme, seed = 1) {
   if (gap) objects = objects.filter(o => !inGap(o.z - o.d / 2 - 4, o.z + o.d / 2 + 4)).map(o => ({ ...o, y: G(o.z) }));
   // Along-the-wall decor
   for (let z = T.r(8, 20); z < L - 6 && !gap; z += T.r(18, 32)) {
-    const o = T.pick([F.plant, F.cabinet, F.shelf, F.cooler])(0, z, T);
+    const o = T.pick(theme.wallDecor || [F.plant, F.cabinet, F.shelf, F.cooler])(0, z, T);
     if (o.type === 'shelf') { o.w = 2; o.d = T.r(6, 10); }
     o.x = T.pick([-1, 1]) * (W / 2 - o.w / 2 - 0.3);
     objects.push(o);
@@ -624,6 +675,59 @@ export function generateFloor(theme, seed = 1) {
     for (const zn of zones) if (overlapsRect(o, zn.x - zn.w / 2 - 1, zn.x + zn.w / 2 + 1, zn.z - zn.d / 2 - 1, zn.z + zn.d / 2 + 1)) return false;
     return true;
   });
+  /* Basement: things hanging from the ceiling, and ladders to fly through */
+  const ladders = [];
+  if (theme.hanging || theme.ladders) {
+    const keepClear = (x0, x1, z0, z1) =>
+      doors.some(d => z1 > d.z - 5 && z0 < d.z + 5) ||
+      wallVents.some(v => z1 > v.z - 7 && z0 < v.z + 7) ||
+      doorWallZ.some(dz => z1 > dz - 3 && z0 < dz + 3) ||
+      z0 < 30 || z1 > L - 6;
+    if (theme.ladders) {
+      // Fixed ladders standing floor to ceiling just off the lane: thread a gap
+      // between the rungs (or just fly round)
+      for (let z = T.r(60, 90); z < L - 40; z += T.r(70, 110)) {
+        const lw = 3.4, gapH = T.r(2.4, 2.8), y0 = T.r(1.2, 2.2);
+        const side = T.pick([-1, 1]);
+        const x = Math.max(-W / 2 + lw / 2 + 1, Math.min(W / 2 - lw / 2 - 1, laneX(z) + side * (LANE_HALF + lw / 2 + T.r(0.3, 3))));
+        const o = { type: 'ladder', x, z, w: lw, d: 0.3, h: H, rungs: [] };
+        for (let y = y0; y < H - 0.5; y += gapH) o.rungs.push(y);
+        if (inHall(o) || keepClear(o.z - 2, o.z + 2) || nearDoorWall(o) || inLane(o)) continue;
+        if (zones.some(zn => overlapsRect(o, zn.x - zn.w / 2 - 2, zn.x + zn.w / 2 + 2, zn.z - zn.d / 2 - 2, zn.z + zn.d / 2 + 2))) continue;
+        if (objects.some(b => overlapsRect(b, o.x - lw / 2 - 2.5, o.x + lw / 2 + 2.5, o.z - 4, o.z + 4))) continue;
+        ladders.push({ x, z, w: lw, rungs: o.rungs, h: H });
+        objects.push(o);
+      }
+    }
+    if (theme.hanging) {
+      // Pipes running right across the room: some high, some low enough that
+      // you choose over or under
+      for (let z = T.r(45, 70); z < L - 20; z += T.r(45, 80)) {
+        if (keepClear(z - 1, z + 1)) continue;
+        const y = T.chance(0.55) ? T.r(5.2, 8) : T.r(H - 3.4, H - 1.6), r = T.r(0.75, 1);
+        objects.push({ type: 'pipe', x: 0, z, w: W, d: r, h: r, y, color: T.pick(['#b4553a', '#7f8a8f', '#c8a24a']) });
+        if (T.chance(0.4) && y < H - 4) objects.push({ type: 'pipe', x: 0, z: z + 1.4, w: W, d: 0.55, h: 0.55, y: y + T.r(1.6, 2.4), color: '#7f8a8f' });
+      }
+      // Ducts along the ceiling (not in the hallways)
+      for (let z = T.r(40, 80); z < L - 60; z += T.r(60, 120)) {
+        const o = { type: 'hduct', x: T.r(-W / 2 + 4, W / 2 - 4), z: 0, w: T.r(3, 4), d: T.r(25, 55), h: 1.8, y: H - 2 };
+        o.z = z + o.d / 2;
+        if (inHall(o) || keepClear(o.z - o.d / 2, o.z + o.d / 2) || nearDoorWall(o)) continue;
+        objects.push(o);
+      }
+      // Bare bulbs on chains and dangling cables. They hang high over the lane,
+      // lower off to the sides; they sway a little (just for show).
+      for (let z = T.r(32, 45); z < L - 8; z += T.r(9, 16)) {
+        const x = T.r(-W / 2 + 1.5, W / 2 - 1.5), cable = T.chance(0.25);
+        const offLane = Math.abs(x - laneX(z)) > LANE_HALF + 1;
+        const bottom = offLane ? H - T.r(2.5, cable ? 7.5 : 5.5) : H - T.r(1.6, 2.6);
+        const o = cable ? { type: 'cable', x, z, w: 0.3, d: 0.3, y: bottom, h: H - bottom } : { type: 'bulb', x, z, w: 0.7, d: 0.7, y: bottom, h: H - bottom };
+        if (keepClear(z - 1, z + 1)) continue;
+        if (objects.some(b => overlapsRect(b, o.x - 1, o.x + 1, o.z - 1, o.z + 1) && (b.y || 0) + b.h > bottom - 1)) continue;
+        objects.push(o);
+      }
+    }
+  }
   objects.push(...hallObjs);
   if (gap) {
     // Knee-high parapets along the roof edges (the edges facing the gap are open)
@@ -738,8 +842,8 @@ export function generateFloor(theme, seed = 1) {
       const sw = moverSweep(m);
       if (Math.abs(sw.x) + sw.w / 2 > W / 2 - 0.5) { m.x -= Math.sign(sw.x) * (Math.abs(sw.x) + sw.w / 2 - W / 2 + 0.5); }
       const s2 = moverSweep(m);
-      const clear = boxes.every(b => b.x1 < s2.x - s2.w / 2 || b.x0 > s2.x + s2.w / 2 || b.z1 < s2.z - s2.d / 2 || b.z0 > s2.z + s2.d / 2
-        || b.y0 > m.y + m.h + (m.axis === 'y' ? m.to : 0) || b.y1 < m.y);
+      const clear = boxes.every(b => b.x1 < s2.x - s2.w / 2 || b.x0 > s2.x + s2.w / 2 || b.z1 < s2.z - s2.d / 2 - (m.swing ? 1.5 : 0) || b.z0 > s2.z + s2.d / 2 + (m.swing ? 1.5 : 0)
+        || (!m.swing && b.y0 > m.y + m.h + (m.axis === 'y' ? m.to : 0)) || b.y1 < m.y);
       if (!clear) continue;
       if (zones.some(zn => overlapsRect(s2, zn.x - zn.w / 2 - 2, zn.x + zn.w / 2 + 2, zn.z - zn.d / 2 - 2, zn.z + zn.d / 2 + 2))) continue;
       if (movers.some(o => Math.abs(o.z - m.z) < 18)) continue;
@@ -838,7 +942,7 @@ export function generateFloor(theme, seed = 1) {
 
   const tier4 = zones.find(z => z.tier === 4);
   return {
-    id: theme.id, number: theme.number, name: theme.name,
+    id: theme.id, number: theme.number, label: theme.label ?? String(theme.number), name: theme.name,
     carpet: theme.carpet, wall: theme.wall, accent: theme.accent,
     width: W, height: H, length: L, seed,
     stakes: `${tier4.label} pays ${tier4.pay}`,
@@ -846,6 +950,7 @@ export function generateFloor(theme, seed = 1) {
     open: !!theme.open, gap,   // Rooftop: open sky, and the gap between the buildings
     windows, ledge, ducts,   // shortcuts (floor 4+)
     halls: hallSpans,
+    ladders,            // Basement: fixed ladders; thread a gap between the rungs
     wallVents,          // narrow vent slots in walls: thread one for a burst of speed
     doors,              // doorways in the hallways (bots dip under the lintel)   // [zStart, zEnd] of each walled hallway
     lane: ctrl,   // the guaranteed-clear path, as [z, x] control points (bots follow it)

@@ -445,7 +445,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     const next = match.floors[match.round + 1];
     broadcast('phase', {
       phase, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: match.racesPerFloor,
-      floor: { number: f.number, name: f.name, stakes: f.stakes },
+      floor: { number: f.number, label: f.label, name: f.name, stakes: f.stakes },
       next: next ? { number: next.number, name: next.name, leg: legOf(match, match.round + 1) } : null,
       inMs: Math.max(0, startsAt - Date.now()),
       players: raceSeats.map(seat => ({ seat, name: nameOf(seat) })),

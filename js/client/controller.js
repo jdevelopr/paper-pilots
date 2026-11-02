@@ -128,7 +128,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
   let introRaf = 0, lastCount = null;
   function runIntro() {
     cancelAnimationFrame(introRaf);
-    q('.i-floor').textContent = `Floor ${phase.floor.number} · Race ${phase.leg ?? 1} of ${phase.legs ?? 1}`;
+    q('.i-floor').textContent = `Floor ${phase.floor.label ?? phase.floor.number} · Race ${phase.leg ?? 1} of ${phase.legs ?? 1}`;
     q('.i-name').textContent = phase.floor.name;
     const endAt = phaseAt + phase.inMs;
     const cnt = q('.i-count'), big = q('.aim-count');

@@ -82,7 +82,7 @@ export function createHud(root) {
 
   function setRace(f, players, roundLabel) {
     floor = f;
-    floorEl.textContent = `Floor ${f.number} · ${f.name}${roundLabel ? ` · ${roundLabel}` : ''}`;
+    floorEl.textContent = `Floor ${f.label ?? f.number} · ${f.name}${roundLabel ? ` · ${roundLabel}` : ''}`;
     racersEl.innerHTML = ''; tags.innerHTML = ''; progress.innerHTML = '';
     racerEls = new Map(); tagEls = new Map(); pipEls = new Map();
     inFlight = 0; myClipsN.textContent = '0';
@@ -326,7 +326,7 @@ export function createHud(root) {
     intro.hidden = false;
     intro.innerHTML = `
       <div class="elevator">
-        <div class="disp"><svg aria-hidden="true"><use href="#i-up"/></svg><span>${f.number}</span></div>
+        <div class="disp"><svg aria-hidden="true"${f.id === 'basement' ? ' style="transform:rotate(180deg)"' : ''}><use href="#i-up"/></svg><span>${f.label ?? f.number}</span></div>
         <div class="fname">${esc(f.name)}</div>
         <div class="stakes">Race ${leg} of ${legs} · ${esc(f.stakes)}</div>
         <div class="callin">${players.map((p, i) => `<span style="--c:${colorFor(p.seat)};--i:${i}">${esc(p.name)}<small>${esc(p.rank || '')}</small></span>`).join('')}</div>
@@ -361,7 +361,7 @@ export function createHud(root) {
 
   function results(rows, f, isLast, leg, legs) {
     const html = `
-      <h2>Floor ${f.number} · Race ${leg} <small>${isLast ? 'Final race' : leg === legs ? 'Shop, then up a floor' : 'Shop next'}</small></h2>
+      <h2>Floor ${f.label ?? f.number} · Race ${leg} <small>${isLast ? 'Final race' : leg === legs ? 'Shop, then up a floor' : 'Shop next'}</small></h2>
       <div class="rows">${rows.map((r, i) => `
         <div class="rrow" style="--c:${colorFor(r.seat)};--i:${i}">
           <div class="pl">${r.place}</div>
@@ -398,7 +398,7 @@ export function createHud(root) {
           <div class="ups">${upChips(p).map(c => `<span data-id="${c.id}">${esc(c.text)}</span>`).join('')}</div>
           <div class="state">${p.done ? 'Done' : 'Shopping'}</div>
         </div>`).join('')}</div>
-      <div class="foot"><span>Next: Floor ${state.next.number} · ${esc(state.next.name)} · Race ${state.nextLeg} of ${state.legs}</span></div>`;
+      <div class="foot"><span>Next: Floor ${state.next.label ?? state.next.number} · ${esc(state.next.name)} · Race ${state.nextLeg} of ${state.legs}</span></div>`;
     const existing = boardWrap.querySelector('.shopgrid');
     if (!existing || boardWrap.hidden) { showBoard(html); return; }
     // Patch in place so cards don't replay their entrance on every purchase

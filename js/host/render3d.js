@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { createInk } from './ink.js';
 import { colorFor, TIER_COLORS, PLAYER_COLORS } from '../shared/colors.js';
 import { SIM, itemReady, buffOn } from '../game/sim.js';
-import { moverAt, groundAt, gapWind } from '../game/floors.js';
+import { moverAt, moverAngle, groundAt, gapWind } from '../game/floors.js';
 import { stickerArtSvg, cleanPlaced, STICKER_SIZE, STICKER_BY_ID } from '../shared/stickers.js';
 
 const INK = '#2c2416';
@@ -782,6 +782,76 @@ function buildObject(o) {
       g.add(boxMesh(1.8, 3.4, 0.12, '#6b5440', -w * 0.2, 0, d / 2 + 0.06));       // door, facing the launch
       g.add(boxMesh(0.15, 0.15, 0.1, '#f2c94c', -w * 0.2 + 0.6, 1.6, d / 2 + 0.14));
       break;
+    /* ----- Basement ----- */
+    case 'storagecab': {
+      const col = ['#8a9a8c', '#8f99a6', '#a3a59c'][o.tint || 0];
+      g.add(boxMesh(w, h, d, col));
+      g.add(boxMesh(0.06, h - 0.6, 0.04, '#4a5054', 0, 0.3, d / 2 + 0.02));          // the door seam
+      for (const sx of [-1, 1]) g.add(boxMesh(0.12, 0.9, 0.1, '#d6d2c8', sx * 0.3, h * 0.48, d / 2 + 0.05));
+      for (let i = 0; i < 3; i++) g.add(boxMesh(w * 0.6, 0.08, 0.05, '#5b6266', 0, 0.5 + i * 0.25, d / 2 + 0.02));   // vent slots
+      // a few archive boxes on top
+      for (let i = 0; i < 2; i++) g.add(boxMesh(1.3, 0.9, 1.5, i ? '#d9c39a' : '#c9a26b', (i - 0.5) * 1.4, h, 0.1 * i));
+      break;
+    }
+    case 'lockers': {
+      const col = ['#5d7fa6', '#8a9a8c', '#b5643c'][o.tint || 0];
+      g.add(boxMesh(w, h, d, col));
+      g.add(boxMesh(w + 0.1, 0.3, d + 0.1, '#4a5054', 0, h - 0.3, 0));
+      for (let z = -d / 2 + 1.2; z < d / 2 - 0.3; z += 1.2) for (const sx of [-1, 1]) {
+        g.add(boxMesh(0.04, h - 0.8, 0.06, '#2f3338', sx * (w / 2 + 0.01), 0.3, z));
+        for (let k = 0; k < 3; k++) g.add(boxMesh(0.04, 0.06, 0.6, '#2f3338', sx * (w / 2 + 0.01), h - 1.4 + k * 0.2, z - 0.6));
+      }
+      break;
+    }
+    case 'boiler': {
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, h - 1, 12), M('#8b8f8a'));
+      tank.position.y = (h - 1) / 2 + 0.6; g.add(tank);
+      g.add(boxMesh(w * 0.9, 0.6, d * 0.9, '#5b6266'));
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(w / 2, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), M('#8b8f8a'));
+      cap.position.y = h - 0.4; cap.scale.y = 0.35; g.add(cap);
+      for (const y of [2, 5]) { const band = new THREE.Mesh(new THREE.CylinderGeometry(w / 2 + 0.05, w / 2 + 0.05, 0.25, 12), M('#b4553a')); band.position.y = y; g.add(band); }
+      const gauge = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.15, 10), M('#f6efdc'));
+      gauge.rotation.x = Math.PI / 2; gauge.position.set(0, 4, d / 2 + 0.05); g.add(gauge);
+      break;
+    }
+    case 'pipe': {
+      // A pipe running across the room, with flanges every few units
+      const r = h / 2, mat = M(o.color || '#7f8a8f');
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 10), mat);
+      pipe.rotation.z = Math.PI / 2; pipe.position.y = r; g.add(pipe);
+      for (let x = -w / 2 + 3; x < w / 2 - 1; x += 7) {
+        const fl = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.3, r * 1.3, 0.3, 10), M('#5b6266'));
+        fl.rotation.z = Math.PI / 2; fl.position.set(x, r, 0); g.add(fl);
+      }
+      break;
+    }
+    case 'hduct': {
+      g.add(boxMesh(w, h, d, '#b9bec2'));
+      for (let z = -d / 2 + 3; z < d / 2; z += 4) g.add(boxMesh(w + 0.12, h + 0.12, 0.18, '#8a9095', 0, -0.06, z));
+      break;
+    }
+    case 'bulb': case 'cable': {
+      // Hangs from the ceiling; swings from the top (see anims.sway)
+      const hang = new THREE.Group(); hang.position.y = h; g.add(hang);
+      if (o.type === 'bulb') {
+        hang.add(boxMesh(0.07, h - 0.5, 0.07, '#3b3f45', 0, -h + 0.5, 0));
+        hang.add(boxMesh(0.3, 0.3, 0.3, '#2f3338', 0, -h + 0.35, 0));
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff3c0' }));
+        bulb.position.y = -h + 0.2; bulb.layers.set(1); hang.add(bulb);
+      } else {
+        hang.add(boxMesh(0.12, h, 0.12, '#2c2416', 0, -h, 0));
+        hang.add(boxMesh(0.32, 0.4, 0.22, '#e0a21b', 0, -h - 0.15, 0));   // a plug on the end
+      }
+      g.userData.hang = hang;
+      break;
+    }
+    case 'ladder': {
+      for (const sx of [-1, 1]) g.add(boxMesh(0.28, h, d, '#e0a21b', sx * (w / 2 - 0.14), 0, 0));
+      for (const y of o.rungs) g.add(boxMesh(w - 0.4, 0.24, d * 0.8, '#8a8f93', 0, y - 0.12, 0));
+      // hazard stripes at the foot
+      for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) g.add(boxMesh(0.3, 0.2, d + 0.02, '#2c2416', sx * (w / 2 - 0.14), 0.3 + i * 0.5, 0));
+      break;
+    }
     default:
       g.add(boxMesh(w, h, d, '#999999'));
   }
@@ -887,6 +957,25 @@ function buildMover(m) {
         }
         g.add(b);
       });
+      break;
+    }
+    case 'lamp': {
+      // Origin at the ceiling pivot; the frame loop swings the whole group
+      const lampY = -(m.rope + m.h);
+      g.add(boxMesh(0.09, m.rope, 0.09, '#3b3f45', 0, lampY + m.h, 0));
+      g.add(boxMesh(0.6, 0.25, 0.6, '#2f3338', 0, -0.25, 0));                   // ceiling hook
+      const shade = new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.6, 10, 1, true), M('#e0a21b'));
+      shade.material.side = THREE.DoubleSide;
+      shade.position.y = lampY + m.h - 0.3; g.add(shade);
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff3c0' }));
+      bulb.position.y = lampY + m.h * 0.5; bulb.layers.set(1); g.add(bulb);
+      // the wire cage round the bulb
+      for (let i = 0; i < 4; i++) {
+        const bar = boxMesh(0.06, m.h * 0.65, 0.06, '#2f3338', Math.cos(i * Math.PI / 2) * 0.55, lampY + m.h * 0.1, Math.sin(i * Math.PI / 2) * 0.55);
+        g.add(bar);
+      }
+      const ringG = new THREE.TorusGeometry(0.55, 0.04, 4, 14);
+      for (const y of [lampY + m.h * 0.15, lampY + m.h * 0.45]) { const rg = new THREE.Mesh(ringG, M('#2f3338')); rg.rotation.x = Math.PI / 2; rg.position.y = y; g.add(rg); }
       break;
     }
     default:
@@ -1113,7 +1202,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   scene.add(planeLayer);
 
   let floor = null;
-  const anims = { fans: [], vents: [], blowers: [], clips: [], signs: [], leds: [], movers: [], wallvents: [], items: [] };
+  const anims = { fans: [], vents: [], blowers: [], clips: [], signs: [], leds: [], movers: [], wallvents: [], items: [], sway: [] };
   const planes = new Map();   // seat -> { root, shadow, trail, trailPts, aim }
   const TRAIL_N = 26;
   const dotGeo = new THREE.SphereGeometry(0.07, 5, 4);
@@ -1748,7 +1837,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     env.add(floorMesh);
 
     // Ceiling tiles with light panels
-    const ceilTex = speckleTexture('#efe9dc', '#8a7a62', 800, 128, 2);
+    const ceilTex = f.id === 'basement' ? speckleTexture('#d9d4c9', '#7a7468', 1400, 128, 0) : speckleTexture('#efe9dc', '#8a7a62', 800, 128, 2);
     ceilTex.repeat.set(W / 4, len / 4);
     const ceil = new THREE.Mesh(holedPlane(holes('ceil'), gz => -gz - midZ), new THREE.MeshBasicMaterial({ map: ceilTex, side: THREE.DoubleSide, color: '#e6dfcf' }));
     ceil.rotation.x = Math.PI / 2;
@@ -1810,7 +1899,16 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       }
       wallSeg(zc, zEnd, 0, H);
       env.add(Object.assign(boxMesh(0.2, 0.6, len, '#6b5440', s * (W / 2 - 0.05), 0, midZ)));
-      for (let z = 6; z < L; z += 18) {
+      // Basement: small high windows at ground level, with a bit of grass outside
+      if (f.id === 'basement') for (let z = 10; z < L; z += 26) {
+        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.6, 5), new THREE.MeshBasicMaterial({ color: '#cfe6ee' }));
+        pane.position.set(s * (W / 2 - 0.02), H - 1.6, -z - 2.5);
+        env.add(pane);
+        env.add(boxMesh(0.12, 0.5, 5, '#6f9a5a', s * (W / 2 - 0.03), H - 2.4, -z - 2.5));
+        env.add(boxMesh(0.16, 0.2, 5.4, '#8a8f93', s * (W / 2 - 0.05), H - 2.6, -z - 2.5));
+        env.add(boxMesh(0.16, 0.2, 5.4, '#8a8f93', s * (W / 2 - 0.05), H - 0.8, -z - 2.5));
+      }
+      for (let z = 6; z < L && f.id !== 'basement'; z += 18) {
         if (holes.some(w => Math.abs(w.z - (z + 5)) < w.half + 7)) continue;
         const pane = new THREE.Mesh(new THREE.BoxGeometry(0.1, H * 0.45, 10), new THREE.MeshBasicMaterial({ color: '#cfe6ee' }));
         pane.position.set(s * (W / 2 - 0.02), H * 0.55, -z - 5);
@@ -1893,7 +1991,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       env.add(big);
     }
     // Floor number painted on the back wall above the launch desk
-    const numTex = labelTexture([{ text: `Floor ${f.number}`, bold: true }], { w: 512, h: 160, bg: f.wall, border: false });
+    const numTex = labelTexture([{ text: `Floor ${f.label ?? f.number}`, bold: true }], { w: 512, h: 160, bg: f.wall, border: false });
     const num = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.5), new THREE.MeshBasicMaterial({ map: numTex, transparent: true }));
     num.position.set(0, H * 0.7, zBack - 0.01);
     num.rotation.y = Math.PI;
@@ -1903,6 +2001,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     for (const o of f.objects) {
       const m = buildObject(o);
       env.add(m);
+      if (m.userData.hang) anims.sway.push({ o: m.userData.hang, ph: Math.random() * 6, rate: 0.8 + Math.random() * 0.6, amp: 0.05 + Math.random() * 0.05 });
       if (o.type === 'rack') {
         for (let y = 1; y < o.h - 0.5; y += 0.9) {
           for (const s of [-1, 1]) {
@@ -2523,12 +2622,14 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         st.m.rotation.y = 0;
       }
     }
+    for (const sw of anims.sway) { sw.o.rotation.z = Math.sin(time * sw.rate + sw.ph) * sw.amp; sw.o.rotation.x = Math.cos(time * sw.rate * 0.7 + sw.ph) * sw.amp * 0.6; }
     for (const l of anims.leds) l.m.visible = Math.sin(time * 3 + l.ph * 5) > -0.6;
     // Movers follow race time, so they're exactly where the sim says they are.
     const rt = race ? race.t : 0;
     for (const a of anims.movers) {
       const c = moverAt(a.m, rt);
-      a.g.position.set(c.x, c.y, -c.z);
+      if (a.m.swing) { a.g.position.set(a.m.x, a.m.pivot, -a.m.z); a.g.rotation.z = moverAngle(a.m, rt); }
+      else a.g.position.set(c.x, c.y, -c.z);
       // Pigeons scatter when a plane comes close, then settle back into the flock
       const birds = a.g.userData.birds;
       if (birds) {

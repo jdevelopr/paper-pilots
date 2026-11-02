@@ -21,7 +21,7 @@ export function mountSetup(el, name) {
   el.innerHTML = `
     <fieldset class="seg floors-pick">
       <legend>Floors</legend>
-      ${FLOORS.map(f => `<label title="${f.name}"><input type="checkbox" name="${name}-fl" value="${f.id}" ${cur.floors.includes(f.id) ? 'checked' : ''}><span><b>${f.number}</b>${f.name}</span></label>`).join('')}
+      ${FLOORS.map(f => `<label title="${f.name}"><input type="checkbox" name="${name}-fl" value="${f.id}" ${cur.floors.includes(f.id) ? 'checked' : ''}><span><b>${f.label ?? f.number}</b>${f.name}</span></label>`).join('')}
     </fieldset>
     <fieldset class="seg">
       <legend>Races per floor</legend>

@@ -108,6 +108,7 @@ const TRICK_STAMPS = {
   edge:     [NEW, 'Slide off something and keep flying', '<path d="M14 30h18v18"/><path d="M27 24q11-6 19 6M44 25l2 6-6 1"/>'],
   quick:    [NEW, 'Throw hard the instant the race starts', '<circle cx="32" cy="35" r="12"/><path d="M32 35l5-6M29 18h6M32 18v5M44 22l3-3"/>'],
   feather:  [NEW, 'Touch down on a zone ever so gently', '<path d="M45 16C27 18 20 32 20 46c11-4 23-14 25-30z" fill="#fff"/><path d="M20 46l16-20"/>'],
+  rung:     [PLACE, 'Fly through a ladder, between the rungs', '<path d="M24 14v36M40 14v36M24 22h16M24 32h16M24 42h16"/><path d="M14 27h30M38 23l5 4-5 4" stroke="#e2462e"/>'],
   spotless: [NEW, 'Land on a zone without a scratch', '<path d="M30 15l3 10 10 3-10 3-3 10-3-10-10-3 10-3z" fill="#fff"/><path d="M44 37l1 4 4 1-4 1-1 4-1-4-4-1 4-1z" fill="#fff"/>'],
 };
 const stamp = (color, icon) => s(`<path d="M32 4l4 4 6-2 2 6 6 1-1 6 5 4-4 5 3 5-5 3 1 6-6 1-2 6-6-2-4 4-4-4-6 2-2-6-6-1 1-6-5-3 3-5-4-5 5-4-1-6 6-1 2-6 6 2z" fill="${color}" stroke="INK" stroke-width="2.5" stroke-linejoin="round"/>`

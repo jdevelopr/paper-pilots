@@ -198,6 +198,8 @@ export const TRICKS = {
   quick:    { label: 'Quick Draw',        value: 2 },
   feather:  { label: 'Feather Touch',     value: 3 },
   spotless: { label: 'Spotless',          value: 4 },
+  // Basement
+  rung:     { label: 'Rung Runner',       value: 4 },   // through a ladder, between the rungs
 };
 // Chain multiplier per trick in a flight: x1, x1.5, x2, x2.5, x3 (cap).
 const chainMult = n => Math.min(3, 1 + 0.5 * (n - 1));
@@ -208,7 +210,7 @@ function newTricks() {
   return {
     list: [], chain: 0, clips: 0, vents: [], under: [], doors: [], hall: null,
     turn: 0, turnSign: 0, ceilT: 0, lowT: 0, flips: [], rollSign: 0, stalledAt: null, clipTimes: [], behind: {},
-    knifeT: 0, diveT: 0, diveAt: null, climbY: null, lift: null, rings: 0, ride: null,
+    knifeT: 0, diveT: 0, diveAt: null, climbY: null, lift: null, rings: 0, ride: null, ladders: [],
   };
 }
 
@@ -241,6 +243,12 @@ function flightTricks(race, p, px, py, pz, dt, pyaw) {
   (f.doors || []).forEach((d, i) => {
     if (tr.doors.includes(i)) return;
     if (pz < d.z && p.z >= d.z && Math.abs(p.x - d.x) < d.w / 2 && p.y < d.h) { tr.doors.push(i); trick(race, p, 'doorway'); }
+  });
+  // Between the rungs of a ladder (Basement)
+  (f.ladders || []).forEach((l, i) => {
+    if (tr.ladders.includes(i)) return;
+    if (pz < l.z && p.z >= l.z && Math.abs(p.x - l.x) < l.w / 2 - 0.3 && p.y > 0.4 && p.y < l.h - 0.4
+      && l.rungs.every(y => Math.abs(p.y - y) > 0.12 + SIM.planeR) && race.t - (p.scrapeT ?? -9) > 0.6) { tr.ladders.push(i); trick(race, p, 'rung'); }
   });
   // Under a desk or table (not the launch desk)
   (f.objects || []).forEach((o, i) => {
