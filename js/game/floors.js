@@ -244,10 +244,6 @@ export const THEMES = [
     id: 'lobby', number: 1, name: 'Lobby',
     carpet: '#c9b48a', wall: '#e9e1cf', accent: '#c1440e', height: 16,
     zoneNames: [['Welcome Mat', 'Doormat'], ['Lobby Rug', 'Waiting Area'], ['Mail Cart', 'Coat Rack'], ['Visitor Sofa', 'Fountain Ledge'], ['Elevator', 'Revolving Door']],
-    perches: [
-      { name: 'Security Desk', make: (x, z, T) => ({ ...F.desk(x, z, T), mon: false }) },
-      { name: 'Reception', make: (x, z, T) => F.counter(x, z, T) },
-    ],
     rows: [
       (z, W, T) => [F.pillar(T.r(-14, -6), z), F.pillar(T.r(6, 14), z)],
       (z, W, T) => [F.counter(T.r(-8, 8), z, T), ...scatter(z, W, T, [F.plant], 2)],
@@ -260,10 +256,6 @@ export const THEMES = [
     id: 'cubicles', number: 2, name: 'Cubicle Farm',
     carpet: '#8f9aa3', wall: '#dfe3e2', accent: '#1e4d6b', height: 13,
     zoneNames: [['Hallway', 'Copier Nook'], ['Cubicle 4B', 'Hot Desk'], ['Break Corner', 'Supply Shelf'], ['Team Lead Desk', 'Huddle Room'], ['Window Seat', 'Corner Cubicle']],
-    perches: [
-      { name: "Manager's Desk", make: (x, z, T) => ({ ...F.desk(x, z, T), mon: false }) },
-      { name: 'Filing Cabinet', make: (x, z, T) => ({ ...F.cabinet(x, z, T), w: 5, h: 4.4 }) },
-    ],
     rows: [
       (z, W, T) => wallRow('cubicle', T.r(4.8, 5.6), z, W, T),
       (z, W, T) => wallRow('cubicle', T.r(4.8, 5.6), z, W, T),
@@ -277,11 +269,6 @@ export const THEMES = [
     id: 'breakroom', number: 3, name: 'Break Room',
     carpet: '#b9c9b2', wall: '#efe4c8', accent: '#3d6b52', height: 15,
     zoneNames: [['Sink Mat', 'Recycling Bins'], ['Coffee Corner', 'Bean Bag'], ['Snack Drawer', 'Water Cooler'], ['Ping-pong Corner', 'Microwave Line'], ['Nap Pod', 'Birthday Cake']],
-    perches: [
-      { name: 'Lunch Table', make: (x, z, T) => F.table(x, z, T) },
-      { name: 'Snack Counter', make: (x, z, T) => F.counter(x, z, T) },
-      { name: 'Fridge Top', make: (x, z) => F.fridge(x, z), tiers: [4] },
-    ],
     rows: [
       (z, W, T) => scatter(z, W, T, [F.table, F.table, F.couch], T.ri(2, 3)),
       (z, W, T) => [F.vending(T.pick([-1, 1]) * T.r(12, 18), z), F.vending(T.r(-6, 6), z + 6)],
@@ -295,11 +282,6 @@ export const THEMES = [
     id: 'servers', number: 4, name: 'Server Room',
     carpet: '#7b8794', wall: '#c9d1d8', accent: '#1e4d6b', height: 14,
     zoneNames: [['Cable Tray', 'Loading Dock'], ['Cold Aisle', 'Patch Panel'], ['Hot Aisle', 'Spare Parts'], ['Admin Desk', 'UPS Bank'], ['Root Access', 'Mainframe']],
-    perches: [
-      { name: 'Admin Desk', make: (x, z, T) => ({ ...F.desk(x, z, T), mon: false }) },
-      { name: 'Tape Library', make: (x, z, T) => ({ ...F.cabinet(x, z, T), w: 5, h: 6 }) },
-      { name: 'Root Access', make: (x, z, T) => ({ ...F.rack(x, z, T, 3), w: 4, h: 7 }), tiers: [4] },
-    ],
     rows: [
       // Racks running lengthwise make aisles
       (z, W, T) => {
@@ -318,11 +300,6 @@ export const THEMES = [
     id: 'executive', number: 5, name: 'Executive Suite',
     carpet: '#8b3a2e', wall: '#efe6d6', accent: '#c1440e', height: 16,
     zoneNames: [['Visitor Chair', 'Coat Closet'], ['Lounge Rug', 'Fish Tank'], ['Mini Bar', 'Trophy Case'], ['Executive Rug', 'Golf Green'], ['Corner Office', 'CEO Chair']],
-    perches: [
-      { name: 'Boardroom Table', make: (x, z, T) => ({ ...F.table(x, z, T), w: T.r(7, 9), d: T.r(10, 16), h: 3.2 }) },
-      { name: 'Bookshelf', make: (x, z, T) => ({ ...F.shelf(x, z, T), h: 6 }) },
-      { name: 'Corner Office', make: (x, z) => ({ type: 'desk', x, z, w: 10, d: 5, h: 3.2, mon: false }), tiers: [4] },
-    ],
     rows: [
       (z, W, T) => wallRow('glass', 16, z, W, T),
       (z, W, T) => [{ ...F.table(T.r(-8, 8), z + 6, T), w: T.r(7, 9), d: T.r(14, 22), h: 3.2 }],
@@ -340,10 +317,6 @@ export const THEMES = [
     carpet: '#9a978f', wall: '#c9bfae', accent: '#c1440e', height: 26,
     open: true, gap: { from: 0.25, to: 0.75, depth: 40, drop: 7 },
     zoneNames: [['Roof Hatch', 'Gravel Patch'], ['Rooftop Garden', 'Picnic Table'], ['Sun Deck', 'Hot Tub'], ['Satellite Pad', 'Penthouse Patio'], ['Helipad', 'Sky Lounge']],
-    perches: [
-      { name: 'Stairwell Roof', make: (x, z) => F.stairhut(x, z), tiers: [3, 4] },
-      { name: 'AC Unit', make: (x, z, T) => F.acunit(x, z, T), tiers: [3] },
-    ],
     rows: [
       (z, W, T) => [F.acunit(T.r(-14, 14), z, T), ...(T.chance(0.5) ? [F.stack(T.r(-16, 16), z + T.r(3, 6), T)] : [])],
       (z, W, T) => [F.watertower(T.pick([-1, 1]) * T.r(10, 15), z), F.dish(T.r(-8, 8), z + 4, T)],
@@ -392,33 +365,20 @@ export function generateFloor(theme, seed = 1) {
     ctrl.sort((a, b) => a[0] - b[0]);
   }
 
-  /* Landing zones, one per tier */
+  /* Landing zones, one per tier. Every target is a big mat flat on the floor
+     (or the roof), all the same size; only where it sits changes by tier. */
+  const ZONE_W = 16, ZONE_D = 14;
   const zones = [];
   for (let tier = 0; tier < 5; tier++) {
     const [b0, b1] = tierBand(tier, L, gap);
-    const hosts = theme.perches.filter(p => (p.tiers || [3, 4]).includes(tier));
-    const usePerch = tier >= 3 && hosts.length > 0 && T.chance(tier === 4 ? 0.5 : 0.6);
     for (let attempt = 0; attempt < 30; attempt++) {
       const z = T.r(b0, b1);
-      let zn;
-      if (usePerch) {
-        const host = T.pick(hosts);
-        const o = host.make(0, z, T);
-        o.x = T.r(-W / 2 + o.w / 2 + 2, W / 2 - o.w / 2 - 2);
-        o.y = G(z);
-        zn = { tier, label: host.name, x: o.x, z: o.z, w: o.w, d: o.d, y: o.y + o.h, perch: true, pay: payFor(tier, theme), host: o };
-      } else {
-        // Target mats (centre pays double)
-        const w = Math.min(W - 6, 1.05 * (tier === 0 ? T.r(14, 18) : tier === 4 ? T.r(7, 9) : T.r(9, 14) - tier));
-        const d = 1.05 * (tier === 0 ? T.r(12, 16) : tier === 4 ? T.r(6, 8) : T.r(7, 11) - tier * 0.5);
-        zn = { tier, label: T.pick(theme.zoneNames[tier]), x: tier === 0 ? T.r(-6, 6) : T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: G(z), pay: payFor(tier, theme) };
-      }
+      const w = Math.min(W - 6, ZONE_W), d = ZONE_D;
+      const zn = { tier, label: T.pick(theme.zoneNames[tier]), x: tier === 0 ? T.r(-6, 6) : T.r(-W / 2 + w / 2 + 1.5, W / 2 - w / 2 - 1.5), z, w, d, y: G(z), pay: payFor(tier, theme) };
       const clash = zones.some(o => Math.abs(o.x - zn.x) < (o.w + zn.w) / 2 + 1.5 && Math.abs(o.z - zn.z) < (o.d + zn.d) / 2 + 1.5);
       if (!clash || attempt === 29) { zones.push(zn); break; }
     }
   }
-  const perched = [];
-  for (const zn of zones) if (zn.host) { perched.push(zn.host); delete zn.host; }
 
   /* Hallways (floor 3 and up): one set path with turns, walled in floor to
      ceiling, so steering matters. Each hallway is straight segments joined by
@@ -600,7 +560,7 @@ export function generateFloor(theme, seed = 1) {
     for (const zn of zones) if (overlapsRect(o, zn.x - zn.w / 2 - 1, zn.x + zn.w / 2 + 1, zn.z - zn.d / 2 - 1, zn.z + zn.d / 2 + 1)) return false;
     return true;
   });
-  objects.push(...perched, ...hallObjs);
+  objects.push(...hallObjs);
   if (gap) {
     // Knee-high parapets along the roof edges (the edges facing the gap are open)
     const par = (x, z0, z1, y, w = 0.6) => objects.push({ type: 'parapet', x, z: (z0 + z1) / 2, w, d: z1 - z0, h: 1.2, y });

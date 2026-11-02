@@ -55,13 +55,16 @@ function paint() {
   el.querySelector('.sb-tip').textContent = armed ? 'Tap your plane to stick it on'
     : sel >= 0 ? 'Drag it to move it' : list.length ? 'Pick a sticker, or tap one on your plane' : 'Pick a sticker below';
   const grid = el.querySelector('.sb-grid');
-  grid.innerHTML = STICKERS.map(s => {
+  const firstTrick = STICKERS.find(s => s.trick)?.id;
+  const tricksGot = STICKERS.filter(s => s.trick && progressOf(s.id).got).length, tricksAll = STICKERS.filter(s => s.trick).length;
+  grid.innerHTML = '<h3 class="sb-sec">Stickers</h3>' + STICKERS.map(s => {
     const pr = progressOf(s.id);
     const fresh = b.fresh.includes(s.id);
-    return `<button role="listitem" class="sb-cell${pr.got ? '' : ' locked'}${armed === s.id ? ' armed' : ''}" data-id="${s.id}"
-      aria-label="${esc(s.name)}${pr.got ? '' : `, locked: ${esc(s.hint)}`}" aria-pressed="${armed === s.id}">
+    const head = s.id === firstTrick ? `<h3 class="sb-sec">Trick stamps <small>${tricksGot} of ${tricksAll} discovered</small></h3>` : '';
+    return `${head}<button role="listitem" class="sb-cell${pr.got ? '' : ' locked'}${armed === s.id ? ' armed' : ''}" data-id="${s.id}"
+      aria-label="${s.trick && !pr.got ? 'Undiscovered trick' : esc(s.name)}${pr.got ? '' : `, locked: ${esc(s.hint)}`}" aria-pressed="${armed === s.id}">
       <span class="sb-art">${stickerSvg(s.id)}</span>
-      <span class="sb-name">${esc(s.name)}</span>
+      <span class="sb-name">${s.trick && !pr.got ? '???' : esc(s.name)}</span>
       ${pr.got ? '' : `<span class="sb-hint">${esc(s.hint)}${pr.need > 1 ? ` <b>${pr.have}/${pr.need}</b>` : ''}</span>`}
       ${fresh ? '<span class="sb-new">New!</span>' : ''}
     </button>`;

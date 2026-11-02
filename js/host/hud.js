@@ -23,7 +23,7 @@ export function createHud(root) {
       <div class="progress"></div>
       <div class="tags"></div>
     </div>
-    <div class="floaters"></div>
+    <div class="floaters"><div class="trick-rail" aria-live="polite"></div></div>
     <div class="overlay intro" hidden></div>
     <div class="overlay board-wrap" hidden></div>
     <div class="banner-wrap"></div>
@@ -177,7 +177,7 @@ export function createHud(root) {
   // a column on the right if the plane is off-screen). Bigger with the combo.
   // Combo ink: a blot of ink splats behind a callout, bigger and messier as the chain climbs
   function inkSplat(level) {
-    const R = 22 + level * 26, N = 16, drops = Math.round(1 + level * 3.5), pad = R * 2.2;
+    const R = 18 + level * 15, N = 16, drops = Math.round(1 + level * 3), pad = R * 1.9;
     const pts = Array.from({ length: N }, (_, i) => {
       const a = i / N * Math.PI * 2, r = R * (0.72 + Math.random() * 0.42);
       return [pad + Math.cos(a) * r, pad + Math.sin(a) * r];
@@ -233,9 +233,10 @@ export function createHud(root) {
     el.innerHTML = `<b>${esc(label)}</b><span>+${clips}${mult > 1 ? ` <i>x${mult}</i>` : ''}</span>`;
     // chain multiplier runs 1 .. 3; the ink grows with it
     if (mult > 1) el.prepend(inkSplat((mult - 1) * 1.5));
-    if (at) { el.style.left = `${at.x}px`; el.style.top = `${at.y}px`; }
-    else { el.classList.add('edge'); }
-    floaters.appendChild(el);
+    // Callouts stack down the left side of the screen, out of the way of the flying
+    const rail = q('.trick-rail');
+    rail.appendChild(el);
+    while (rail.children.length > 4) rail.firstElementChild.remove();
     setTimeout(() => el.remove(), 1700);
   }
 

@@ -86,6 +86,8 @@ export function throwPlane(race, seat, aim) {
   p.state = 'fly';
   p.thrownAt = race.t;
   race.events.push({ name: 'throw', seat, power: p.aim.power, boost: p.st.launch > 1 });
+  // Quick Draw: a full-power throw inside the first second after GO
+  if (race.t < 1 && p.aim.power > 0.8) trick(race, p, 'quick');
   return true;
 }
 
@@ -150,16 +152,29 @@ export const TRICKS = {
   dodge:    { label: 'Traffic Dodger',    value: 3 },
   sweep:    { label: 'Clip Sweep',        value: 3 },
   slip:     { label: 'Slipstream',        value: 4 },
+  // More flying style (added 2026-11-01)
+  knife:    { label: 'Knife Edge',        value: 3 },
+  nosedive: { label: 'Pull Up!',          value: 3 },
+  rocket:   { label: 'Rocket Climb',      value: 2 },
+  elevator: { label: 'Elevator Ride',     value: 3 },
+  hoops:    { label: 'Hoop Streak',       value: 4 },
+  windride: { label: 'Wind Rider',        value: 3 },
+  edge:     { label: 'Off the Edge',      value: 3 },
+  quick:    { label: 'Quick Draw',        value: 2 },
+  feather:  { label: 'Feather Touch',     value: 3 },
+  spotless: { label: 'Spotless',          value: 4 },
 };
 // Chain multiplier per trick in a flight: x1, x1.5, x2, x2.5, x3 (cap).
 const chainMult = n => Math.min(3, 1 + 0.5 * (n - 1));
 // Repeatable tricks are capped per flight so one floor full of vents can't
 // outscore the landing zones.
-const PER_FLIGHT = { close: 3, drafts: 2, under: 3, circle: 2, ceiling: 2, carpet: 2, zigzag: 2, speed: 1, stall: 2, hang: 1, dodge: 2, sweep: 1, slip: 2 };
+const PER_FLIGHT = { close: 3, drafts: 2, under: 3, circle: 2, ceiling: 2, carpet: 2, zigzag: 2, speed: 1, stall: 2, hang: 1, dodge: 2, sweep: 1, slip: 2,
+  knife: 2, nosedive: 2, rocket: 2, elevator: 2, hoops: 1, windride: 2, edge: 1, quick: 1 };
 function newTricks() {
   return {
     list: [], chain: 0, clips: 0, vents: [], under: [], doors: [], hall: null,
     turn: 0, turnSign: 0, ceilT: 0, lowT: 0, flips: [], rollSign: 0, stalledAt: null, clipTimes: [], behind: {},
+    knifeT: 0, diveT: 0, diveAt: null, climbY: null, lift: null, rings: 0, ride: null,
   };
 }
 
@@ -252,6 +267,29 @@ function styleTricks(race, p, dt, pyaw) {
   // Hang Time: stay airborne about as long as it takes to cross the whole floor
   if (p.thrownAt != null && t - p.thrownAt >= (f.length || 800) / 26) trick(race, p, 'hang');
 
+  // Knife Edge: hold a full bank for 1.4 s at speed
+  tr.knifeT = Math.abs(p.roll) > 0.78 && p.v > 8 ? tr.knifeT + dt : Math.min(0, tr.knifeT);
+  if (tr.knifeT >= 1.4) { tr.knifeT = -2; trick(race, p, 'knife'); }
+
+  // Pull Up!: a steep dive for most of a second, then level out clean before the floor
+  if (p.pitch < -0.45) { tr.diveT += dt; tr.diveAt ??= t; }
+  else if (p.pitch > -0.1) {
+    if (tr.diveT >= 0.6 && p.y - groundAt(f, p.z) > 0.6 && cleanSince(tr.diveAt)) trick(race, p, 'nosedive');
+    tr.diveT = 0; tr.diveAt = null;
+  }
+
+  // Rocket Climb: nose up and gain 5 height in one go
+  if (p.pitch > 0.4) {
+    tr.climbY ??= p.y;
+    if (p.y - tr.climbY >= 5) { tr.climbY = Infinity; trick(race, p, 'rocket'); }
+  } else tr.climbY = null;
+
+  // Elevator Ride: ride one vent up 5 height
+  const vi = f.vents.findIndex(v => (p.x - v.x) ** 2 + (p.z - v.z) ** 2 < v.r * v.r);
+  if (vi < 0) tr.lift = null;
+  else if (!tr.lift || tr.lift.i !== vi) tr.lift = { i: vi, y: p.y, done: false };
+  else if (!tr.lift.done && p.y - tr.lift.y >= 5) { tr.lift.done = true; trick(race, p, 'elevator'); }
+
   // Slipstream: tuck in right behind another plane for 1.5 s, then pass it
   for (const o of race.planes) {
     if (o === p || o.state !== 'fly') continue;
@@ -269,9 +307,12 @@ function styleTricks(race, p, dt, pyaw) {
 function landingTricks(race, p, zn) {
   if (!p.tr || p.crumpled || !zn) return;
   if (zn.ring === 0) trick(race, p, 'bullseye');
-  if (zn.perch) trick(race, p, 'perch');
   if (p.lastHit != null && race.t - p.lastHit < 3) trick(race, p, 'bank');
   if (p.hp <= p.maxHp * 0.25) trick(race, p, 'clutch');
+  // Feather Touch: settle onto a zone barely sinking at all
+  if ((p.touchVy ?? -9) > -1.6) trick(race, p, 'feather');
+  // Spotless: land on a zone without a single scratch
+  if (p.lastHit == null && p.hp >= p.maxHp) trick(race, p, 'spotless');
 }
 
 export function stepPlane(race, p, dt) {
@@ -387,11 +428,23 @@ function flyStep(race, p, dt, pz = p.z) {
       if (p.stream !== inS) race.events.push({ name: 'boost', seat: p.seat, kind: 'stream', amount: 4, x: p.x, y: p.y, z: p.z });
     }
     if (inS >= 0) p.stream = inS;
+    // Wind Rider: catch a stream near its start and ride it all the way to the end
+    const tr = p.tr;
+    if (tr) {
+      if (inS >= 0 && (!tr.ride || tr.ride.i !== inS)) tr.ride = { i: inS, ok: p.z - pk.streams[inS].z0 < 8 };
+      if (tr.ride && inS !== tr.ride.i) {
+        const sr = pk.streams[tr.ride.i];
+        if (tr.ride.ok && p.z >= sr.z1 - 1) trick(race, p, 'windride');
+        tr.ride = null;
+      }
+    }
     // Wind rings: thread one for a burst of speed
     for (const g of pk.rings) {
       if (pz < g.z && p.z >= g.z && (p.x - g.x) ** 2 + (p.y - g.y) ** 2 < g.r * g.r) {
         p.v = Math.min(28, Math.max(p.v, 8) + g.s);
         race.events.push({ name: 'boost', seat: p.seat, kind: 'ring', amount: g.s, gold: !!g.off, x: p.x, y: p.y, z: p.z });
+        // Hoop Streak: three rings in one flight
+        if (p.tr && ++p.tr.rings === 3) trick(race, p, 'hoops');
       }
     }
   }
@@ -462,6 +515,7 @@ function facade(race, p, pz) {
 
 function touchDown(race, p, surfaceY, vy) {
   p.support = surfaceY;
+  p.touchVy = vy;
   p.y = surfaceY + SIM.restH;
   if (p.crumpled) { land(race, p); return; }
   p.v = p.v * Math.cos(p.pitch) * 0.72;
@@ -481,6 +535,8 @@ function slideStep(race, p, dt) {
   // Slid off the edge of a desk (or the roof)
   if (p.support > groundAt(race.floor, p.z) + 0.05 && !supportAt(race.floor, p.x, p.z, p.support)) {
     p.state = 'fly'; p.pitch = -0.6; p.v = Math.max(p.v, 3);
+    // Off the Edge: slid off a desk (or the roof) and back into the air
+    if (!p.crumpled && p.v > 3) trick(race, p, 'edge');
   }
 }
 
@@ -504,6 +560,8 @@ function land(race, p) {
   p.dist = Math.max(0, p.z);
   p.zone = p.crumpled ? null : zoneAt(race.floor, p.x, p.y, p.z);
   race.events.push({ name: 'landed', seat: p.seat, zone: p.zone, crumpled: p.crumpled });
+  // Stuck It: come to rest on top of the furniture
+  if (!p.crumpled && p.tr && p.y - SIM.restH > groundAt(race.floor, p.z) + 0.5) trick(race, p, 'perch');
   landingTricks(race, p, p.zone);
 }
 

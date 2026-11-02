@@ -6,6 +6,8 @@
 // of every race they fly ('stats'); the device adds it up and unlocks stickers.
 // The plane's sticker layout is sent to the host, which shows it to everyone.
 
+import { TRICKS } from '../game/sim.js';
+
 export const MAX_ON_PLANE = 12;
 export const STICKER_SIZE = 0.36;    // base size on the plane, in plane units
 
@@ -71,6 +73,53 @@ export const STICKERS = [
   { id: 'ceo', name: 'Top Floor', hint: 'Reach CEO in a match', stat: 'ceo', need: 1,
     art: s('<rect x="18" y="10" width="28" height="44" fill="#1e4d6b" stroke="INK" stroke-width="3"/><path d="M24 18h5M35 18h5M24 26h5M35 26h5M24 34h5M35 34h5" stroke="#f2c94c" stroke-width="3"/><rect x="28" y="42" width="8" height="12" fill="#f6efdc" stroke="INK" stroke-width="2.5"/><path d="M32 10V3l8 3-8 3" fill="#e2462e" stroke="INK" stroke-width="2" stroke-linejoin="round"/>') },
 ];
+
+// Trick stamps: one for every trick, earned the first time you pull it off.
+// Until then the book only shows a riddle-ish hint.
+const PLACE = '#8fd0ea', STYLE = '#f2c94c', LAND = '#ef9a7a', NEW = '#b8a6e6';
+const TRICK_STAMPS = {
+  close:    [STYLE, 'Fly past something with barely an inch to spare', '<path d="M32 18v15"/><circle cx="32" cy="42" r="2.2" fill="INK"/>'],
+  doorway:  [PLACE, 'Slip under the top of a doorway', '<path d="M22 46V20h20v26"/><path d="M14 38h28M37 34l5 4-5 4"/>'],
+  under:    [PLACE, 'Fly beneath a desk', '<path d="M16 26h32M20 26v18M44 26v18"/><path d="M14 38h28M37 34l5 4-5 4"/>'],
+  drafts:   [PLACE, 'Ride two different vents in one flight', '<path d="M24 46V22M18 28l6-6 6 6M40 46V22M34 28l6-6 6 6"/>'],
+  hallway:  [PLACE, 'Fly a whole hallway without touching a wall', '<path d="M16 18l10 10v8l-10 10M48 18L38 28v8l10 10M26 28h12M26 36h12"/>'],
+  bullseye: [LAND, 'Land dead centre on a target', '<circle cx="32" cy="32" r="12"/><circle cx="32" cy="32" r="5"/><circle cx="32" cy="32" r="1.5" fill="INK"/>'],
+  perch:    [LAND, 'Come to rest on top of the furniture', '<rect x="22" y="32" width="20" height="14"/><path d="M19 27l15-5-10 9z" fill="#fff"/>'],
+  bank:     [LAND, 'Land on a zone right after a bump', '<path d="M44 18v28"/><path d="M18 22l22 10-22 10"/>'],
+  clutch:   [LAND, 'Land on a zone when you are nearly crumpled', '<rect x="17" y="24" width="25" height="16" rx="2"/><path d="M42 29h4v6h-4"/><path d="M20 27h5v10h-5z" fill="#e2462e"/>'],
+  window:   [PLACE, 'Leave by one window and come back by another', '<rect x="20" y="18" width="24" height="28"/><path d="M32 18v28M20 32h24"/>'],
+  duct:     [PLACE, 'Find a hidden duct and make it through', '<path d="M16 26h26a6 6 0 0 1 0 12H16"/><path d="M23 26v12M31 26v12"/>'],
+  circle:   [STYLE, 'Turn all the way around without straightening out', '<path d="M44 30a12 12 0 1 1-4-8"/><path d="M40 15v8h8"/>'],
+  ceiling:  [STYLE, 'Hug the ceiling for a while', '<path d="M14 20h36" stroke-width="4"/><path d="M18 29h24M37 25l5 4-5 4"/>'],
+  carpet:   [STYLE, 'Skim the floor at speed', '<path d="M14 44h36" stroke-width="4"/><path d="M18 35h24M37 31l5 4-5 4"/>'],
+  zigzag:   [STYLE, 'Flip your bank back and forth, fast', '<path d="M15 40l8-14 8 14 8-14 7 11"/>'],
+  speed:    [STYLE, 'Hit top speed', '<path d="M35 15L22 34h9l-3 15 15-21h-9z" fill="#fff"/>'],
+  stall:    [STYLE, 'Stall out, then dive back up to speed', '<path d="M18 22q14 0 14 10t14 12"/><path d="M41 44h6v-6"/>'],
+  hang:     [STYLE, 'Stay in the air for a very long time', '<circle cx="32" cy="34" r="12"/><path d="M32 27v7l6 4M28 17h8"/>'],
+  dodge:    [STYLE, 'Just miss something that moves', '<circle cx="32" cy="37" r="4" fill="INK"/><path d="M15 44q17-32 34 0"/><path d="M43 38l6 6-8 1"/>'],
+  sweep:    [STYLE, 'Grab five clips in a flash', '<path d="M22 40V24a3 3 0 0 1 6 0v18a5 5 0 0 1-10 0V27M40 40V24a3 3 0 0 1 6 0v18a5 5 0 0 1-10 0V27"/>'],
+  slip:     [STYLE, 'Tuck in behind another plane, then pass it', '<path d="M15 38l8-6-8-6M29 38l8-6-8-6M43 38l7-6-7-6"/>'],
+  knife:    [NEW, 'Hold a full bank for a while', '<path d="M30 15v34"/><path d="M30 21l12 17H30" fill="#fff"/>'],
+  nosedive: [NEW, 'Dive steeply, then pull up before the floor', '<path d="M22 15v21a10 10 0 0 0 20 0v-5"/><path d="M38 34l4-5 4 5"/>'],
+  rocket:   [NEW, 'Point the nose up and climb hard', '<path d="M32 14c6 6 8 14 6 24H26c-2-10 0-18 6-24z" fill="#fff"/><path d="M26 38l-5 7h7M38 38l5 7h-7"/><circle cx="32" cy="27" r="3"/>'],
+  elevator: [NEW, 'Stay in a vent until it carries you high', '<rect x="20" y="16" width="24" height="32"/><path d="M32 41V24M26 30l6-6 6 6"/>'],
+  hoops:    [NEW, 'Thread three wind rings in one flight', '<circle cx="19" cy="32" r="6"/><circle cx="32" cy="32" r="6"/><circle cx="45" cy="32" r="6"/>'],
+  windride: [NEW, 'Ride a tailwind stream from start to finish', '<path d="M14 26h22a5 5 0 1 0-5-5M14 34h28a5 5 0 1 1-5 5M14 42h12"/>'],
+  edge:     [NEW, 'Slide off something and keep flying', '<path d="M14 30h18v18"/><path d="M27 24q11-6 19 6M44 25l2 6-6 1"/>'],
+  quick:    [NEW, 'Throw hard the instant the race starts', '<circle cx="32" cy="35" r="12"/><path d="M32 35l5-6M29 18h6M32 18v5M44 22l3-3"/>'],
+  feather:  [NEW, 'Touch down on a zone ever so gently', '<path d="M45 16C27 18 20 32 20 46c11-4 23-14 25-30z" fill="#fff"/><path d="M20 46l16-20"/>'],
+  spotless: [NEW, 'Land on a zone without a scratch', '<path d="M30 15l3 10 10 3-10 3-3 10-3-10-10-3 10-3z" fill="#fff"/><path d="M44 37l1 4 4 1-4 1-1 4-1-4-4-1 4-1z" fill="#fff"/>'],
+};
+const stamp = (color, icon) => s(`<path d="M32 4l4 4 6-2 2 6 6 1-1 6 5 4-4 5 3 5-5 3 1 6-6 1-2 6-6-2-4 4-4-4-6 2-2-6-6-1 1-6-5-3 3-5-4-5 5-4-1-6 6-1 2-6 6 2z" fill="${color}" stroke="INK" stroke-width="2.5" stroke-linejoin="round"/>`
+  + `<circle cx="32" cy="32" r="20" fill="#fffdf6" stroke="INK" stroke-width="2"/><g fill="none" stroke="INK" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${icon}</g>`);
+export function addTrickStamps(TRICKS) {
+  for (const [id, t] of Object.entries(TRICKS)) {
+    const d = TRICK_STAMPS[id];
+    if (!d || STICKER_BY_ID[`t_${id}`]) continue;
+    const st = { id: `t_${id}`, name: t.label, hint: d[1], stat: `trick_${id}`, need: 1, trick: true, art: stamp(d[0], d[2]) };
+    STICKERS.push(st); STICKER_BY_ID[st.id] = st;
+  }
+}
 export const STICKER_BY_ID = Object.fromEntries(STICKERS.map(st => [st.id, st]));
 
 // A die-cut sticker: a white border and a soft ink edge around the art
@@ -84,6 +133,8 @@ export function stickerSvg(id, { px } = {}) {
     + '<feMerge><feMergeNode in="edge"/><feMergeNode in="white"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'
     + `<g filter="url(#cut-${id})">${st.art}</g></svg>`;
 }
+
+addTrickStamps(TRICKS);
 
 /* ------------------------------------------------------------ the book --- */
 

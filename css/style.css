@@ -739,3 +739,11 @@ body.solo:has(#controller[data-view="fly"]) #hud { right: 0; }
 .floaters .trick:has(.ink-splat) span { color: #fff8e6; }
 @media (prefers-reduced-motion: reduce) { .ink-splat svg, .ink-splat circle { animation: none; } }
 .floater:has(.ink-splat) { color: #fff8e6; text-shadow: -2px -2px 0 #2c2416, 2px -2px 0 #2c2416, -2px 2px 0 #2c2416, 2px 2px 0 #2c2416; }
+/* trick callouts live in a rail on the left side of the view */
+.trick-rail { position: absolute; left: 24px; top: 24%; display: flex; flex-direction: column; align-items: flex-start; gap: 18px; pointer-events: none; }
+.trick-rail .trick { position: relative; left: auto !important; top: auto !important; transform: rotate(-3deg); justify-items: start; }
+.trick-rail .trick .ink-splat { left: 40%; }
+body.pv-touch .trick-rail { top: 12%; left: 10px; gap: 8px; }
+body.pv-touch .trick-rail .trick b { font-size: 26px; } body.pv-touch .trick-rail .trick span { font-size: 22px; }
+.sb-sec { grid-column: 1 / -1; margin: 8px 2px 0; font-family: var(--display); font-size: 28px; line-height: 1; }
+.sb-sec small { font-family: var(--body); font-size: 17px; color: var(--ink-soft); margin-left: 8px; }

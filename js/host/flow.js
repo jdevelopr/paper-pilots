@@ -219,6 +219,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       case 'trick': {
         const k = { duct: 'ducts', window: 'windows', speed: 'speed', circle: 'circles', clutch: 'clutch' }[e.id];
         if (k) bump(e.seat, k);
+        bump(e.seat, `trick_${e.id}`);
         if (e.mult >= 3) bump(e.seat, 'chain5');
         break;
       }
@@ -254,6 +255,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     for (const e of race.events.splice(0)) {
       const p = race.planes.find(q => q.seat === e.seat);
       const col = colorFor(e.seat);
+      // In solo, only your own tricks and combos get callouts (the computer pilots' stay quiet)
+      const mine = !solo || e.seat === 0;
       tally(e, p);
       switch (e.name) {
         case 'throw':
@@ -276,14 +279,15 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         }
         case 'clip': {
           const chain = hud.combo(e.seat, race.t);
-          sfx.ding(chain);
           const c = race.clips[e.i];
-          const s = renderer.project(c.x, c.y, c.z);
-          if (s.visible) hud.floater(s.x, s.y, chain > 1 ? `+${e.n}  x${chain}` : `+${e.n}`, chain > 2 ? 'combo big' : chain > 1 ? 'combo' : '', chain > 1 ? Math.min(3, (chain - 1) * 0.5) : 0);
-          if (s.visible) hud.clipFly(s, e.seat, e.n);
-          renderer.burst(c.x, c.y, c.z, '#c3cad1', 6 + chain * 2, 2.5 + chain * 0.4);
-          if (c.big) { renderer.confetti(c.x, c.y, c.z, ['#c3cad1', '#e0a526', '#f6efdc'], 24); renderer.punch(3); }
+          renderer.burst(c.x, c.y, c.z, '#c3cad1', mine ? 6 + chain * 2 : 5, mine ? 2.5 + chain * 0.4 : 2.5);
           sendTo(e.seat, 'fx', { kind: 'clip', n: e.n, chain });
+          if (!mine) break;
+          sfx.ding(chain);
+          const s = renderer.project(c.x, c.y, c.z);
+          if (s.visible) hud.floater(s.x, s.y, chain > 1 ? `+${e.n}  x${chain}` : `+${e.n}`, chain > 2 ? 'combo big' : chain > 1 ? 'combo' : '');
+          if (s.visible) hud.clipFly(s, e.seat, e.n);
+          if (c.big) { renderer.confetti(c.x, c.y, c.z, ['#c3cad1', '#e0a526', '#f6efdc'], 24); renderer.punch(3); }
           break;
         }
         case 'crumple':
@@ -326,14 +330,17 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           sendTo(e.seat, 'fx', { kind: 'gust' });
           break;
         case 'trick': {
+          sendTo(e.seat, 'fx', { kind: 'trick', label: e.label, clips: e.clips, mult: e.mult, boost: e.boost });
+          // an Afterburner kick still shows on the plane itself
+          if (e.boost && p) { renderer.burst(p.x, p.y, p.z, '#f08a2c', 10 + Math.round(e.boost * 3), 3); renderer.boost(e.seat, e.boost); }
+          if (!mine) break;
           // Big hand-lettered callout by the plane; the multiplier grows the stamp
           sfx.trick(e.mult);
+          if (e.boost) sfx.gust('up');
           const s = renderer.project(e.x, e.y + 1.4, e.z);
           hud.trick(s.visible ? s : null, nameOf(e.seat), e.label, e.clips, e.mult, colorFor(e.seat));
           if (p) renderer.confetti(p.x, p.y, p.z, [colorFor(e.seat), '#f2c94c', '#f6efdc'], 6 + e.mult * 4);
-          if (!solo || e.seat === 0) renderer.punch(2 + e.mult + (e.boost ? 2 + e.boost : 0));
-          if (e.boost && p) { renderer.burst(p.x, p.y, p.z, '#f08a2c', 10 + Math.round(e.boost * 3), 3); renderer.boost(e.seat, e.boost); sfx.gust('up'); }
-          sendTo(e.seat, 'fx', { kind: 'trick', label: e.label, clips: e.clips, mult: e.mult, boost: e.boost });
+          renderer.punch(2 + e.mult + (e.boost ? 2 + e.boost : 0));
           break;
         }
         case 'outside':
@@ -359,9 +366,10 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           if (!solo || e.seat === 0) renderer.punch(7);
           break;
         case 'chainbreak': {
+          sendTo(e.seat, 'fx', { kind: 'chainbreak', chain: e.chain });
+          if (!mine) break;
           const s = p ? renderer.project(p.x, p.y + 1, p.z) : null;
           if (s?.visible) hud.floater(s.x, s.y, `Chain broken (x${e.chain})`, 'dmg');
-          sendTo(e.seat, 'fx', { kind: 'chainbreak', chain: e.chain });
           break;
         }
         case 'touch':
@@ -370,9 +378,10 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           break;
         case 'close': {
           if (race.t < 1.5) break;
-          sfx.close();
-          if (!solo || e.seat === 0) renderer.punch(4);
           sendTo(e.seat, 'fx', { kind: 'close' });
+          if (!mine) break;
+          sfx.close();
+          renderer.punch(4);
           break;
         }
         case 'landed':
