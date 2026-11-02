@@ -101,7 +101,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       floor, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: match.racesPerFloor,
       players: raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title })), startsAt: () => startsAt,
     }, label => {
-      if (label === 'GO') { sfx.go(); hud.flash('go'); renderer.punch(10); renderer.shake(0.25); }
+      if (label === 'GO!') { sfx.go(); hud.flash('go'); renderer.punch(10); renderer.shake(0.25); }
       else sfx.tick();
     });
     hud.setHint(match.round > 0 ? 'Enter to skip' : '');
@@ -538,6 +538,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       return;
     }
     if (!match) return;
+    // Get set: during the countdown players can already line up their throw
+    if (phase === 'intro' && race && m.k === 'aim') { aimPlane(race, seat, m); return; }
     if (phase === 'race' && race) {
       if (m.k === 'aim') aimPlane(race, seat, m);
       else if (m.k === 'throw') throwPlane(race, seat, m);

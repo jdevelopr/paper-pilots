@@ -787,3 +787,14 @@ body.pv-touch .hud-buffs { top: 96px; gap: 6px; } body.pv-touch .hud-buffs .buff
 .stick.held { box-shadow: 0 0 0 4px var(--c, var(--mustard)); }
 .stick.held .thumb { box-shadow: 1px 2px 0 var(--ink); }
 .fly { touch-action: none; }
+
+/* countdown over the slingshot while you get set */
+.cv[data-v="aim"] { position: relative; }
+.aim-count { position: absolute; inset: 0; display: grid; place-items: center; z-index: 4; pointer-events: none;
+  font-family: var(--display); font-weight: 700; font-size: 120px; line-height: 1; color: #fff8e6;
+  -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; text-shadow: 4px 6px 0 rgba(44,36,22,.45); white-space: nowrap; }
+.aim-count:empty { display: none; }
+.aim-count.set { font-size: 64px; }
+.aim-count.go { color: var(--mustard); font-size: 140px; }
+.aim-count.tick { animation: count-pop 900ms var(--ease-back) forwards; }
+body.pv-touch .aim-count { font-size: 90px; } body.pv-touch .aim-count.go { font-size: 110px; } body.pv-touch .aim-count.set { font-size: 48px; }

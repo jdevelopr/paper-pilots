@@ -314,7 +314,7 @@ export function createHud(root) {
     const tick = () => {
       const left = startsAt() - Date.now();
       if (left <= 3000 && !panel.hidden) { panel.hidden = true; count.hidden = false; }
-      const label = left <= 0 ? 'GO' : left <= 3000 ? String(Math.ceil(left / 1000)) : null;
+      const label = left <= 0 ? 'GO!' : left <= 3000 ? String(Math.ceil(left / 1000)) : null;
       if (label && label !== last) {
         last = label;
         count.textContent = label;

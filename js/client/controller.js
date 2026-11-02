@@ -20,6 +20,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     <div class="cv" data-v="wait"><div class="cfill"><div><h3 class="w-t">Watch the screen</h3></div></div></div>
     <div class="cv" data-v="intro"><div class="cfill"><div><div class="csub i-floor"></div><h3 class="i-name"></h3><div class="cbig i-count"></div></div></div></div>
     <div class="cv" data-v="aim">
+      <div class="aim-count" aria-live="assertive"></div>
       <div class="chead"><span class="cname"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
       <div class="aim">
         <div class="angle"><span class="ang-v">12°</span><input class="vrange" type="range" min="0" max="34" step="1" value="12" aria-label="Throw angle"><span>Angle</span></div>
@@ -99,10 +100,17 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     });
   }
 
+  // Get set: for the last few seconds of the countdown your slingshot is live,
+  // so you can line up and pull back, then let go on "GO!".
+  const GETSET_MS = 3600;
+  const goAt = () => phaseAt + (phase.inMs ?? 0);
+  const getSet = () => phase.phase === 'intro' && goAt() - performance.now() <= GETSET_MS;
+  let pendingThrow = null;
+
   function decide() {
     const ph = phase.phase;
     enabled = ph === 'race';
-    if (ph === 'intro') return setView('intro');
+    if (ph === 'intro') return setView(getSet() ? 'aim' : 'intro');
     if (ph === 'race') {
       if (me.state === 'held') return setView('aim');
       if (me.state === 'fly' || me.state === 'slide' || me.state === 'fall') return setView('fly');
@@ -123,17 +131,23 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     q('.i-floor').textContent = `Floor ${phase.floor.number} · Race ${phase.leg ?? 1} of ${phase.legs ?? 1}`;
     q('.i-name').textContent = phase.floor.name;
     const endAt = phaseAt + phase.inMs;
-    const cnt = q('.i-count');
+    const cnt = q('.i-count'), big = q('.aim-count');
     const step = () => {
       const left = endAt - performance.now();
-      const label = left <= 0 ? 'GO' : left <= 3000 ? String(Math.ceil(left / 1000)) : '';
+      if (phase.phase === 'intro' && view === 'intro' && getSet()) decide();
+      const label = left <= 0 ? 'GO!' : left <= 3000 ? String(Math.ceil(left / 1000)) : left <= GETSET_MS ? 'Get set' : '';
       if (label !== lastCount) {
         lastCount = label;
-        cnt.textContent = label;
-        cnt.classList.remove('tick'); void cnt.offsetWidth; if (label) cnt.classList.add('tick');
-        if (label) vibrate(label === 'GO' ? 40 : 12);
+        for (const el of [cnt, big]) {
+          el.textContent = label;
+          el.classList.toggle('go', label === 'GO!');
+          el.classList.toggle('set', label === 'Get set');
+          el.classList.remove('tick'); void el.offsetWidth; if (label) el.classList.add('tick');
+        }
+        if (label && label !== 'Get set') vibrate(label === 'GO!' ? [40, 30, 60] : 12);
+        if (label === 'GO!') setTimeout(() => { if (big.textContent === 'GO!') big.textContent = ''; }, 900);
       }
-      if (phase.phase === 'intro') introRaf = requestAnimationFrame(step);
+      if (phase.phase === 'intro' || left > -1000) introRaf = requestAnimationFrame(step);
     };
     step();
   }
@@ -171,10 +185,22 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     const now = performance.now();
     if (!force && now - aimSentAt < 66) return;
     aimSentAt = now;
-    if (enabled) link.input({ k: 'aim', yaw: +aim.yaw.toFixed(3), pitch: +aim.pitch.toFixed(3), power: +aim.power.toFixed(3) });
+    if (enabled || getSet()) link.input({ k: 'aim', yaw: +aim.yaw.toFixed(3), pitch: +aim.pitch.toFixed(3), power: +aim.power.toFixed(3) });
   }
 
   function doThrow() {
+    if (!enabled && getSet()) {
+      if (aim.power < 0.08) { resetAim(); sendAim(true); return; }
+      if (goAt() - performance.now() < 350) {
+        // let go right on the beat: it flies the moment the race starts
+        pendingThrow = { yaw: +aim.yaw.toFixed(3), pitch: +aim.pitch.toFixed(3), power: +aim.power.toFixed(3) };
+        return;
+      }
+      phoneToast('Wait for GO!');
+      vibrate([60, 40, 60]);
+      resetAim(); sendAim(true);
+      return;
+    }
     if (!enabled || me.state !== 'held') return;
     if (aim.power < 0.08) { resetAim(); sendAim(true); return; }
     link.input({ k: 'throw', yaw: +aim.yaw.toFixed(3), pitch: +aim.pitch.toFixed(3), power: +aim.power.toFixed(3) });
@@ -512,7 +538,14 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
         }
         if (d.phase === 'results') paintResults();
         if (d.phase === 'final') paintFinal();
+        if (d.phase !== 'intro' && d.phase !== 'race') pendingThrow = null;
         decide();
+        if (d.phase === 'race' && pendingThrow) {
+          link.input({ k: 'throw', ...pendingThrow });
+          pendingThrow = null;
+          vibrate([15, 30, 25]);
+          me.state = 'fly'; decide();
+        }
         break;
       }
       case 'me': {
