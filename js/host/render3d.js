@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { createInk } from './ink.js';
-import { colorFor, TIER_COLORS } from '../shared/colors.js';
+import { colorFor, TIER_COLORS, PLAYER_COLORS } from '../shared/colors.js';
 import { SIM, itemReady, buffOn } from '../game/sim.js';
 import { moverAt, groundAt, gapWind } from '../game/floors.js';
 import { stickerArtSvg, cleanPlaced, STICKER_SIZE, STICKER_BY_ID } from '../shared/stickers.js';
@@ -2191,10 +2191,228 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     aimCamera(dt, tmp.set(sway, 7.6, 10.4), new THREE.Vector3(0, 7.9, 2.4), 3);
   }
 
+  /* ---------------------------------------------------------- podium --- */
+  // End-of-match stage: an office desk top with three paper-ream podiums,
+  // the top planes hovering over them, and confetti. It lives in its own
+  // scene, so it looks the same whatever floor the match ended on.
+  const POD_X = { 1: 0, 2: -3.3, 3: 3.3 }, POD_REAMS = { 1: 7, 2: 5, 3: 3 }, REAM_H = 0.34;
+  const POD_REVEAL = { 3: 0.7, 2: 1.6, 1: 2.7 };
+  let pod = null;
+  function podTop(place) { return POD_REAMS[place] * REAM_H; }
+  function buildPodiumStage() {
+    const s = new THREE.Scene();
+    s.background = new THREE.Color('#e8dcc2');
+    s.add(new THREE.HemisphereLight('#fffaf0', '#b8a888', 2.1));
+    s.add(new THREE.AmbientLight('#fff4e0', 0.8));
+    const key = new THREE.DirectionalLight('#fff1d6', 1.6); key.position.set(-6, 14, 10); s.add(key);
+    const rim = new THREE.DirectionalLight('#cfe0ff', 0.5); rim.position.set(8, 6, -10); s.add(rim);
+    const g = new THREE.Group(); s.add(g);
+    // desk top and the office wall behind it
+    g.add(boxMesh(22, 0.7, 11, '#b98a5a', 0, -0.7, 0.5));
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(60, 30), lam('#e9dfc8'));
+    wall.position.set(0, 8, -6); g.add(wall);
+    g.add(boxMesh(60, 0.5, 0.2, '#cdbb97', 0, 2.2, -5.85));
+    // banner
+    const ban = new THREE.Mesh(new THREE.PlaneGeometry(9, 2.1),
+      new THREE.MeshLambertMaterial({ map: labelTexture([{ text: 'Employee of the Month', bold: true }], { w: 1024, h: 240, bg: '#fff3c8' }) }));
+    ban.position.set(0, 7.2, -5.7); ban.rotation.z = -0.015; g.add(ban);
+    for (const sx of [-1, 1]) {   // tape corners
+      const tp = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.3), new THREE.MeshBasicMaterial({ color: '#f3ecd0', transparent: true, opacity: 0.85 }));
+      tp.position.set(sx * 4.4, 8.2, -5.65); tp.rotation.z = sx * 0.5; g.add(tp);
+    }
+    // pennant string of paper flags in player colours
+    for (let i = 0; i < 15; i++) {
+      const x = -10.5 + i * 1.5, y = 9.9 - Math.sin((i / 14) * Math.PI) * 0.9;
+      const fl = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.0, 3), lam(PLAYER_COLORS[i % PLAYER_COLORS.length]));
+      fl.rotation.z = Math.PI; fl.position.set(x, y - 0.5, -5.5); fl.scale.z = 0.15; g.add(fl);
+    }
+    // cardboard boxes, a pencil cup and sticky notes for scenery
+    const box = (w, h, d, x, z, ry) => {
+      const b = boxMesh(w, h, d, '#c49a6c', x, 0, z); b.rotation.y = ry; g.add(b);
+      const t = boxMesh(w + 0.04, 0.03, 0.35, '#d9c6a0', x, h + 0.01, z); t.rotation.y = ry; g.add(t);
+    };
+    box(2.6, 2.0, 2.2, -8.3, -2.6, 0.25); box(1.8, 1.4, 1.6, -7.6, -0.3, -0.2); box(2.2, 1.6, 2, 8.4, -2.4, -0.3);
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.4, 1.1, 10), lam('#5d7fa6')); cup.position.set(7.4, 0.55, 0.6); g.add(cup);
+    for (let i = 0; i < 4; i++) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.8, 6), lam(['#f2c94c', '#e2725b', '#7fb7e0', '#8fcf8b'][i]));
+      p.position.set(7.4 + Math.cos(i * 1.7) * 0.2, 1.3, 0.6 + Math.sin(i * 1.7) * 0.2); p.rotation.set(Math.cos(i) * 0.25, 0, Math.sin(i * 2) * 0.25); g.add(p);
+    }
+    for (let i = 0; i < 4; i++) { const n = boxMesh(1, 0.04, 1, '#f7e463', -6.4, i * 0.04, 2.6); n.rotation.y = i * 0.12; g.add(n); }
+    // confetti cannons: paper tubes angled up toward the middle
+    const cannons = [];
+    for (const sx of [-1, 1]) {
+      const c = new THREE.Group();
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.26, 1.6, 10), lam('#e2725b'));
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.3, 10), lam('#fff3c8'));
+      c.add(tube, band); c.position.set(sx * 6.2, 0.75, 1.8); c.rotation.z = sx * 0.55; g.add(c);
+      cannons.push({ x: sx * 6.2 - sx * 0.45, y: 1.5, z: 1.8, sx });
+    }
+    // confetti pool: paper bits plus a few paper clips (no ink outlines: layer 1)
+    const bitG = new THREE.PlaneGeometry(0.2, 0.12);
+    const pieces = [];
+    for (let i = 0; i < 260; i++) {
+      const m = new THREE.Mesh(bitG, new THREE.MeshLambertMaterial({ color: '#fff', side: THREE.DoubleSide }));
+      m.layers.set(1); m.visible = false; s.add(m);
+      pieces.push({ m, v: new THREE.Vector3(), spin: new THREE.Vector3(), ph: 0, rest: false, clip: false, live: false });
+    }
+    const clipG = clipGeometry(), clipM = new THREE.MeshLambertMaterial({ color: '#b8c0c8' });
+    for (let i = 0; i < 28; i++) {
+      const m = new THREE.Mesh(clipG, clipM); m.scale.setScalar(0.3); m.layers.set(1); m.visible = false; s.add(m);
+      pieces.push({ m, v: new THREE.Vector3(), spin: new THREE.Vector3(), ph: 0, rest: false, clip: true, live: false });
+    }
+    const cam = new THREE.PerspectiveCamera(46, camera.aspect, 0.25, 120);
+    cam.layers.enable(1);
+    return { scene: s, g, cannons, pieces, cam, slots: [], t: 0, drip: 0, ix: 0, cix: 0, fired: false };
+  }
+  function setPodium(list) {
+    if (!list) { if (pod) for (const sl of pod.slots) pod.g.remove(sl.stack, sl.plane, sl.card); if (pod) pod.slots = []; return; }
+    if (!pod) pod = buildPodiumStage();
+    for (const sl of pod.slots) pod.g.remove(sl.stack, sl.plane, sl.card);
+    pod.slots = []; pod.t = 0; pod.drip = 0; pod.fired = false;
+    for (const pc of pod.pieces) { pc.live = false; pc.m.visible = false; }
+    list.slice(0, 3).forEach((r, i) => {
+      const place = i + 1, x = POD_X[place], c = colorFor(r.seat);
+      // the stack: reams of paper in the player's wrapper colour
+      const stack = new THREE.Group();
+      for (let k = 0; k < POD_REAMS[place]; k++) {
+        const ry = (Math.sin(k * 7.3 + place) * 0.06);
+        // white paper inset behind a wrapper band, so no faces overlap (keeps the ink lines clean)
+        const ream = boxMesh(2.32, REAM_H, 1.72, '#fbf8ef', 0, k * REAM_H, 0);
+        const wrap = boxMesh(2.4, REAM_H - 0.1, 1.8, c, 0, k * REAM_H + 0.05, 0);
+        ream.rotation.y = wrap.rotation.y = ry;
+        stack.add(ream, wrap);
+      }
+      stack.position.set(x, 0, 0);
+      // place card on the front
+      const card = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.9),
+        new THREE.MeshLambertMaterial({ map: labelTexture([{ text: ['1st', '2nd', '3rd'][i], bold: true }], { w: 256, h: 176, bg: '#fffdf6' }) }));
+      card.position.set(x, Math.min(podTop(place) * 0.5, 1.2), 0.93); card.rotation.z = (i - 1) * 0.04;
+      const plane = buildPlane(r.seat, r.owned || [], r.rank || 0, r.stickers || []);
+      plane.userData.ball && (plane.userData.ball.visible = false);
+      plane.scale.setScalar(0.001);
+      pod.g.add(stack, card, plane);
+      pod.slots.push({ place, x, plane, stack, card, seat: r.seat, shown: 0 });
+    });
+  }
+  function podSpawn(pc, x, y, z, vx, vy, vz, color) {
+    pc.live = true; pc.rest = false; pc.m.visible = true;
+    pc.m.position.set(x, y, z); pc.v.set(vx, vy, vz);
+    pc.spin.set(Math.random() * 9 - 4.5, Math.random() * 9 - 4.5, Math.random() * 9 - 4.5);
+    pc.ph = Math.random() * 6;
+    if (!pc.clip) pc.m.material.color.set(color);
+  }
+  function podPiece(clip) {
+    const P = pod.pieces, nBits = P.length - 28;
+    if (clip) return P[nBits + (pod.cix++ % 28)];
+    return P[pod.ix++ % nBits];
+  }
+  function podColors() { return [...pod.slots.map(s => colorFor(s.seat)), '#fffdf6', '#f7e463', '#e2725b', '#7fb7e0']; }
+  function podFire() {
+    const cols = podColors();
+    const n = Math.round((reduceMotion ? 40 : 110) * Math.max(0.5, Q.fx));
+    for (const c of pod.cannons) {
+      for (let i = 0; i < n; i++) {
+        const sp = 9 + Math.random() * 6, a = 0.95 + (Math.random() - 0.5) * 0.5;
+        podSpawn(podPiece(false), c.x, c.y, c.z, -c.sx * Math.cos(a) * sp * 0.75, Math.sin(a) * sp, (Math.random() - 0.5) * 3.5, cols[i % cols.length]);
+      }
+      for (let i = 0; i < 6; i++) podSpawn(podPiece(true), c.x, c.y, c.z, -c.sx * (4 + Math.random() * 3), 8 + Math.random() * 4, (Math.random() - 0.5) * 3);
+    }
+  }
+  function podiumFrame(dt) {
+    const P = pod; P.t += dt;
+    const t = P.t;
+    for (const sl of P.slots) {
+      const at = POD_REVEAL[sl.place];
+      if (t >= at && sl.shown === 0) {
+        sl.shown = 0.0001;
+        const cols = [colorFor(sl.seat), '#fffdf6'];
+        const hy = podTop(sl.place) + 1.1;
+        for (let i = 0; i < 26; i++) podSpawn(podPiece(false), sl.x, hy, 0, (Math.random() - 0.5) * 5, 3 + Math.random() * 4, (Math.random() - 0.5) * 3, cols[i % 2]);
+        if (sl.place === 1 && !P.fired) { P.fired = true; podFire(); }
+      }
+      if (sl.shown > 0) sl.shown = Math.min(1, sl.shown + dt * 2.2);
+      const e = sl.shown, k = e <= 0 ? 0.001 : 1 + 2.7 * Math.pow(e - 1, 3) + 1.7 * Math.pow(e - 1, 2);   // ease-back
+      const size = sl.place === 1 ? 1.75 : 1.5;
+      sl.plane.scale.setScalar(Math.max(0.001, k * size));
+      sl.plane.position.set(sl.x, podTop(sl.place) + 1.35 + Math.sin(t * 1.8 + sl.place) * 0.14 + (1 - e) * 1.5, 0);
+      sl.plane.rotation.set(0.12 + Math.sin(t * 1.3 + sl.place) * 0.05, t * 0.6 + sl.place * 2.1, Math.sin(t * 1.1 + sl.place) * 0.12, 'YXZ');
+    }
+    // gentle drizzle once the winner is out
+    if (P.fired) {
+      P.drip += dt * (reduceMotion ? 6 : 26) * Math.max(0.4, Q.fx);
+      const cols = podColors();
+      while (P.drip >= 1) {
+        P.drip -= 1;
+        podSpawn(podPiece(false), (Math.random() - 0.5) * 16, 11, (Math.random() - 0.5) * 6 + 0.5, 0, -1, 0, cols[(Math.random() * cols.length) | 0]);
+      }
+    }
+    for (const pc of P.pieces) {
+      if (!pc.live || pc.rest) continue;
+      pc.v.y -= (pc.clip ? 14 : 9) * dt;
+      if (!pc.clip) {
+        // paper: strong drag, flutters and sways as it falls
+        pc.v.x *= Math.pow(0.25, dt); pc.v.z *= Math.pow(0.25, dt);
+        if (pc.v.y < -1.6) pc.v.y = -1.6;
+        pc.m.position.x += Math.sin(t * 3.2 + pc.ph) * 0.9 * dt;
+      }
+      pc.m.position.addScaledVector(pc.v, dt);
+      pc.m.rotation.x += pc.spin.x * dt; pc.m.rotation.y += pc.spin.y * dt; pc.m.rotation.z += pc.spin.z * dt;
+      // land on a podium top or the desk
+      const p = pc.m.position;
+      let floorY = 0.01;
+      for (const sl of P.slots) if (Math.abs(p.x - sl.x) < 1.2 && Math.abs(p.z) < 0.9) floorY = podTop(sl.place) + 0.01;
+      if (p.y < floorY && pc.v.y < 0) {
+        if (p.y > floorY - 0.4) { p.y = floorY; pc.rest = true; pc.m.rotation.set(-Math.PI / 2, 0, pc.ph); if (pc.clip) pc.m.rotation.set(-Math.PI / 2, 0, pc.ph); }
+        else if (p.y < -2) { pc.live = false; pc.m.visible = false; }
+      }
+      if (Math.abs(p.x) > 11 || p.z > 6) { if (p.y < 0) { pc.live = false; pc.m.visible = false; } }
+    }
+    // camera: push in, then a slow swing around the stage
+    const c = P.cam;
+    const narrow = c.aspect < 1.2 ? 1.4 : 1;
+    const push = Math.min(1, t / 3), ps = push * push * (3 - 2 * push);
+    const a = Math.sin(t * 0.18) * (reduceMotion ? 0.12 : 0.42);
+    const R = (16 - ps * 2.6) * narrow;
+    c.position.set(Math.sin(a) * R, 4.6 + (1 - ps) * 2.5 + Math.sin(t * 0.25) * 0.4, Math.cos(a) * R + 0.5);
+    c.lookAt(0, 2.0, -0.2);
+    podOffset(c);
+  }
+  // When a docked panel covers part of the canvas (solo on desktop), centre
+  // the stage in the part that is still visible.
+  function podOffset(c) {
+    const r = renderer.domElement.getBoundingClientRect(), hud = document.getElementById('hud')?.getBoundingClientRect();
+    const right = hud && hud.width > 0 ? Math.max(0, Math.round(r.right - hud.right)) : 0;
+    const w = Math.round(r.width), h = Math.round(r.height);
+    if (!w || !h) return;
+    const key = `${w}x${h}+${right}`;
+    if (c.userData.key === key) return;
+    c.userData.key = key;
+    c.aspect = (w + right) / h;
+    c.fov = c.aspect < 1.2 ? 58 : 46;
+    if (right > 0) c.setViewOffset(w + right, h, right, 0, w, h);
+    else { c.clearViewOffset(); c.updateProjectionMatrix(); }
+  }
+  // Screen positions for the name tags over each podium plane
+  function podiumTags() {
+    if (!pod) return [];
+    const r = renderer.domElement.getBoundingClientRect();
+    return pod.slots.map(sl => {
+      tmp.set(sl.x, podTop(sl.place) + 2.15, 0).project(pod.cam);
+      return { seat: sl.seat, place: sl.place, shown: sl.shown > 0.4, x: (tmp.x * 0.5 + 0.5) * r.width, y: (-tmp.y * 0.5 + 0.5) * r.height };
+    });
+  }
+
   /* ----------------------------------------------------------- frame --- */
   let time = 0;
   function frame(dt, view) {
     time += dt;
+    if (view.mode === 'podium' && pod) {
+      podiumFrame(dt);
+      if (Q.ink) ink.render(pod.scene, pod.cam, time, reduceMotion);
+      else { renderer.setRenderTarget(null); renderer.render(pod.scene, pod.cam); }
+      watchFps();
+      return;
+    }
     const race = view.race;
 
     if (view.mode === 'intro') introCam(view.introT);
@@ -2498,5 +2716,5 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   resize();
   window.addEventListener('resize', resize);
 
-  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, itemPop, setGraphics, get graphics() { return { pref: gfxPref, level }; }, get floor() { return floor; } };
+  return { setFloor, setPlanes, setPodium, podiumTags, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, itemPop, setGraphics, get graphics() { return { pref: gfxPref, level }; }, get floor() { return floor; } };
 }

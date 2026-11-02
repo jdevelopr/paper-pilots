@@ -415,31 +415,47 @@ export function createHud(root) {
     if (el) el.textContent = `${Math.max(0, Math.ceil(sec))}s`;
   }
 
+  // Final screen: the 3D podium fills the stage (see setPodium in render3d);
+  // the HUD adds a name tag over each of the top three planes, and a strip at
+  // the bottom with everyone else and the buttons.
+  let finTagEls = new Map();
   function final(rows, { onAgain, onMenu, soloMenu }) {
-    const order = [rows[1], rows[0], rows[2]].filter(Boolean);
-    const heights = { 1: 150, 2: 110, 3: 80 };
-    const html = `
-      <h2>Employee of the month</h2>
-      <div class="podium">${order.map(r => `
-        <div class="step" style="--c:${colorFor(r.seat)};--d:${3 - r.place}">
-          <div class="nm">${esc(r.name)}</div><div class="pts">${esc(r.rank || "")}</div>
-          <div class="pts">${plural(r.points, 'pt')} · ${plural(r.wins, 'win')}</div>
-          <div class="blk" style="height:${heights[r.place]}px">${r.place}</div>
-        </div>`).join('')}</div>
-      ${rows.length > 3 ? `<div class="rows">${rows.slice(3).map((r, i) => `
-        <div class="rrow" style="--c:${colorFor(r.seat)};--i:${i}"><div class="pl">${r.place}</div><div class="nm">${esc(r.name)}</div><div></div><div></div><div class="pts">${plural(r.points, 'pt')}</div></div>`).join('')}</div>` : ''}
-      <div class="foot">
-        ${soloMenu ? '<button class="btn ghost" data-a="menu">Menu</button>' : '<span></span>'}
-        <button class="btn primary" data-a="again">Play again</button>
+    const top = rows.slice(0, 3), rest = rows.slice(3);
+    race.hidden = true; intro.hidden = true; boardWrap.hidden = false;
+    boardWrap.innerHTML = `
+      <div class="finale">
+        <div class="fin-tags">${top.map(r => `
+          <div class="fin-tag p${r.place}" data-seat="${r.seat}" style="--c:${colorFor(r.seat)}">
+            <div class="pl">${['1st', '2nd', '3rd'][r.place - 1] || r.place}</div>
+            <div class="nm">${esc(r.name)}</div>
+            <div class="sub">${esc(r.rank || '')}</div>
+            <div class="sub">${plural(r.points, 'pt')} · ${plural(r.wins, 'win')}</div>
+          </div>`).join('')}</div>
+        <div class="fin-bottom note">
+          ${rest.length ? `<div class="fin-rest">${rest.map(r => `
+            <div class="fin-row" style="--c:${colorFor(r.seat)}"><b>${r.place}</b> ${esc(r.name)} <span>${plural(r.points, 'pt')}</span></div>`).join('')}</div>` : ''}
+          <div class="foot">
+            ${soloMenu ? '<button class="btn ghost" data-a="menu">Menu</button>' : '<span></span>'}
+            <button class="btn primary" data-a="again">Play again</button>
+          </div>
+        </div>
       </div>`;
-    const el = showBoard(html);
-    el.querySelector('[data-a=again]').onclick = onAgain;
-    el.querySelector('[data-a=menu]')?.addEventListener('click', onMenu);
+    finTagEls = new Map([...boardWrap.querySelectorAll('.fin-tag')].map(el => [+el.dataset.seat, el]));
+    boardWrap.querySelector('[data-a=again]').onclick = onAgain;
+    boardWrap.querySelector('[data-a=menu]')?.addEventListener('click', onMenu);
+  }
+  function finalTags(list) {
+    for (const t of list) {
+      const el = finTagEls.get(t.seat);
+      if (!el) continue;
+      el.classList.toggle('in', t.shown);
+      el.style.transform = `translate(${t.x.toFixed(1)}px, ${t.y.toFixed(1)}px) translate(-50%, -100%)`;
+    }
   }
 
   function hideBoards() { boardWrap.hidden = true; intro.hidden = true; }
   function showRace() { race.hidden = false; boardWrap.hidden = true; intro.hidden = true; }
   function setHint(t) { hint.textContent = t || ''; }
 
-  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, clipFly, clipCount, setMe, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
+  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, clipFly, clipCount, setMe, floater, banner, showIntro, results, shop, shopTimer, final, finalTags, hideBoards, showRace, setHint };
 }

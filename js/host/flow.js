@@ -55,6 +55,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   function start(setup = {}) {
     clearTimers();
     setupWanted = setup;
+    renderer.setPodium(null);
     match = createMatch(setup);
     bots = new Map();
     for (const h of humans()) addPlayer(match, h.seat, h.name);
@@ -197,11 +198,14 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
 
     const view = phase === 'intro'
       ? { mode: 'intro', race, introT: 1 - Math.max(0, (startsAt - Date.now() - 3000)) / ((match.round === 0 ? INTRO_FIRST_MS : INTRO_MS) - 3000) }
-      : phase === 'shop' || phase === 'final'
+      : phase === 'final'
+        ? { mode: 'podium' }
+      : phase === 'shop'
         ? { mode: 'showcase', race, seats: raceSeats }
         : { mode: 'race', race, focus: solo ? 0 : null };
     if (phase !== 'lobby') {
       renderer.frame(dt, view);
+      if (phase === 'final') hud.finalTags(renderer.podiumTags());
       if (phase === 'race') hud.update(race, renderer.project, Object.fromEntries(humans().map(h => [h.seat, h])));
     }
   }
@@ -521,6 +525,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     sfx.fanfare();
     hud.setHint('');
     renderer.setPlanes(planeLooks());
+    const looks = new Map(planeLooks().map(l => [l.seat, l]));
+    renderer.setPodium(finalRows.slice(0, 3).map(r => ({ seat: r.seat, ...(looks.get(r.seat) || { owned: r.owned || [] }) })));
     hud.final(finalRows, {
       soloMenu: solo,
       onAgain: () => { if (solo) start(setupWanted); else onExit?.('lobby'); },

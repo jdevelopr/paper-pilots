@@ -810,3 +810,32 @@ body.solo:has(#controller[data-view="fly"]) .clip-rail { right: 24px; }
 .clipcount.big { color: #a8741a; font-size: 40px; }
 @keyframes clipcount { 0% { opacity: 0; transform: translateX(20px) scale(.7); } 15% { opacity: 1; transform: translateX(0) scale(1.1); } 30% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
 @media (prefers-reduced-motion: reduce) { .clipcount { animation: none; } }
+
+/* Final screen: name tags over the 3D podium, bottom strip with the rest */
+.finale { position: absolute; inset: 0; pointer-events: none; }
+.fin-tags { position: absolute; inset: 0; }
+.fin-tag {
+  --c: var(--mustard);
+  position: absolute; left: 0; top: 0; min-width: 150px; padding: 6px 16px 8px; text-align: center;
+  background: color-mix(in srgb, var(--c) 55%, #fffdf6); border: 2.5px solid var(--ink); border-radius: var(--wob-2);
+  box-shadow: 3px 4px 0 rgba(44,36,22,.35); opacity: 0; transition: opacity 300ms; will-change: transform;
+}
+.fin-tag.in { opacity: 1; }
+.fin-tag.in > * { animation: pop 500ms var(--ease-back) backwards; }
+.fin-tag .pl { font-size: 30px; font-weight: 700; line-height: 1; }
+.fin-tag .nm { font-size: 40px; font-weight: 700; line-height: 1.05; white-space: nowrap; }
+.fin-tag .sub { font-family: var(--body); font-size: 19px; line-height: 1.2; }
+.fin-tag.p1 { min-width: 180px; }
+.fin-tag.p1 .nm { font-size: 50px; }
+.fin-bottom {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%) rotate(-.4deg);
+  width: min(760px, 92%); padding: 10px 22px 14px; pointer-events: auto;
+  animation: fin-up 600ms var(--ease-paper) 2.8s backwards;
+}
+@keyframes fin-up { from { opacity: 0; transform: translateX(-50%) translateY(40px) rotate(3deg); } }
+.fin-bottom .foot { margin-top: 6px; display: flex; justify-content: space-between; align-items: center; }
+.fin-rest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.fin-row { --c: var(--mustard); padding: 2px 12px; border: 2px solid var(--ink); border-radius: var(--wob-2); background: color-mix(in srgb, var(--c) 45%, #fffdf6); font-size: 26px; }
+.fin-row span { font-family: var(--body); font-size: 18px; }
+body.solo .fin-tag .nm { font-size: 32px; }
+body.solo .fin-tag.p1 .nm { font-size: 40px; }
