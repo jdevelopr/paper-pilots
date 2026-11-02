@@ -156,33 +156,13 @@ export function createHud(root) {
   fx.className = 'screen-fx';
   root.appendChild(fx);
   function flash(kind = 'white') {
-    if (reduceMotion && kind !== 'photo') return;
+    if (reduceMotion) return;
     const f = document.createElement('div');
     f.className = `flash ${kind}`;
     fx.appendChild(f);
     setTimeout(() => f.remove(), 900);
   }
 
-  // Photo finish: letterbox bars + stamp while the replay runs, then a
-  // camera-flash and a pinned "photo" card naming the winner and the margin.
-  function photoStart(a, b) {
-    race.hidden = true;
-    fx.innerHTML = `<div class="letterbox top"></div><div class="letterbox bot"></div>
-      <div class="pf-stamp">Photo finish</div>
-      <div class="pf-names"><span style="--c:${colorFor(a.seat)}">${esc(a.name)}</span><i>vs</i><span style="--c:${colorFor(b.seat)}">${esc(b.name)}</span></div>`;
-  }
-  function photoReveal(a, b, margin) {
-    flash('photo');
-    fx.querySelector('.pf-stamp')?.remove();
-    fx.querySelector('.pf-names')?.remove();
-    const card = document.createElement('div');
-    card.className = 'pf-card';
-    card.innerHTML = `<div class="pf-frame"><div class="pf-win" style="--c:${colorFor(a.seat)}">${esc(a.name)}</div>
-      <div class="pf-by">by ${margin < 1 ? 'a nose' : `${margin.toFixed(1)} ft`}</div>
-      <div class="pf-lose">${esc(b.name)}</div></div><div class="pf-cap">Official result</div>`;
-    fx.appendChild(card);
-  }
-  function photoEnd() { fx.innerHTML = ''; }
 
   // Trick callout: hand-lettered name + bonus, stamped near the plane (or in
   // a column on the right if the plane is off-screen). Bigger with the combo.
@@ -355,5 +335,5 @@ export function createHud(root) {
   function showRace() { race.hidden = false; boardWrap.hidden = true; intro.hidden = true; }
   function setHint(t) { hint.textContent = t || ''; }
 
-  return { setRace, update, setLeadChange, combo, flash, photoStart, photoReveal, photoEnd, trick, racerHit, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
+  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
 }

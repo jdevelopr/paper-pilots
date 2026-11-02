@@ -11,7 +11,7 @@ body.pv-touch .progress { display: none; }
 body.pv-touch .floaters .trick { font-size: 70%; }
 /* Between races the controller takes the whole phone screen again */
 body.pv-touch #controller:is([data-view="shop"], [data-view="results"], [data-view="final"]) { top: 0; background: var(--cork); z-index: 3; }
-body.pv:not([data-phase="race"]):not([data-phase="photo"]) .hud-race { display: none; }
+body.pv:not([data-phase="race"]) .hud-race { display: none; }
 
 /* ------------------------------------------------- match setup picker --- */
 .match-setup { display: grid; gap: 10px; }

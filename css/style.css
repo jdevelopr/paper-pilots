@@ -607,34 +607,7 @@ body.solo .hint { right: auto; left: 18px; }
 .flash.white { background: #fffaf0; opacity: .55; }
 .flash.go { background: radial-gradient(circle, rgba(255,250,240,.75), rgba(242,201,76,.25) 60%, transparent 80%); }
 .flash.hit { background: radial-gradient(circle, transparent 50%, rgba(184,50,26,.35)); }
-.flash.photo { background: #ffffff; animation-duration: 900ms; }
 @keyframes flash-out { from { opacity: 1; } to { opacity: 0; } }
-
-.letterbox { position: absolute; left: 0; right: 0; height: 11vh; background: #1b1712; animation: bars-in 500ms var(--ease-out) backwards; }
-.letterbox.top { top: 0; } .letterbox.bot { bottom: 0; animation-name: bars-in-b; }
-@keyframes bars-in { from { transform: translateY(-100%); } }
-@keyframes bars-in-b { from { transform: translateY(100%); } }
-.pf-stamp {
-  position: absolute; top: 14vh; left: 50%; transform: translateX(-50%) rotate(-4deg);
-  padding: 4px 26px; font-family: var(--display); font-weight: 700; font-size: 64px; color: var(--red);
-  border: 5px solid var(--red); border-radius: 10px 14px 9px 12px; background: rgba(255,248,230,.75);
-  animation: stamp 500ms var(--ease-back) 200ms backwards;
-}
-@keyframes stamp { from { opacity: 0; transform: translateX(-50%) rotate(-12deg) scale(2.2); } }
-.pf-names { position: absolute; bottom: 14vh; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; align-items: center; font-family: var(--display); font-weight: 700; font-size: 40px; color: #fff8e6; }
-.pf-names span { padding: 0 14px; color: var(--ink); background: var(--c); border: 2px solid var(--ink); border-radius: 5px 8px 6px 7px; }
-.pf-names i { font-style: normal; font-size: 30px; }
-.pf-card {
-  position: absolute; top: 50%; left: 50%; width: 360px; padding: 16px 16px 10px; background: #fffdf6;
-  border: 2px solid var(--ink); box-shadow: 6px 10px 0 rgba(0,0,0,.35); transform: translate(-50%, -50%) rotate(-3deg);
-  animation: polaroid 700ms var(--ease-paper) 250ms backwards; text-align: center; font-family: var(--display);
-}
-@keyframes polaroid { from { opacity: 0; transform: translate(-50%, -40%) rotate(8deg) scale(.7); } }
-.pf-frame { padding: 22px 10px; background: #e9dcbc; border: 2px solid var(--ink); }
-.pf-win { display: inline-block; padding: 0 16px; font-size: 56px; font-weight: 700; background: var(--c); border: 2px solid var(--ink); }
-.pf-by { font-size: 34px; margin: 6px 0; }
-.pf-lose { font-size: 28px; color: var(--ink-soft); }
-.pf-cap { font-size: 24px; margin-top: 8px; color: var(--ink-soft); }
 
 /* Phone flashes */
 #controller .pflash { position: absolute; inset: 0; pointer-events: none; animation: flash-out 450ms var(--ease-out) forwards; z-index: 5; border-radius: inherit; }

@@ -57,8 +57,6 @@ export const sfx = {
   crumple: () => { for (let i = 0; i < 6; i++) noise(0.08, { freq: 2500 + Math.random() * 2000, q: 2, vol: 0.3, delay: i * 0.05 }); },
   gust: dir => noise(0.5, { freq: dir === 'up' ? 400 : 900, sweep: dir === 'up' ? 3 : 0.4, q: 0.6, vol: 0.22 }),
   close: () => { noise(0.3, { freq: 2600, sweep: 0.35, q: 1.2, vol: 0.3 }); tone(880, 0.12, { type: 'sine', vol: 0.08, slide: 1.5 }); },
-  shutter: () => { noise(0.05, { freq: 3000, q: 2, vol: 0.6 }); noise(0.08, { freq: 1500, q: 2, vol: 0.5, delay: 0.09 }); },
-  drumroll: (secs = 2) => { for (let t = 0; t < secs; t += 0.06) noise(0.05, { freq: 250, q: 0.8, vol: 0.12 + 0.18 * (t / secs), delay: t }); },
   promo: () => [659, 784, 988, 1319].forEach((f, i) => tone(f, 0.25, { type: 'triangle', vol: 0.14, delay: i * 0.09 })),
   trick: (mult = 1) => { const k = Math.pow(1.19, Math.min(mult, 5) - 1); [523, 659, 784].forEach((f, i) => tone(f * k, 0.16, { type: 'square', vol: 0.11, delay: i * 0.06 })); noise(0.25, { freq: 1800 * k, sweep: 2, q: 1, vol: 0.12 }); },
   land: () => noise(0.35, { freq: 1800, sweep: 0.3, vol: 0.25 }),

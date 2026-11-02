@@ -90,7 +90,7 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
       } else if (phase === 'shop' || phase === 'final') view = { mode: 'showcase', race, seats };
       else view = { mode: 'race', race, focus: getSeat() };
       renderer.frame(dt, view);
-      if (phase === 'race' || phase === 'photo') hud.update(race, renderer.project, null);
+      if (phase === 'race') hud.update(race, renderer.project, null);
     }
     requestAnimationFrame(frame);
   }

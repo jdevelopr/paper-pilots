@@ -888,8 +888,6 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   // Field of view widens with speed and "punches" on big moments
   let fovKick = 0, fovSpeed = 0, baseFov = 58;
   const punch = amt => { if (!reduceMotion) fovKick = Math.min(14, fovKick + amt); };
-  let sepia = 0, sepiaTarget = 0;
-  const setSepia = v => { sepiaTarget = v; };
 
   let shakeAmt = 0;
   const shake = m => { if (!reduceMotion) shakeAmt = Math.min(0.6, shakeAmt + m); };
@@ -1617,22 +1615,6 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     aimCamera(dt, pos, look, k);
   }
 
-  // Photo finish: a low side-on shot across the two contenders, slowly dollying.
-  function photoCam(race, dt, pair) {
-    const ps = race.planes.filter(p => pair.includes(p.seat));
-    if (!ps.length) return;
-    const cx = ps.reduce((a, p) => a + p.x, 0) / ps.length;
-    const cy = ps.reduce((a, p) => a + p.y, 0) / ps.length;
-    const cz = ps.reduce((a, p) => a + p.z, 0) / ps.length;
-    const spread = ps.length > 1 ? Math.hypot(ps[0].x - ps[1].x, ps[0].z - ps[1].z) : 0;
-    const side = cx > 0 ? -1 : 1;                 // shoot from the roomier side
-    const W = floor ? floor.width / 2 - 1.5 : 20;
-    const dist = 8 + spread * 0.6;
-    const pos = new THREE.Vector3(Math.max(-W, Math.min(W, cx + side * dist)), Math.max((floor?.gap ? groundAt(floor, cz) : 0) + 1.2, cy + 1.6), -(cz - 2 + Math.sin(time * 0.6) * 1.5));
-    const look = new THREE.Vector3(cx, Math.max((floor?.gap ? groundAt(floor, cz) : 0) + 0.4, cy - 0.2), -cz);
-    aimCamera(dt, pos, look, 2.2);
-  }
-
   function chase(race, dt, focus) {
     if (focus != null) {
       const me = race.planes.find(p => p.seat === focus);
@@ -1711,20 +1693,18 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
 
     if (view.mode === 'intro') introCam(view.introT);
     else if (view.mode === 'showcase') showcase(dt, view.seats || []);
-    else if (view.mode === 'photo' && race) photoCam(race, dt, view.pair);
     else if (race) chase(race, dt, view.focus);
 
     // Speed sensation: FOV follows the fastest flying plane (or yours, in solo)
-    if (race && view.mode !== 'photo') {
+    if (race) {
       const fliers = race.planes.filter(p => p.state === 'fly');
       const mine = view.focus != null ? race.planes.find(p => p.seat === view.focus) : null;
       const v = mine ? (mine.state === 'fly' ? mine.v : 0) : fliers.reduce((m, p) => Math.max(m, p.v), 0);
       fovSpeed += ((reduceMotion ? 0 : Math.max(-2, Math.min(10, (v - 12) * 0.7))) - fovSpeed) * Math.min(1, dt * 3);
     } else fovSpeed *= Math.pow(0.1, dt);
     fovKick *= Math.pow(0.05, dt);
-    const fov = baseFov + fovSpeed + fovKick - (view.mode === 'photo' ? 12 : 0);
+    const fov = baseFov + fovSpeed + fovKick;
     if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix(); }
-    sepia += (sepiaTarget - sepia) * Math.min(1, dt * 4);
 
     if (race && view.mode !== 'showcase') syncPlanes(race, dt);
 
@@ -1841,7 +1821,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       shakeAmt *= Math.pow(0.02, dt);
     }
     camera.lookAt(camLook);
-    ink.render(scene, camera, time, reduceMotion, sepia);
+    ink.render(scene, camera, time, reduceMotion);
   }
 
   function syncPlanes(race, dt) {
@@ -1950,5 +1930,5 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   resize();
   window.addEventListener('resize', resize);
 
-  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, setSepia, shake, project, resize, get floor() { return floor; } };
+  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, get floor() { return floor; } };
 }
