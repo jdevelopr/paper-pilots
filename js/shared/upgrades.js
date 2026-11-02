@@ -21,7 +21,7 @@ export const ROMAN = ['', 'I', 'II', 'III'];
 export const MK = lv => `Mk ${ROMAN[lv]}`;
 
 // Price of each level relative to the part's base price.
-const COST_STEPS = [1, 2.2, 4];
+const COST_STEPS = [1.3, 3.4, 6.5];
 // Rank needed to buy each level (1-based).
 const LEVEL_RANK = [0, 0, RANK.Associate, RANK.Supervisor];
 
