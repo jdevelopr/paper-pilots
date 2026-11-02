@@ -1109,33 +1109,55 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     addStreak('lift', reduceMotion ? 30 : 110, vGeo);
     addStreak('cross', reduceMotion ? 30 : 80, hGeo);
 
-    // Curtains of wind with hand-drawn chevrons: down at the near edge, up at the far end
-    const chevronTex = (up) => {
-      const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    // Gust swooshes: hand-drawn curls of wind that tumble down off the near
+    // roof and billow up the updraft wall, fading in and out as they go
+    const swooshTex = (flip) => {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 96;
       const x = c.getContext('2d');
-      x.strokeStyle = 'rgba(255,255,255,0.95)'; x.lineWidth = 9; x.lineCap = 'round'; x.lineJoin = 'round';
-      for (const cy of [36, 96]) {
+      const path = () => {
         x.beginPath();
-        const d = up ? -1 : 1;
-        x.moveTo(30, cy - 14 * d); x.lineTo(64, cy + 14 * d); x.lineTo(98, cy - 14 * d);
-        x.stroke();
-      }
-      const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+        x.moveTo(8, 48);
+        x.bezierCurveTo(60, 48 + 22 * flip, 110, 48 - 22 * flip, 165, 48);
+        // the curl at the leading end
+        const cx = 192, cy = 48 - 14 * flip;
+        x.bezierCurveTo(190, 48, 214, 48 - 2 * flip, 214, cy);
+        x.arc(cx, cy, 22, 0, flip > 0 ? -Math.PI * 1.45 : Math.PI * 1.45, flip > 0);
+        x.lineTo(cx - 2, cy + 6 * flip);
+      };
+      x.lineCap = 'round'; x.lineJoin = 'round';
+      x.strokeStyle = 'rgba(44,36,22,0.45)'; x.lineWidth = 13; path(); x.stroke();
+      x.strokeStyle = 'rgba(255,255,255,0.95)'; x.lineWidth = 8; path(); x.stroke();
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
       return t;
     };
-    const curtains = [];
-    const curtain = (z, y0, y1, up) => {
-      const tex = chevronTex(up); tex.repeat.set(W / 8, (y1 - y0) / 8);
-      const mat = new THREE.MeshBasicMaterial({ map: tex, color: up ? '#bfe6f5' : '#d8ecf4', transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(W, y1 - y0), mat);
-      m.position.set(0, (y0 + y1) / 2, -z); m.layers.set(1); env.add(m);
-      curtains.push({ tex, up });
+    const swooshMats = [1, -1].map(fl => swooshTex(fl));
+    const swooshes = [];
+    const resetSwoosh = (sw, any) => {
+      const up = sw.kind === 'lift';
+      sw.z = up ? P.lift0 + Math.random() * (P.lift1 - P.lift0) : P.dive0 + 2 + Math.random() * (P.dive1 - P.dive0 - 4);
+      sw.x = (Math.random() - 0.5) * (W + 6);
+      sw.y0 = up ? P.floorY + Math.random() * 10 : 8 + Math.random() * 10;
+      sw.span = up ? (P.liftTop + 8 - P.floorY) * (0.6 + Math.random() * 0.4) : (sw.y0 - P.cruise) * (0.7 + Math.random() * 0.3);
+      sw.life = any ? Math.random() : 0;
+      sw.dur = 1.1 + Math.random() * 0.9;
+      const len = 4 + Math.random() * 5;
+      sw.s.scale.set(len, len * 0.375, 1);
+      // each swoosh sweeps diagonally in toward the middle of the run
+      sw.dir = sw.x < 0 ? 1 : -1;
+      const ang = (up ? 1 : -1) * (0.55 + Math.random() * 0.35);
+      sw.slope = 1 / Math.tan(Math.abs(ang));
+      sw.s.material.rotation = sw.dir > 0 ? ang : Math.PI - ang;
     };
     if (P) {
-      curtain(P.dive0 + 6, P.cruise, 18, false);
-      curtain(P.dive0 + 30, P.cruise - 2, 12, false);
-      curtain(P.lift0 + 4, P.floorY, P.liftTop + 6, true);
-      curtain(P.lift0 + 34, P.floorY, P.liftTop + 2, true);
+      for (const [kind, n] of [['dive', reduceMotion ? 10 : 34], ['lift', reduceMotion ? 12 : 42]]) {
+        for (let i = 0; i < n; i++) {
+          const mat = new THREE.SpriteMaterial({ map: swooshMats[i % 2], transparent: true, depthWrite: false, opacity: 0 });
+          const s = new THREE.Sprite(mat); s.layers.set(1); env.add(s);
+          const sw = { s, kind };
+          resetSwoosh(sw, true);
+          swooshes.push(sw);
+        }
+      }
     }
 
     // Wind rings: a spinning hoop of paper streamers. Side rings are gold (worth more).
@@ -1167,7 +1189,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       }
       flows.push({ s: sm, sts });
     }
-    anims.gap = { g, W, streaks, respawn, curtains, hoops, flows };
+    anims.gap = { g, W, streaks, respawn, swooshes, resetSwoosh, hoops, flows };
   }
 
   /* ------------------------------------------------------------ floor --- */
@@ -1690,7 +1712,15 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
         st.m.position.set(st.x, st.y, -st.z);
         st.m.lookAt(camera.position.x, st.y, camera.position.z);
       }
-      for (const c of G.curtains) c.tex.offset.y += (c.up ? -0.9 : 0.9) * dt;
+      for (const sw of G.swooshes) {
+        sw.life += dt / sw.dur;
+        if (sw.life >= 1) G.resetSwoosh(sw, false);
+        const u = sw.life, up = sw.kind === 'lift';
+        // ease along the gust, with a little sideways sway
+        const d = sw.span * (u * (0.6 + 0.4 * u));
+        sw.s.position.set(sw.x + sw.dir * d * Math.min(1.2, sw.slope) * 0.6, sw.y0 + (up ? 1 : -1) * d, -sw.z);
+        sw.s.material.opacity = 0.9 * Math.sin(Math.PI * u);
+      }
       for (const h of G.hoops) h.spin.rotation.z += h.rate * dt;
       for (const fl of G.flows) for (const st of fl.sts) {
         st.z += st.sp * dt; if (st.z > fl.s.z1) st.z = fl.s.z0;
