@@ -391,7 +391,7 @@ function flyStep(race, p, dt, pz = p.z) {
     for (const g of pk.rings) {
       if (pz < g.z && p.z >= g.z && (p.x - g.x) ** 2 + (p.y - g.y) ** 2 < g.r * g.r) {
         p.v = Math.min(28, Math.max(p.v, 8) + g.s);
-        race.events.push({ name: 'boost', seat: p.seat, kind: 'ring', amount: g.s, x: p.x, y: p.y, z: p.z });
+        race.events.push({ name: 'boost', seat: p.seat, kind: 'ring', amount: g.s, gold: !!g.off, x: p.x, y: p.y, z: p.z });
       }
     }
   }

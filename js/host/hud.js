@@ -19,7 +19,7 @@ export function createHud(root) {
   root.innerHTML = `
     <div class="hud-race" hidden>
       <div class="racers"></div>
-      <div class="hud-top"><div class="hud-chip hud-floor"></div><div class="hud-chip hud-timer"></div></div>
+      <div class="hud-top"><div class="hud-chip hud-floor"></div><div class="hud-chip hud-timer"></div><div class="hud-chip hud-clips" hidden>${clipIcon}<span>0</span></div></div>
       <div class="progress"></div>
       <div class="tags"></div>
     </div>
@@ -35,6 +35,10 @@ export function createHud(root) {
 
   let racerEls = new Map(), tagEls = new Map(), pipEls = new Map();
   let floor = null;
+  // Your own clip counter (solo and player views), which collected clips fly into
+  const myClips = q('.hud-clips'), myClipsN = myClips.querySelector('span');
+  let meSeat = null, inFlight = 0;
+  const setMe = seat => { meSeat = seat; myClips.hidden = seat == null; };
   const shownClips = new Map();
 
   function setRace(f, players, roundLabel) {
@@ -42,6 +46,7 @@ export function createHud(root) {
     floorEl.textContent = `Floor ${f.number} · ${f.name}${roundLabel ? ` · ${roundLabel}` : ''}`;
     racersEl.innerHTML = ''; tags.innerHTML = ''; progress.innerHTML = '';
     racerEls = new Map(); tagEls = new Map(); pipEls = new Map();
+    inFlight = 0; myClipsN.textContent = '0';
     // Course strip: zone ticks along the length, pips for each plane.
     for (const zn of f.zones) {
       const z = document.createElement('div');
@@ -98,6 +103,10 @@ export function createHud(root) {
     timerEl.hidden = raceState.over;
     timerEl.classList.toggle('low', left < 8 && !raceState.over);
     for (const p of raceState.planes) {
+      if (p.seat === meSeat) {
+        const v = String(Math.max(0, p.clips - inFlight));
+        if (myClipsN.textContent !== v) myClipsN.textContent = v;
+      }
       const el = racerEls.get(p.seat);
       if (!el) continue;
       const hp = el.querySelector('.hp i');
@@ -166,11 +175,64 @@ export function createHud(root) {
 
   // Trick callout: hand-lettered name + bonus, stamped near the plane (or in
   // a column on the right if the plane is off-screen). Bigger with the combo.
+  // Combo ink: a blot of ink splats behind a callout, bigger and messier as the chain climbs
+  function inkSplat(level) {
+    const R = 22 + level * 26, N = 16, drops = Math.round(1 + level * 3.5), pad = R * 2.2;
+    const pts = Array.from({ length: N }, (_, i) => {
+      const a = i / N * Math.PI * 2, r = R * (0.72 + Math.random() * 0.42);
+      return [pad + Math.cos(a) * r, pad + Math.sin(a) * r];
+    });
+    // smooth blob through the points
+    let d = `M${((pts[0][0] + pts[N - 1][0]) / 2).toFixed(1)},${((pts[0][1] + pts[N - 1][1]) / 2).toFixed(1)}`;
+    for (let i = 0; i < N; i++) { const a = pts[i], b = pts[(i + 1) % N]; d += `Q${a[0].toFixed(1)},${a[1].toFixed(1)} ${((a[0] + b[0]) / 2).toFixed(1)},${((a[1] + b[1]) / 2).toFixed(1)}`; }
+    let dots = '';
+    for (let i = 0; i < drops; i++) {
+      const a = Math.random() * Math.PI * 2, r = R * (1.15 + Math.random() * 0.8), s = 2 + Math.random() * (3 + level * 2.5);
+      dots += `<circle cx="${(pad + Math.cos(a) * r).toFixed(1)}" cy="${(pad + Math.sin(a) * r).toFixed(1)}" r="${s.toFixed(1)}" style="--d:${(i * 25)}ms"/>`;
+    }
+    const el = document.createElement('div');
+    el.className = 'ink-splat';
+    el.style.setProperty('--sz', `${pad * 2}px`);
+    el.innerHTML = `<svg viewBox="0 0 ${pad * 2} ${pad * 2}" aria-hidden="true"><path d="${d}"/>${dots}</svg>`;
+    return el;
+  }
+
+  // A collected clip flies from the plane into your clip counter, which pops when it lands
+  function clipFly(from, seat, n = 1) {
+    if (seat !== meSeat || !from) return;
+    const vis = el => el && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && el.closest('[hidden]') == null;
+    const ctl = document.querySelector('#controller .cv.on .cclips');
+    const tgt = vis(ctl) && ctl.getBoundingClientRect().top < innerHeight ? ctl : vis(myClips) ? myClips : null;
+    if (!tgt) return;
+    if (reduceMotion) { tgt.classList.remove('bump'); void tgt.offsetWidth; tgt.classList.add('bump'); return; }
+    const rr = root.getBoundingClientRect(), tr = (tgt.querySelector('svg') || tgt).getBoundingClientRect();
+    const x0 = rr.left + from.x, y0 = rr.top + from.y, x1 = tr.left + tr.width / 2, y1 = tr.top + tr.height / 2;
+    const dist = Math.hypot(x1 - x0, y1 - y0), arc = 60 + dist * 0.18;
+    const el = document.createElement('div');
+    el.className = 'clipfly';
+    el.innerHTML = clipIcon;
+    document.body.appendChild(el);
+    if (tgt === myClips) inFlight += n;
+    const frames = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * arc;
+      frames.push({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%) rotate(${(t * 540).toFixed(0)}deg) scale(${(1.5 - t * 0.8).toFixed(2)})`, opacity: t > 0.92 ? 0.6 : 1 });
+    }
+    const anim = el.animate(frames, { duration: Math.min(850, 420 + dist * 0.4), easing: 'cubic-bezier(.45,0,.8,.6)' });
+    anim.onfinish = anim.oncancel = () => {
+      el.remove();
+      if (tgt === myClips) inFlight = Math.max(0, inFlight - n);
+      tgt.classList.remove('bump'); void tgt.offsetWidth; tgt.classList.add('bump');
+    };
+  }
+
   function trick(at, name, label, clips, mult, color) {
     const el = document.createElement('div');
-    el.className = `trick m${Math.min(mult, 5)}`;
+    el.className = `trick m${Math.min(Math.ceil(mult), 5)}`;
     el.style.setProperty('--c', color);
     el.innerHTML = `<b>${esc(label)}</b><span>+${clips}${mult > 1 ? ` <i>x${mult}</i>` : ''}</span>`;
+    // chain multiplier runs 1 .. 3; the ink grows with it
+    if (mult > 1) el.prepend(inkSplat((mult - 1) * 1.5));
     if (at) { el.style.left = `${at.x}px`; el.style.top = `${at.y}px`; }
     else { el.classList.add('edge'); }
     floaters.appendChild(el);
@@ -183,10 +245,11 @@ export function createHud(root) {
     el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit');
   }
 
-  function floater(x, y, text, cls = '') {
+  function floater(x, y, text, cls = '', ink = 0) {
     const f = document.createElement('div');
     f.className = `floater ${cls}`;
     f.textContent = text;
+    if (ink > 0) f.prepend(inkSplat(ink));
     f.style.left = `${x}px`; f.style.top = `${y}px`;
     floaters.appendChild(f);
     setTimeout(() => f.remove(), 1200);
@@ -335,5 +398,5 @@ export function createHud(root) {
   function showRace() { race.hidden = false; boardWrap.hidden = true; intro.hidden = true; }
   function setHint(t) { hint.textContent = t || ''; }
 
-  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
+  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, clipFly, setMe, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
 }

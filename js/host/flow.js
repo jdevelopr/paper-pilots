@@ -12,13 +12,14 @@ import { UPGRADES } from '../shared/upgrades.js';
 import { colorFor } from '../shared/colors.js';
 import { sfx, setWind } from './audio.js';
 import { TIER_COLORS } from '../shared/colors.js';
+import { cleanPlaced, randomStickers } from '../shared/stickers.js';
 
 const INTRO_FIRST_MS = 6500;
 const INTRO_MS = 5000;
 const RESULTS_MS = 7500;
 const BOT_NAMES = ['Dot Matrix', 'Ms. Memo', 'Stapler', 'Intern Ivy'];
 
-export function createFlow({ link, renderer, hud, solo = false, botCount = 0, onExit }) {
+export function createFlow({ link, renderer, hud, solo = false, botCount = 0, onExit, stickers = new Map() }) {
   let match = null;
   let phase = 'lobby';
   let race = null;
@@ -32,6 +33,11 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   let lastRows = null, finalRows = null;
   let raceOverAt = null;
   const rng = mulberry32((Date.now() ^ 0x5eed) >>> 0);
+  // Stickers each player has stuck on their plane (cosmetic; sent by their device)
+  const stickersBy = stickers;
+  // What each pilot did this race, for their sticker book
+  let raceStats = new Map();
+  const bump = (seat, k, n = 1) => { const st = raceStats.get(seat) || {}; st[k] = (st[k] || 0) + n; raceStats.set(seat, st); };
 
   const later = (ms, fn) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
   const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
@@ -42,6 +48,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   const broadcast = (name, data) => link.event(name, data);
 
   function setPhase(p) { phase = p; link.setPhase(p); }
+
+  const planeLooks = () => raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level, stickers: stickersBy.get(seat) || [] }));
 
   /* ---------------------------------------------------------- start --- */
   function start(setup = {}) {
@@ -54,6 +62,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       const seat = 1 + i;
       addPlayer(match, seat, BOT_NAMES[i], true);
       bots.set(seat, { skill: [0.55, 0.75, 0.9, 0.65][i] });
+      stickersBy.set(seat, randomStickers(rng, 2 + Math.floor(rng() * 3)));
     }
     startRound();
   }
@@ -70,13 +79,15 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     for (const [seat, b] of bots) b.brain = createBot(seat, b.skill, rng);
     raceOverAt = null;
     hitStop = 0;
+    raceStats = new Map();
 
     renderer.setFloor(floor);
-    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
+    renderer.setPlanes(planeLooks());
+    if (solo) hud.setMe(0);
     // Every player's own screen builds the exact same layout from the same seed
     lastLayout = {
       theme: floor.id, seed, label: `Race ${legOf(match)}/${match.racesPerFloor}`, first: match.round === 0,
-      seats: raceSeats.map(seat => ({ seat, name: nameOf(seat), owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })),
+      seats: raceSeats.map(seat => ({ seat, name: nameOf(seat), owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level, stickers: stickersBy.get(seat) || [] })),
     };
     if (!solo) broadcast('layout', lastLayout);
     hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title, best: match.players[seat].best[floor.id] ?? 0 })), `Race ${legOf(match)}/${match.racesPerFloor}`);
@@ -192,10 +203,58 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     }
   }
 
+  // Sticker-book tallies for one race event
+  function tally(e, p) {
+    const pk = race.floor.gap?.park, inPark = pk && p && p.z > pk.dive0 && p.z < pk.lift0;
+    switch (e.name) {
+      case 'clip': bump(e.seat, 'clips', e.n || 1); break;
+      case 'boost': bump(e.seat, e.kind === 'ring' ? 'rings' : 'streams'); if (e.gold) bump(e.seat, 'goldRings'); break;
+      case 'tree': bump(e.seat, 'parkHits'); break;
+      case 'hit': if (inPark) bump(e.seat, 'parkHits'); break;
+      case 'crumple': bump(e.seat, 'crumples'); break;
+      case 'parkwind':
+        if (e.phase === 'dive') bump(e.seat, 'park');
+        else if (!(raceStats.get(e.seat)?.parkHits)) bump(e.seat, 'parkClean');
+        break;
+      case 'trick': {
+        const k = { duct: 'ducts', window: 'windows', speed: 'speed', circle: 'circles', clutch: 'clutch' }[e.id];
+        if (k) bump(e.seat, k);
+        if (e.mult >= 3) bump(e.seat, 'chain5');
+        break;
+      }
+      case 'landed':
+        if (e.zone && !e.crumpled) {
+          if (e.zone.ring === 0) bump(e.seat, 'bullseyes');
+          bump(e.seat, `z_${race.floor.id}`);
+        }
+        break;
+    }
+  }
+  // At the end of a race, send each player their tally for their sticker book
+  function sendStats(rows) {
+    for (const h of humans()) {
+      const st = { ...(raceStats.get(h.seat) || {}) };
+      delete st.parkHits;
+      // feats that count once per race
+      for (const k of ['park', 'parkClean', 'chain5']) if (st[k]) st[k] = 1;
+      const row = rows.find(r => r.seat === h.seat);
+      if (row) {
+        st.races = 1;
+        st[`f_${race.floor.id}`] = 1;
+        if (row.place === 1) st.wins = 1;
+        const lv = rankOf(match.players[h.seat]?.career).level;
+        if (lv >= 4) st.manager = 1;
+        if (lv >= 7) st.ceo = 1;
+      }
+      sendTo(h.seat, 'fx', { kind: 'stats', s: st });
+    }
+  }
+
   function drainEvents() {
     for (const e of race.events.splice(0)) {
       const p = race.planes.find(q => q.seat === e.seat);
       const col = colorFor(e.seat);
+      tally(e, p);
       switch (e.name) {
         case 'throw':
           sfx.throw(e.boost);
@@ -220,7 +279,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           sfx.ding(chain);
           const c = race.clips[e.i];
           const s = renderer.project(c.x, c.y, c.z);
-          if (s.visible) hud.floater(s.x, s.y, chain > 1 ? `+${e.n}  x${chain}` : `+${e.n}`, chain > 2 ? 'combo big' : chain > 1 ? 'combo' : '');
+          if (s.visible) hud.floater(s.x, s.y, chain > 1 ? `+${e.n}  x${chain}` : `+${e.n}`, chain > 2 ? 'combo big' : chain > 1 ? 'combo' : '', chain > 1 ? Math.min(3, (chain - 1) * 0.5) : 0);
+          if (s.visible) hud.clipFly(s, e.seat, e.n);
           renderer.burst(c.x, c.y, c.z, '#c3cad1', 6 + chain * 2, 2.5 + chain * 0.4);
           if (c.big) { renderer.confetti(c.x, c.y, c.z, ['#c3cad1', '#e0a526', '#f6efdc'], 24); renderer.punch(3); }
           sendTo(e.seat, 'fx', { kind: 'clip', n: e.n, chain });
@@ -246,7 +306,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           sendTo(e.seat, 'fx', { kind: 'boost', amount: e.amount, ring: e.kind === 'ring' });
           break;
         case 'tree':
-          renderer.burst(e.x, e.y, e.z, '#5e8a3f', 14, 4);
+          renderer.treeHit(e.x, e.y, e.z);
+          sendTo(e.seat, 'fx', { kind: 'tree', x: e.x, y: e.y, z: e.z });
           break;
         case 'parkwind': {
           // Once per race for each phase: the big gust into the park, the updraft out
@@ -369,6 +430,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     if (!solo) broadcast('snap', snapshot());
     const rows = payout(match, standings(race));
     lastRows = rows;
+    sendStats(rows);
     setPhase('results');
     sfx.fanfare();
     hud.results(rows, layout, isLastRound(match), legOf(match), match.racesPerFloor);
@@ -396,7 +458,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       shopDone.add(seat);
     }
     startsAt = Date.now() + SHOP_MS;
-    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
+    renderer.setPlanes(planeLooks());
     hud.setHint('');
     renderShop();
     broadcastPhase();
@@ -429,10 +491,12 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   /* ----------------------------------------------------------- final --- */
   function showFinal() {
     finalRows = finalStandings(match);
+    const champ = finalRows[0];
+    if (champ && humans().some(h => h.seat === champ.seat)) sendTo(champ.seat, 'fx', { kind: 'stats', s: { matchWins: 1 } });
     setPhase('final');
     sfx.fanfare();
     hud.setHint('');
-    renderer.setPlanes(raceSeats.map(seat => ({ seat, owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level })));
+    renderer.setPlanes(planeLooks());
     hud.final(finalRows, {
       soloMenu: solo,
       onAgain: () => { if (solo) start(setupWanted); else onExit?.('lobby'); },
@@ -443,7 +507,14 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
 
   /* ---------------------------------------------------------- inputs --- */
   function onInput(seat, m) {
-    if (!m || typeof m !== 'object' || !match) return;
+    if (!m || typeof m !== 'object') return;
+    if (m.k === 'stickers') {
+      stickersBy.set(seat, cleanPlaced(m.list));
+      // show it right away, unless a race is under way (then it shows next race)
+      if (match && phase !== 'race' && raceSeats.includes(seat)) renderer.setPlanes(planeLooks());
+      return;
+    }
+    if (!match) return;
     if (phase === 'race' && race) {
       if (m.k === 'aim') aimPlane(race, seat, m);
       else if (m.k === 'throw') throwPlane(race, seat, m);
@@ -454,7 +525,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         if (r.ok) {
           sfx.buy();
           sendTo(seat, 'fx', { kind: 'bought', id: m.id });
-          renderer.setPlanes(raceSeats.map(s => ({ seat: s, owned: match.players[s].owned, rank: rankOf(match.players[s].career).level })));
+          renderer.setPlanes(planeLooks());
         } else sendTo(seat, 'fx', { kind: 'nope', reason: r.reason });
         renderShop();
         sendMeAll();
@@ -463,7 +534,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         if (r.ok) {
           sfx.tick();
           sendTo(seat, 'fx', { kind: 'equipped', id: m.id });
-          renderer.setPlanes(raceSeats.map(s => ({ seat: s, owned: match.players[s].owned, rank: rankOf(match.players[s].career).level })));
+          renderer.setPlanes(planeLooks());
         } else sendTo(seat, 'fx', { kind: 'nope', reason: r.reason });
         renderShop();
         sendMeAll();

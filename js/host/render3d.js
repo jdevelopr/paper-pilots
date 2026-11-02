@@ -8,6 +8,7 @@ import { createInk } from './ink.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM } from '../game/sim.js';
 import { moverAt, groundAt, gapWind } from '../game/floors.js';
+import { stickerSvg, cleanPlaced, STICKER_SIZE } from '../shared/stickers.js';
 
 const INK = '#2c2416';
 const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -246,7 +247,139 @@ function paperMaterial(seat, owned, rank) {
     : new THREE.MeshLambertMaterial(opts);
 }
 
-function buildPlane(seat, owned, rank = 0) {
+/* ------------------------------------------------------------ stickers --- */
+// Sticker art is SVG; each one is drawn once into a canvas texture and shared.
+const STICKER_TEX = new Map();
+function stickerTexture(id) {
+  if (STICKER_TEX.has(id)) return STICKER_TEX.get(id);
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  STICKER_TEX.set(id, tex);
+  const img = new Image();
+  img.onload = () => { c.getContext('2d').drawImage(img, 0, 0, 128, 128); tex.needsUpdate = true; };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(stickerSvg(id, { px: 128 }));
+  return tex;
+}
+const STICKER_MATS = new Map();
+function stickerMaterial(id) {
+  if (!STICKER_MATS.has(id)) STICKER_MATS.set(id, new THREE.MeshBasicMaterial({
+    map: stickerTexture(id), color: '#f1ebdd', transparent: true, alphaTest: 0.35, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  }));
+  return STICKER_MATS.get(id);
+}
+const stickerGeo = new THREE.PlaneGeometry(1, 1);
+const _ray = new THREE.Raycaster(), _o = new THREE.Vector3(), _d = new THREE.Vector3(), _n = new THREE.Vector3();
+// Stick each sticker onto the plane's paper. A sticker remembers a point and a
+// direction; it's dropped onto whatever surface is there now, so it follows
+// the paper when a new fold changes the plane's shape (and is left off if the
+// spot no longer has any paper under it).
+// Drop a flat decal onto the paper: aim from point p along -n, sit on the surface hit
+function placeDecal(paper, p, n, mat, rot, size, lift = 0.012) {
+  _n.fromArray(n).normalize();
+  if (_n.lengthSq() < 0.5) _n.set(0, 1, 0);
+  _o.fromArray(p).addScaledVector(_n, 0.4);
+  _d.copy(_n).negate();
+  _ray.set(paper.localToWorld(_o.clone()), _d.clone().transformDirection(paper.matrixWorld));
+  const hit = _ray.intersectObject(paper, false)[0];
+  if (!hit) return null;
+  const pt = paper.worldToLocal(hit.point.clone());
+  const nrm = hit.face.normal.clone();
+  if (nrm.dot(_n) < 0) nrm.negate();
+  const m = new THREE.Mesh(stickerGeo, mat);
+  m.position.copy(pt).addScaledVector(nrm, lift);
+  m.lookAt(m.position.clone().add(nrm));
+  m.rotateZ(rot);
+  m.scale.setScalar(size);
+  return m;
+}
+function applyStickers(root, list) {
+  const { body } = root.userData;
+  const paper = body.children[0];
+  root.userData.stickerList = list;
+  if (root.userData.stickers) body.remove(root.userData.stickers);
+  const g = new THREE.Group();
+  g.userData.items = [];
+  body.add(g); root.userData.stickers = g;
+  body.updateMatrixWorld(true);
+  cleanPlaced(list).forEach((st, i) => {
+    const m = placeDecal(paper, st.p, st.n, stickerMaterial(st.id), st.r, STICKER_SIZE * st.s);
+    if (!m) return;
+    m.userData.index = i;
+    g.add(m); g.userData.items.push(m);
+  });
+}
+
+/* ------------------------------------------------------ plane damage --- */
+// Tears and scuffs drawn in ink, stuck on as the paper takes damage
+let SCUFF_MATS = null;
+function scuffMaterials() {
+  if (SCUFF_MATS) return SCUFF_MATS;
+  SCUFF_MATS = [0, 1, 2].map(k => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const x = c.getContext('2d');
+    x.lineCap = 'round'; x.lineJoin = 'round';
+    let px = 14, py = 64 + (k - 1) * 10;
+    const pts = [[px, py]];
+    for (let i = 0; i < 7; i++) { px += 14 + Math.random() * 4; py += (Math.random() - 0.5) * 30; pts.push([px, py]); }
+    // the torn flap: a pale sliver along the tear
+    x.fillStyle = 'rgba(255,255,255,0.75)';
+    x.beginPath(); x.moveTo(pts[0][0], pts[0][1]);
+    for (const [a, b] of pts) x.lineTo(a, b - 7);
+    for (let i = pts.length - 1; i >= 0; i--) x.lineTo(pts[i][0], pts[i][1]);
+    x.fill();
+    x.strokeStyle = '#2c2416'; x.lineWidth = 5;
+    x.beginPath(); pts.forEach(([a, b], i) => (i ? x.lineTo(a, b) : x.moveTo(a, b))); x.stroke();
+    x.lineWidth = 2.5;
+    for (let i = 1; i < pts.length - 1; i += 2) { const [a, b] = pts[i]; x.beginPath(); x.moveTo(a, b); x.lineTo(a + 6, b + 11); x.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    return new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: 0.2, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, side: THREE.DoubleSide });
+  });
+  return SCUFF_MATS;
+}
+const SCUFF_SPOTS = [[-0.36, 0.3, 0.4], [0.32, 0.5, -0.5], [0.06, -0.15, 1.2], [-0.2, 0.62, 2.2], [0.45, 0.72, -1.8]];
+// Bend the paper by how hurt it is (0 = fresh, 1 = about to crumple): wing tips
+// droop and kink, the nose goes crooked, and tears appear.
+function damagePlane(root, lvl) {
+  const { body, seat } = root.userData;
+  const paper = body.children[0];
+  const geo = paper.geometry, pos = geo.attributes.position;
+  if (!paper.userData.base) paper.userData.base = Float32Array.from(pos.array);
+  const base = paper.userData.base;
+  geo.computeBoundingBox();
+  const S = Math.max(0.3, geo.boundingBox.max.x), Lz = Math.max(0.5, -geo.boundingBox.min.z);
+  const sg = seat % 2 ? 1 : -1;
+  for (let i = 0; i < pos.count; i++) {
+    const x = base[i * 3], y = base[i * 3 + 1], z = base[i * 3 + 2];
+    const tip = Math.min(1, Math.abs(x) / S) ** 2 * Math.min(1, (z + Lz) / (2 * Lz) * 1.4);
+    const nose = Math.max(0, 1 - (z + Lz) / (0.6 * Lz));
+    const left = x < 0;
+    pos.setXYZ(i,
+      x - Math.sign(x) * tip * 0.06 * lvl + nose * 0.09 * lvl * sg,
+      y + tip * lvl * (left === (sg > 0) ? -0.26 : 0.17) - nose * 0.06 * lvl,
+      z - tip * 0.05 * lvl);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  geo.computeBoundingSphere();
+  // tears
+  if (root.userData.scuffs) body.remove(root.userData.scuffs);
+  const g = new THREE.Group();
+  body.add(g); root.userData.scuffs = g;
+  body.updateMatrixWorld(true);
+  const mats = scuffMaterials();
+  const n = Math.min(SCUFF_SPOTS.length, Math.floor(lvl * 5.5));
+  for (let i = 0; i < n; i++) {
+    const [sx, sz, r] = SCUFF_SPOTS[(i + seat) % SCUFF_SPOTS.length];
+    const m = placeDecal(paper, [sx, 0.1, sz], [0, 1, 0], mats[(i + seat) % 3], r, 0.34, 0.016);
+    if (m) g.add(m);
+  }
+  // re-seat the stickers on the bent paper
+  if (root.userData.stickerList?.length) applyStickers(root, root.userData.stickerList);
+}
+
+
+function buildPlane(seat, owned, rank = 0, stickers = []) {
   const group = new THREE.Group();
   const mat = paperMaterial(seat, owned, rank);
   const body = new THREE.Mesh(planeGeometry(owned), mat);
@@ -339,6 +472,7 @@ function buildPlane(seat, owned, rank = 0) {
   const tipS = 0.75 * wide + 0.04;
   const tips = [new THREE.Vector3(-tipS, tipD, noseL * 0.92), new THREE.Vector3(tipS, tipD, noseL * 0.92)];
   root.userData = { body: group, ball, seat, tips };
+  if (stickers?.length) applyStickers(root, stickers);
   return root;
 }
 
@@ -634,8 +768,10 @@ function buildMover(m) {
     case 'pigeons': {
       // A loose flock; wings flap (see the flap entries)
       const spots = [[0, 0.7, 0], [-1.6, 0.4, 0.8], [1.5, 0.9, -0.6], [-0.7, 1.1, -1], [0.9, 0.2, 1], [-2.1, 0.9, -0.3]];
+      g.userData.birds = [];
       spots.forEach(([x, y, z], i) => {
         const b = new THREE.Group(); b.position.set(x, y, z);
+        g.userData.birds.push({ b, home: new THREE.Vector3(x, y, z), dir: new THREE.Vector3(x * 0.8 + (Math.random() - 0.5), 1.2 + Math.random(), z * 0.8 + (Math.random() - 0.5)).normalize() });
         b.add(boxMesh(0.35, 0.3, 0.7, '#8a8f9a', 0, -0.15, 0));
         b.add(boxMesh(0.25, 0.25, 0.25, '#6b7280', 0, 0.05, -0.4));
         for (const sx of [-1, 1]) {
@@ -691,24 +827,74 @@ export function createPlanePreview(canvas, { reduceMotion = false } = {}) {
   const lineMat = new THREE.LineBasicMaterial({ color: '#2c2416' });
   const holder = new THREE.Group(); scene.add(holder);
   let plane = null, key = '', yaw = 0.6, spin = reduceMotion ? 0 : 0.5, drag = null, pop = 0;
+  let autoSpin = true, tilt = 0, tiltT = 0, stickers = [], sel = -1, interact = null;
+  const outlineMat = new THREE.MeshBasicMaterial({ color: '#c1440e', transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthTest: false });
+  const selRing = new THREE.Mesh(new THREE.RingGeometry(0.56, 0.66, 28), outlineMat);
+  selRing.renderOrder = 5; selRing.visible = false;
 
-  function set(seat, owned = [], rank = 0) {
+  function set(seat, owned = [], rank = 0, list = stickers) {
+    stickers = list || [];
     const k = JSON.stringify([seat, owned, rank]);
-    if (k === key) return;
+    if (k === key) { if (plane) { applyStickers(plane, stickers); placeSel(); } return; }
+    const first = !plane;
     key = k;
     if (plane) holder.remove(plane);
-    plane = buildPlane(seat, owned, rank);
+    plane = buildPlane(seat, owned, rank, stickers);
+    plane.userData.body.children[0].add(new THREE.LineSegments(new THREE.EdgesGeometry(plane.userData.body.children[0].geometry, 25), lineMat));
     plane.userData.body.traverse(o => {
-      if (o.isMesh) o.add(new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 25), lineMat));
+      if (o.isMesh && o.parent === plane.userData.body && o !== plane.userData.body.children[0]) o.add(new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 25), lineMat));
     });
     plane.scale.setScalar(1.15);
     holder.add(plane);
-    pop = 1;
+    placeSel();
+    if (first || !interact) pop = 1;
+  }
+  function placeSel() {
+    const m = plane?.userData.stickers?.userData.items.find(x => x.userData.index === sel);
+    if (!m) { selRing.visible = false; return; }
+    m.add(selRing); selRing.visible = true;
+  }
+  // Sticker editing: what's under a screen point on the plane (in plane space)
+  const ndc = new THREE.Vector2();
+  function pick(clientX, clientY) {
+    if (!plane) return null;
+    const r2 = canvas.getBoundingClientRect();
+    ndc.set(((clientX - r2.left) / r2.width) * 2 - 1, -((clientY - r2.top) / r2.height) * 2 + 1);
+    _ray.setFromCamera(ndc, cam);
+    scene.updateMatrixWorld(true);
+    const items = plane.userData.stickers?.userData.items || [];
+    const sh = _ray.intersectObjects(items, false)[0];
+    const paper = plane.userData.body.children[0];
+    const ph = _ray.intersectObject(paper, false)[0];
+    let surf = null;
+    if (ph) {
+      const n = ph.face.normal.clone().transformDirection(paper.matrixWorld);
+      if (n.dot(_ray.ray.direction) > 0) n.negate();          // the side you're looking at
+      const inv = new THREE.Matrix4().copy(paper.matrixWorld).invert();
+      const p = paper.worldToLocal(ph.point.clone());
+      const nl = n.transformDirection(inv);
+      surf = { p: p.toArray().map(v => +v.toFixed(3)), n: nl.toArray().map(v => +v.toFixed(3)) };
+    }
+    return { sticker: sh ? sh.object.userData.index : -1, surf };
+  }
+  function select(i) { sel = i; placeSel(); }
+  // Stop turning while someone is placing stickers, and tip the plane so its top shows
+  function editing(on) {
+    autoSpin = !on; tilt = on ? 0.2 : 0; if (on) yaw = 0.45;
+    // closer, from higher up, so the wings fill the view
+    if (on) { cam.position.set(0, 3.3, 3.1); cam.lookAt(0, -0.25, 0.1); }
+    else { cam.position.set(0, 2.3, 5.6); cam.lookAt(0, -0.15, 0); }
   }
   canvas.style.touchAction = 'none';
-  canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, yaw }; canvas.setPointerCapture(e.pointerId); });
-  canvas.addEventListener('pointermove', e => { if (drag) yaw = drag.yaw + (e.clientX - drag.x) * 0.012; });
-  const up = () => { drag = null; };
+  canvas.addEventListener('pointerdown', e => {
+    if (interact?.down?.(e)) { canvas.setPointerCapture(e.pointerId); return; }
+    drag = { x: e.clientX, yaw }; canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (interact?.move?.(e)) return;
+    if (drag) yaw = drag.yaw + (e.clientX - drag.x) * 0.012;
+  });
+  const up = e => { interact?.up?.(e); drag = null; };
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
 
   function resize() {
@@ -725,8 +911,9 @@ export function createPlanePreview(canvas, { reduceMotion = false } = {}) {
   function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
     if (canvas.offsetParent !== null) {
-      if (!drag) yaw += spin * dt;
-      holder.rotation.set(0, yaw, 0);
+      if (!drag && autoSpin) yaw += spin * dt;
+      tiltT += (tilt - tiltT) * Math.min(1, dt * 5);
+      holder.rotation.set(tiltT, yaw, 0);
       pop *= Math.pow(0.02, dt);
       const s = 1 + Math.sin(pop * Math.PI) * 0.12;
       holder.scale.setScalar(s);
@@ -737,7 +924,7 @@ export function createPlanePreview(canvas, { reduceMotion = false } = {}) {
   }
   requestAnimationFrame(loop);
   resize();
-  return { set, resize };
+  return { set, resize, pick, select, editing, setInteract: h => { interact = h; } };
 }
 
 export function createRenderer(canvas, { reduceMotion = false } = {}) {
@@ -820,6 +1007,103 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     const v = planes.get(seat);
     if (v) v.boostT = Math.max(v.boostT || 0, 0.7 + amount * 0.18);
   }
+  /* ---------------------------------------------- the world reacting --- */
+  // Loose sheets of paper blown off desks when a plane skims over them
+  let deskTops = [];
+  const deskT = new WeakMap();
+  const sheetTex = (() => {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 80;
+    const x = c.getContext('2d');
+    x.fillStyle = '#fffdf6'; x.fillRect(0, 0, 64, 80);
+    x.strokeStyle = '#9fb6c8'; x.lineWidth = 2;
+    for (let y = 16; y < 78; y += 9) { x.beginPath(); x.moveTo(4, y); x.lineTo(60, y); x.stroke(); }
+    x.strokeStyle = '#e2a0a0'; x.beginPath(); x.moveTo(12, 0); x.lineTo(12, 80); x.stroke();
+    x.strokeStyle = '#2c2416'; x.lineWidth = 3; x.strokeRect(1.5, 1.5, 61, 77);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const sheetMat = new THREE.MeshLambertMaterial({ map: sheetTex, side: THREE.DoubleSide });
+  const sheets = [];
+  for (let i = 0; i < 28; i++) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.7), sheetMat);
+    m.visible = false;
+    scene.add(m);
+    sheets.push({ m, v: new THREE.Vector3(), spin: new THREE.Vector3(), life: 0, ph: 0, floorY: 0 });
+  }
+  let sheetIx = 0;
+  function blowSheets(o, p) {
+    const n = reduceMotion ? 1 : 2 + Math.floor(Math.random() * 3);
+    const top = (o.y || 0) + o.h + 0.05;
+    for (let i = 0; i < n; i++) {
+      const sh = sheets[sheetIx++ % sheets.length];
+      sh.m.visible = true;
+      sh.m.position.set(o.x + (Math.random() - 0.5) * o.w * 0.6, top, -(o.z + (Math.random() - 0.5) * o.d * 0.6));
+      sh.m.rotation.set(-Math.PI / 2, 0, Math.random() * 6);
+      const fx = Math.sin(p.yaw) * p.v * 0.35, fz = Math.cos(p.yaw) * p.v * 0.35;
+      sh.v.set(fx + (Math.random() - 0.5) * 2, 2.5 + Math.random() * 2, -(fz + (Math.random() - 0.5) * 2));
+      sh.spin.set((Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7);
+      sh.life = 4 + Math.random();
+      sh.ph = Math.random() * 6;
+      sh.floorY = floor?.gap ? groundAt(floor, o.z) : 0;
+    }
+  }
+  function updateWorld(race, dt) {
+    // skimming a desk top at speed scatters its papers
+    if (race && deskTops.length) {
+      for (const p of race.planes) {
+        if (p.state !== 'fly' || p.v < 7 || p.crumpled) continue;
+        for (const o of deskTops) {
+          if (Math.abs(p.z - o.z) > o.d / 2 + 0.4 || Math.abs(p.x - o.x) > o.w / 2 + 0.4) continue;
+          const above = p.y - ((o.y || 0) + o.h);
+          if (above < 0 || above > 1.7) continue;
+          if (time - (deskT.get(o) ?? -9) < 3) continue;
+          deskT.set(o, time);
+          blowSheets(o, p);
+        }
+      }
+    }
+    for (const sh of sheets) {
+      if (sh.life <= 0) continue;
+      sh.life -= dt;
+      const m = sh.m;
+      if (m.position.y > sh.floorY + 0.03) {
+        // paper falls slowly and flutters side to side
+        sh.v.y = Math.max(sh.v.y - 4 * dt, -1.4);
+        sh.v.x *= Math.pow(0.5, dt); sh.v.z *= Math.pow(0.5, dt);
+        m.position.addScaledVector(sh.v, dt);
+        m.position.x += Math.sin(time * 3 + sh.ph) * 0.9 * dt;
+        m.rotation.x += sh.spin.x * dt; m.rotation.y += sh.spin.y * dt; m.rotation.z += sh.spin.z * dt;
+      } else { m.position.y = sh.floorY + 0.03; m.rotation.x = -Math.PI / 2; m.rotation.y = 0; }
+      if (sh.life <= 0) m.visible = false;
+    }
+    // shaking trees
+    const T = anims.trees;
+    if (T?.shakes.length) {
+      for (let i = T.shakes.length - 1; i >= 0; i--) {
+        const sk = T.shakes[i];
+        sk.t += dt;
+        const a = sk.t > 1.4 ? 0 : Math.sin(sk.t * 20) * 0.16 * Math.exp(-sk.t * 3) * sk.dir;
+        const t = T.trees[sk.i];
+        T.placeTrunk(tmpO3, t, a); tmpO3.updateMatrix(); T.trunkIM.setMatrixAt(sk.i, tmpO3.matrix);
+        T.placeCanopy(tmpO3, t, a); tmpO3.updateMatrix(); T.canopyIM.setMatrixAt(sk.i, tmpO3.matrix);
+        T.trunkIM.instanceMatrix.needsUpdate = T.canopyIM.instanceMatrix.needsUpdate = true;
+        if (sk.t > 1.4) T.shakes.splice(i, 1);
+      }
+    }
+  }
+  const tmpO3 = new THREE.Object3D();
+  // A plane clipped a park tree: shake it and knock some leaves loose
+  function treeHit(x, y, z) {
+    flutter(x, y + 0.5, z, ['#5e8a3f', '#6d9445', '#7a9a3c', '#c9a43a'], 12, 3, 1.8);
+    const T = anims.trees;
+    if (!T) return;
+    let best = -1, bd = 64;
+    for (let i = T.from; i < T.trees.length; i++) {
+      const t = T.trees[i], d = (t.x - x) ** 2 + (t.z - z) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    if (best >= 0 && !T.shakes.some(s => s.i === best)) T.shakes.push({ i: best, t: 0, dir: x < T.trees[best].x ? 1 : -1 });
+  }
+
   const clipGeo = clipGeometry();
   const clipMat = lam('#c3cad1', { emissive: '#2d3238' });
   const shadowMat = new THREE.MeshBasicMaterial({ color: '#2c2416', transparent: true, opacity: 0.22, depthWrite: false });
@@ -847,6 +1131,22 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       b.v.set((Math.random() - 0.5) * speed, Math.random() * speed * 0.8 + 1, (Math.random() - 0.5) * speed);
       b.spin.set(Math.random() * 8, Math.random() * 8, Math.random() * 8);
       b.life = 0.9 + Math.random() * 0.5;
+      b.leaf = false; b.m.scale.setScalar(1);
+    }
+  }
+  // Fluttering bits: leaves off a tree, scraps off a damaged plane
+  function flutter(x, y, z, colors, n = 8, speed = 3, size = 1.6) {
+    const k = reduceMotion ? Math.ceil(n / 3) : n;
+    for (let i = 0; i < k; i++) {
+      const b = bits[bitIx++ % bits.length];
+      b.m.visible = true;
+      b.m.material.color.set(colors[i % colors.length]);
+      b.m.position.set(x + (Math.random() - 0.5), y + (Math.random() - 0.5), -z + (Math.random() - 0.5));
+      b.v.set((Math.random() - 0.5) * speed, Math.random() * speed * 0.6, (Math.random() - 0.5) * speed);
+      b.spin.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+      b.life = 1.6 + Math.random() * 1.2;
+      b.leaf = true; b.noGrav = false; b.ph = Math.random() * 6;
+      b.m.scale.setScalar(size);
     }
   }
 
@@ -865,7 +1165,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       b.v.set(dir === 'side' ? (Math.random() - 0.5) * 12 : (Math.random() - 0.5) * 2, dir === 'side' ? (Math.random() - 0.5) * 2 : (dir === 'up' ? 1 : -1) * (6 + Math.random() * 4), (Math.random() - 0.5) * 2);
       b.spin.set(0, Math.random() * 4, 0);
       b.life = 0.5;
-      b.noGrav = true;
+      b.noGrav = true; b.leaf = false; b.m.scale.setScalar(1);
     }
   }
 
@@ -883,7 +1183,11 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
 
   // Per-plane wobble when hit
   const wobble = new Map();
-  const hitPlane = seat => { if (!reduceMotion) wobble.set(seat, 1); };
+  const hitPlane = seat => {
+    if (!reduceMotion) wobble.set(seat, 1);
+    const v = planes.get(seat);
+    if (v) flutter(v.root.position.x, v.root.position.y, -v.root.position.z, [colorFor(seat), '#f6efdc'], 6, 3.5, 1.3);
+  };
 
   // Field of view widens with speed and "punches" on big moments
   let fovKick = 0, fovSpeed = 0, baseFov = 58;
@@ -1015,9 +1319,11 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     }
     // The trees down the flight corridor are real obstacles (same shapes as the sim's)
     for (const t of g.park?.trees || []) trees.push({ x: t.x, z: t.z, h: t.h, r: t.r, c: greens[(rnd() * greens.length) | 0] });
-    instanced(new THREE.CylinderGeometry(0.35, 0.5, 1, 6), M('#5b4636'), trees, (o, t) => { o.position.set(t.x, street + t.h * 0.3, -t.z); o.rotation.set(0, 0, 0); o.scale.set(1, t.h * 0.6, 1); });
-    instanced(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), trees,
-      (o, t) => { o.position.set(t.x, street + t.h * 0.62, -t.z); o.rotation.set(t.x, t.z, 0); o.scale.set(t.r, t.r * 1.15, t.r); });
+    const placeTrunk = (o, t, a = 0) => { o.position.set(t.x, street + t.h * 0.3, -t.z); o.rotation.set(a * 0.25, 0, a * 0.4); o.scale.set(1, t.h * 0.6, 1); };
+    const placeCanopy = (o, t, a = 0) => { o.position.set(t.x + a * t.h * 0.3, street + t.h * 0.62, -t.z); o.rotation.set(t.x + a, t.z, a * 0.8); o.scale.set(t.r * (1 + Math.abs(a) * 0.3), t.r * 1.15, t.r); };
+    const trunkIM = instanced(new THREE.CylinderGeometry(0.35, 0.5, 1, 6), M('#5b4636'), trees, (o, t) => placeTrunk(o, t));
+    const canopyIM = instanced(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), trees, (o, t) => placeCanopy(o, t));
+    anims.trees = { trees, from: trees.length - (g.park?.trees.length || 0), trunkIM, canopyIM, placeTrunk, placeCanopy, shakes: [] };
     // Benches and lamp posts along the paths
     const bits = pathSegs.filter((_, i) => i % 9 === 0).map(s => ({ x: s.a[0] + 3, z: s.a[1] }));
     instanced(new THREE.BoxGeometry(1, 1, 1), M('#6b5440'), bits, (o, b) => { o.position.set(b.x, street + 0.5, -b.z); o.rotation.set(0, 0, 0); o.scale.set(0.8, 1, 2.4); });
@@ -1243,7 +1549,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     env = new THREE.Group();
     scene.add(env);
     for (const k in anims) anims[k] = [];
-    anims.outside = null; anims.gap = null;
+    anims.outside = null; anims.gap = null; anims.trees = null;
+    deskTops = (f.objects || []).filter(o => (o.type === 'desk' || o.type === 'table' || o.type === 'counter') && !o.launch);
 
     const W = f.width, H = f.height, L = f.length;
     const zBack = 24, zEnd = L;
@@ -1542,8 +1849,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       planeLayer.remove(p.root, p.shadow, p.trail, p.aim, ...p.slips.map(l => l.m));
     }
     planes.clear();
-    for (const { seat, owned, rank } of list) {
-      const root = buildPlane(seat, owned || [], rank || 0);
+    for (const { seat, owned, rank, stickers } of list) {
+      const root = buildPlane(seat, owned || [], rank || 0, stickers || []);
       const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.6, 10), shadowMat);
       shadow.rotation.x = -Math.PI / 2;
       shadow.layers.set(1);
@@ -1707,6 +2014,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix(); }
 
     if (race && view.mode !== 'showcase') syncPlanes(race, dt);
+    updateWorld(view.mode === 'race' ? race : null, dt);
 
     // Ambient animation
     for (const f of anims.fans) {
@@ -1778,8 +2086,22 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     for (const a of anims.movers) {
       const c = moverAt(a.m, rt);
       a.g.position.set(c.x, c.y, -c.z);
+      // Pigeons scatter when a plane comes close, then settle back into the flock
+      const birds = a.g.userData.birds;
+      if (birds) {
+        if (race && !(a.scatter > 0)) {
+          for (const p of race.planes) {
+            if (p.state === 'fly' && (p.x - c.x) ** 2 + (p.y - c.y - 0.6) ** 2 + (p.z - c.z) ** 2 < 30) { a.scatter = 1.8; break; }
+          }
+        }
+        if (a.scatter > 0) {
+          a.scatter -= dt;
+          const u = 1 - Math.max(0, a.scatter) / 1.8, f = Math.sin(Math.PI * u) * 3.2;
+          for (const bd of birds) bd.b.position.copy(bd.home).addScaledVector(bd.dir, f);
+        }
+      }
       for (const sp of a.spin) {
-        if (sp.flap) sp.o.rotation[sp.axis] = Math.sin(time * sp.rate + sp.ph) * sp.flap;
+        if (sp.flap) sp.o.rotation[sp.axis] = Math.sin(time * sp.rate * (a.scatter > 0 ? 1.8 : 1) + sp.ph) * sp.flap;
         else sp.o.rotation[sp.axis] += sp.rate * dt;
       }
     }
@@ -1796,11 +2118,16 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     for (const b of bits) {
       if (b.life <= 0) continue;
       b.life -= dt;
-      if (!b.noGrav) b.v.y -= 7 * dt;
+      if (b.leaf) {
+        // leaves and paper scraps: drift down, swaying
+        b.v.y = Math.max(b.v.y - 3 * dt, -1.8);
+        b.m.position.x += Math.sin(time * 4 + b.ph) * 1.1 * dt;
+      } else if (!b.noGrav) b.v.y -= 7 * dt;
       b.v.multiplyScalar(Math.pow(0.4, dt));
       if (b.life - dt <= 0) b.noGrav = false;
       b.m.position.addScaledVector(b.v, dt);
-      if (b.m.position.y < 0.05) { b.m.position.y = 0.05; b.v.set(0, 0, 0); }
+      const gy = (floor?.gap ? groundAt(floor, -b.m.position.z) : 0) + 0.05;
+      if (b.m.position.y < gy) { b.m.position.y = gy; b.v.set(0, 0, 0); }
       b.m.rotation.x += b.spin.x * dt; b.m.rotation.y += b.spin.y * dt;
       if (b.life <= 0) b.m.visible = false;
     }
@@ -1833,6 +2160,16 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       const crumpled = p.crumpled;
       root.userData.body.visible = !crumpled;
       root.userData.ball.visible = crumpled;
+      // Visible damage: the paper bends, kinks and tears as health drops
+      if (!crumpled && p.maxHp) {
+        const lvl = Math.round(Math.max(0, Math.min(1, 1 - p.hp / p.maxHp)) * 8) / 8;
+        if (lvl !== (root.userData.dmgLvl || 0)) { root.userData.dmgLvl = lvl; damagePlane(root, lvl); }
+        // badly hurt planes shed bits of paper as they fly
+        if (lvl >= 0.5 && p.state === 'fly') {
+          v.shedT = (v.shedT ?? 0) - dt;
+          if (v.shedT <= 0) { v.shedT = 0.55 - lvl * 0.35 + Math.random() * 0.2; flutter(p.x, p.y, p.z, [colorFor(p.seat)], 1, 1.2, 1.1); }
+        }
+      }
 
       if (p.state === 'held') {
         const pull = p.aim.power * 0.7;
@@ -1930,5 +2267,5 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   resize();
   window.addEventListener('resize', resize);
 
-  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, get floor() { return floor; } };
+  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, get floor() { return floor; } };
 }

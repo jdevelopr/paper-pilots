@@ -77,7 +77,12 @@ export async function startHost() {
       : ready ? '' : 'Everyone must be ready to start';
   });
   host.on('hello', seat => flow?.onHello(seat));
-  host.on('input', (seat, payload) => flow?.onInput(seat, payload));
+  // Stickers can arrive while everyone's still in the lobby, before the flow exists
+  const lobbyStickers = new Map();
+  host.on('input', (seat, payload) => {
+    if (!flow && payload?.k === 'stickers') { lobbyStickers.set(seat, Array.isArray(payload.list) ? payload.list.slice(0, 12) : []); return; }
+    flow?.onInput(seat, payload);
+  });
   host.on('error', err => {
     console.error(err);
     if (!flow || flow.phase === 'lobby') fail(err.type === 'network' || err.type === 'server-error'
@@ -90,7 +95,7 @@ export async function startHost() {
     if (!stage) { await fontsReady(); stage = makeStage(); }
     if (!flow) {
       flow = createFlow({
-        link: host, ...stage, solo: false,
+        link: host, ...stage, solo: false, stickers: lobbyStickers,
         onExit: () => { flow.stop(); host.resetReady(); show('lobby'); renderRoster(host.roster(), MAX_PLAYERS); },
       });
       runLoop(flow);

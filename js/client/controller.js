@@ -8,6 +8,8 @@
 import { esc, clipIcon, planeIcon, vibrate, keepAwake } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
 import { RANK_UNLOCKS } from '../shared/ranks.js';
+import { recordStats, placed, onBookChange } from '../shared/stickers.js';
+import { openStickerBook } from './stickerbook.js';
 import { statBars, MAX_LEVEL, MK, UPGRADES, UPGRADE_BY_ID, SLOTS, SLOT_BY_ID, partState, equippedList } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -45,7 +47,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
       <div class="crank"><span class="ck-t"></span><i><b></b></i></div>
     </div>
     <div class="cv" data-v="shop">
-      <div class="chead"><span class="cname"></span><span class="hg-title">Hangar</span><span class="ctimer"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
+      <div class="chead"><span class="cname"></span><span class="hg-title">Hangar</span><button class="btn small hg-stk" aria-label="Sticker book">Stickers</button><span class="ctimer"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
       <div class="crank"><span class="ck-t"></span><i><b></b></i></div>
       <div class="hangar">
         <div class="hg-stage"><canvas class="hg-canvas" aria-label="Your plane, drag to spin"></canvas><span class="hg-tip">Drag to spin</span><span class="hg-build"></span></div>
@@ -476,11 +478,25 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     q('.f-pts').textContent = `${row.points} ${row.points === 1 ? 'pt' : 'pts'}`;
   }
 
+  // Stickers: tell the host what's on our plane (on every phase, so a
+  // reconnect or a new room always has it), and whenever the book changes
+  const sendStickers = () => link.input({ k: 'stickers', list: placed() });
+  onBookChange(sendStickers);
+  if (solo) sendStickers();
+  q('.hg-stk').onclick = () => { vibrate(8); openStickerBook({ seat: me.seat, owned: me.owned || [], rank: me.rank?.level ?? 0 }); };
+
   link.on('event', msg => {
     const d = msg.data;
+    if (msg.name === 'fx' && d?.kind === 'stats') {
+      for (const st of recordStats(d.s)) {
+        setTimeout(() => { phoneToast(`New sticker: ${st.name}!`); vibrate([20, 40, 20, 40, 60]); }, 600);
+      }
+      return;
+    }
     switch (msg.name) {
       case 'phase': {
         const prev = phase.phase;
+        if (prev !== d.phase) sendStickers();
         phase = d;
         phaseAt = performance.now();
         if (d.phase === 'intro') { lastCount = null; landed = null; runIntro(); keepAwake(); }

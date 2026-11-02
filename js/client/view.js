@@ -36,8 +36,9 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
     introLen = L.first ? 6500 : 5000;
     snaps = [];
     renderer.setFloor(floor);
-    renderer.setPlanes(L.seats.map(s => ({ seat: s.seat, owned: s.owned, rank: s.rank })));
+    renderer.setPlanes(L.seats.map(s => ({ seat: s.seat, owned: s.owned, rank: s.rank, stickers: s.stickers || [] })));
     hud.setRace(floor, L.seats.map(s => ({ seat: s.seat, name: s.name })), L.label);
+    hud.setMe(getSeat());
     renderer.resize();
   }
 
@@ -101,7 +102,12 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
     const me = race?.planes.find(q => q.seat === getSeat());
     if (!me) return;
     if (d.kind === 'hit') { renderer.shake(Math.min(0.5, (d.dmg || 10) / 50)); renderer.hitPlane(me.seat); }
-    if (d.kind === 'clip') renderer.burst(me.x, me.y, me.z, '#c3cad1', 6, 2.5);
+    if (d.kind === 'clip') {
+      renderer.burst(me.x, me.y, me.z, '#c3cad1', 6, 2.5);
+      const s = renderer.project(me.x, me.y, me.z);
+      if (s.visible) hud.clipFly(s, me.seat, d.n || 1);
+    }
+    if (d.kind === 'tree') renderer.treeHit(d.x, d.y, d.z);
     if (d.kind === 'trick') {
       const s = renderer.project(me.x, me.y + 1.4, me.z);
       hud.trick(s.visible ? s : null, '', d.label, d.clips, d.mult, colorFor(me.seat));

@@ -20,6 +20,7 @@ if (room) {
     setTimeout(() => $('#solo-name').focus(), 250);
   };
   $('#solo-back').onclick = () => show('home');
+  $('#stickers-btn').onclick = () => import('./client/stickerbook.js').then(m => m.openStickerBook({ seat: 0 })).catch(fatal);
   $('#solo-form').onsubmit = e => {
     e.preventDefault();
     const name = $('#solo-name').value.trim().slice(0, 12) || 'Pilot';

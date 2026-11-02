@@ -7,6 +7,7 @@ import { SLUG, MAX_PLAYERS, PEER_OPTIONS } from '../shared/config.js';
 import { $, show, toast, renderRoster, vibrate } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
 import { mountController } from './controller.js';
+import { placed } from '../shared/stickers.js';
 
 let client = null, ctl = null, mySeat = null, ready = false, everWelcomed = false, retry = 0;
 let view = null, viewLoading = null;
@@ -75,6 +76,7 @@ function connect(code, name) {
   client.on('welcome', msg => {
     everWelcomed = true; retry = 0;
     mySeat = msg.seat;
+    client.input({ k: 'stickers', list: placed() });
     $('#me-chip').innerHTML = '';
     $('#me-chip').textContent = name;
     $('#me-chip').style.color = colorFor(mySeat);
@@ -110,6 +112,7 @@ function connect(code, name) {
   });
   client.on('disconnected', () => { if (everWelcomed) reconnectSoon(code, name); });
 
+  $('#lobby-stickers').onclick = () => import('./stickerbook.js').then(m => m.openStickerBook({ seat: mySeat ?? 0 }));
   $('#ready-btn').onclick = () => {
     ready = !ready;
     client.ready(ready);
