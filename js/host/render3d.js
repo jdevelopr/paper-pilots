@@ -2121,11 +2121,29 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     aimCamera(dt, pos, look, k);
   }
 
+  // Once your own plane has landed or crumpled, the camera hands over to the
+  // lead plane still in the air, so you can watch the rest of the race.
+  let doneAt = null, watching = null;
   function chase(race, dt, focus) {
     if (focus != null) {
       const me = race.planes.find(p => p.seat === focus);
-      if (me) return follow(me, dt);
+      if (me) {
+        const done = me.state === 'landed' || me.crumpled;
+        if (!done) doneAt = null;
+        else if (doneAt == null) doneAt = time;
+        watching = null;
+        if (done && time - doneAt > (me.crumpled ? 1.0 : 1.6)) {
+          const air = race.planes.filter(p => p.seat !== focus && !p.crumpled && (p.state === 'fly' || p.state === 'slide'));
+          if (air.length) {
+            const lead = air.reduce((a, b) => (b.z > a.z ? b : a));
+            watching = lead.seat;
+            return follow(lead, dt);
+          }
+        }
+        return follow(me, dt);
+      }
     }
+    watching = null;
     const fly = race.planes.filter(p => p.state === 'fly' || p.state === 'slide' || p.state === 'fall');
     const held = race.planes.filter(p => p.state === 'held');
     let pos, look;
@@ -2716,5 +2734,5 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   resize();
   window.addEventListener('resize', resize);
 
-  return { setFloor, setPlanes, setPodium, podiumTags, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, itemPop, setGraphics, get graphics() { return { pref: gfxPref, level }; }, get floor() { return floor; } };
+  return { setFloor, setPlanes, setPodium, podiumTags, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, itemPop, setGraphics, get graphics() { return { pref: gfxPref, level }; }, get watching() { return watching; }, get floor() { return floor; } };
 }

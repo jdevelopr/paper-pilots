@@ -22,6 +22,7 @@ export function createHud(root) {
       <div class="racers"></div>
       <div class="hud-top"><div class="hud-chip hud-floor"></div><div class="hud-chip hud-timer"></div><div class="hud-chip hud-clips" hidden>${clipIcon}<span>0</span></div><div class="hud-chip hud-par" hidden></div></div>
       <div class="hud-tired" hidden>Keep moving forward!</div>
+      <div class="hud-chip hud-watch" hidden></div>
       <div class="hud-buffs"></div>
       <div class="progress"></div>
       <div class="tags"></div>
@@ -41,6 +42,15 @@ export function createHud(root) {
   // Your own clip counter (solo and player views), which collected clips fly into
   const myClips = q('.hud-clips'), myClipsN = myClips.querySelector('span');
   let meSeat = null, inFlight = 0;
+  // "Watching ..." chip while the camera follows the leader after you land
+  let names = new Map(), watchSeat = null;
+  function setWatching(seat) {
+    if (seat === watchSeat) return;
+    watchSeat = seat;
+    const el = q('.hud-watch');
+    el.hidden = seat == null;
+    if (seat != null) { el.style.setProperty('--c', colorFor(seat)); el.innerHTML = `Watching <b>${esc(names.get(seat) || 'the leader')}</b>`; }
+  }
   const setMe = seat => { meSeat = seat; myClips.hidden = seat == null; };
   const parEl = q('.hud-par'), tiredEl = q('.hud-tired'), buffsEl = q('.hud-buffs');
   // Active item bonuses on your plane, each with a draining bar
@@ -85,6 +95,8 @@ export function createHud(root) {
       z.style.background = TIER_COLORS[zn.tier];
       progress.appendChild(z);
     }
+    names = new Map(players.map(p => [p.seat, p.name]));
+    setWatching(null);
     players.forEach((p, i) => {
       const el = document.createElement('div');
       el.className = 'racer';
@@ -457,5 +469,5 @@ export function createHud(root) {
   function showRace() { race.hidden = false; boardWrap.hidden = true; intro.hidden = true; }
   function setHint(t) { hint.textContent = t || ''; }
 
-  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, clipFly, clipCount, setMe, floater, banner, showIntro, results, shop, shopTimer, final, finalTags, hideBoards, showRace, setHint };
+  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, clipFly, clipCount, setMe, floater, banner, showIntro, results, shop, shopTimer, final, finalTags, setWatching, hideBoards, showRace, setHint };
 }

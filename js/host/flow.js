@@ -206,6 +206,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     if (phase !== 'lobby') {
       renderer.frame(dt, view);
       if (phase === 'final') hud.finalTags(renderer.podiumTags());
+      hud.setWatching(phase === 'race' ? renderer.watching : null);
       if (phase === 'race') hud.update(race, renderer.project, Object.fromEntries(humans().map(h => [h.seat, h])));
     }
   }

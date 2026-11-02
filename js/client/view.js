@@ -97,6 +97,7 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
       else view = { mode: 'race', race, focus: getSeat() };
       renderer.frame(dt, view);
       if (phase === 'race') hud.update(race, renderer.project, null);
+      hud.setWatching(phase === 'race' ? renderer.watching : null);
     }
     requestAnimationFrame(frame);
   }

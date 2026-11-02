@@ -839,3 +839,14 @@ body.solo:has(#controller[data-view="fly"]) .clip-rail { right: 24px; }
 .fin-row span { font-family: var(--body); font-size: 18px; }
 body.solo .fin-tag .nm { font-size: 32px; }
 body.solo .fin-tag.p1 .nm { font-size: 40px; }
+
+/* "Watching <leader>" chip once your plane is down */
+.hud-watch {
+  --c: var(--mustard);
+  position: absolute; top: 132px; left: 50%; transform: translateX(-50%) rotate(-1deg);
+  font-size: 26px; white-space: nowrap; background: color-mix(in srgb, var(--c) 45%, #fffdf6);
+  animation: pop 400ms var(--ease-back);
+}
+.hud-watch b { font-weight: 700; }
+.hud-watch[hidden] { display: none; }
+body.pv-touch .hud-watch { font-size: 18px; top: 64px; }
