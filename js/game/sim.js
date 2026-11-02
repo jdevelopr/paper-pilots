@@ -168,8 +168,7 @@ export const TRICKS = {
 const chainMult = n => Math.min(3, 1 + 0.5 * (n - 1));
 // Repeatable tricks are capped per flight so one floor full of vents can't
 // outscore the landing zones.
-const PER_FLIGHT = { close: 3, drafts: 2, under: 3, circle: 2, ceiling: 2, carpet: 2, zigzag: 2, speed: 1, stall: 2, hang: 1, dodge: 2, sweep: 1, slip: 2,
-  knife: 2, nosedive: 2, rocket: 2, elevator: 2, hoops: 1, windride: 2, edge: 1, quick: 1 };
+const PER_FLIGHT = 3;   // any trick pays at most 3 times in one flight
 function newTricks() {
   return {
     list: [], chain: 0, clips: 0, vents: [], under: [], doors: [], hall: null,
@@ -184,7 +183,7 @@ function trick(race, p, id) {
   const tr = p.tr;
   if (!tr) return;
   const t = TRICKS[id];
-  if (PER_FLIGHT[id] && tr.list.filter(x => x.id === id).length >= PER_FLIGHT[id]) return;
+  if (tr.list.filter(x => x.id === id).length >= PER_FLIGHT) return;
   tr.chain = Math.min(5, tr.chain + 1);
   const mult = chainMult(tr.chain);
   const clips = Math.round(t.value * mult);
@@ -216,7 +215,7 @@ function flightTricks(race, p, px, py, pz, dt, pyaw) {
   // Riding a second (third...) different vent in one flight
   f.vents.forEach((v, i) => {
     if (tr.vents.includes(i)) return;
-    if ((p.x - v.x) ** 2 + (p.z - v.z) ** 2 < v.r * v.r) { tr.vents.push(i); if (tr.vents.length === 2 || tr.vents.length === 4) trick(race, p, 'drafts'); }
+    if ((p.x - v.x) ** 2 + (p.z - v.z) ** 2 < v.r * v.r) { tr.vents.push(i); if (tr.vents.length >= 2 && tr.vents.length % 2 === 0) trick(race, p, 'drafts'); }
   });
   // All the way down a hallway without touching anything
   (f.halls || []).forEach(([zs, ze], i) => {
@@ -255,7 +254,8 @@ function styleTricks(race, p, dt, pyaw) {
   if (tr.flips.length >= 4) { tr.flips = []; trick(race, p, 'zigzag'); }
 
   // Speed Demon: hit top speed
-  if (p.v >= 20) trick(race, p, 'speed');
+  if (p.v >= 20 && !tr.fast) { tr.fast = true; trick(race, p, 'speed'); }
+  else if (p.v < 17) tr.fast = false;          // drop back below to earn it again
 
   // Stall Recovery: stall, then dive back up to cruising speed cleanly
   if (p.v < SIM.vStall) tr.stalledAt ??= t;
@@ -265,7 +265,9 @@ function styleTricks(race, p, dt, pyaw) {
   }
 
   // Hang Time: stay airborne about as long as it takes to cross the whole floor
-  if (p.thrownAt != null && t - p.thrownAt >= (f.length || 800) / 26) trick(race, p, 'hang');
+  // (and again at double and triple that time)
+  tr.hangN ??= 0;
+  if (p.thrownAt != null && t - p.thrownAt >= (tr.hangN + 1) * (f.length || 800) / 26) { tr.hangN++; trick(race, p, 'hang'); }
 
   // Knife Edge: hold a full bank for 1.4 s at speed
   tr.knifeT = Math.abs(p.roll) > 0.78 && p.v > 8 ? tr.knifeT + dt : Math.min(0, tr.knifeT);
@@ -444,7 +446,7 @@ function flyStep(race, p, dt, pz = p.z) {
         p.v = Math.min(28, Math.max(p.v, 8) + g.s);
         race.events.push({ name: 'boost', seat: p.seat, kind: 'ring', amount: g.s, gold: !!g.off, x: p.x, y: p.y, z: p.z });
         // Hoop Streak: three rings in one flight
-        if (p.tr && ++p.tr.rings === 3) trick(race, p, 'hoops');
+        if (p.tr && ++p.tr.rings % 3 === 0) trick(race, p, 'hoops');
       }
     }
   }
