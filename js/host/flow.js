@@ -8,7 +8,7 @@ import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM, ITEM
 import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, equip, finalStandings, SHOP_MS, legOf, rankOf } from '../game/rules.js';
 import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js';
 import { generateFloor } from '../game/floors.js';
-import { UPGRADES } from '../shared/upgrades.js';
+import { UPGRADES, SLOTS, MAX_LEVEL } from '../shared/upgrades.js';
 import { colorFor } from '../shared/colors.js';
 import { sfx, setWind } from './audio.js';
 import { TIER_COLORS } from '../shared/colors.js';
@@ -254,11 +254,22 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         const lv = rankOf(match.players[h.seat]?.career).level;
         if (lv >= 4) st.manager = 1;
         if (lv >= 7) st.ceo = 1;
+        // Parts flown this race: any Mk V, and every slot at Mk III or better
+        const pl = match.players[h.seat];
+        const lvs = SLOTS.map(sl => (pl?.loadout?.[sl.id] ? pl.parts?.[pl.loadout[sl.id]] || 0 : 0));
+        if (lvs.some(x => x >= MAX_LEVEL)) st.mk5 = 1;
+        if (lvs.every(x => x >= 3)) st.loaded = 1;
       }
       sendTo(h.seat, 'fx', { kind: 'stats', s: st });
     }
   }
 
+  // Mk V perks that save the day: phone toast, and the callout over the plane
+  const PERK_SAY = {
+    cardstock: ['Cardstock shrugged it off!', 'Shrugged it off!'],
+    tape: ['Packing Tape held it together!', 'Taped up!'],
+    skids: ['Eraser Skids: skipped back up!', 'Skip!'],
+  };
   function drainEvents() {
     for (const e of race.events.splice(0)) {
       const p = race.planes.find(q => q.seat === e.seat);
@@ -327,6 +338,17 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           const s = renderer.project(e.x, e.y + 1, e.z);
           if (s.visible) hud.floater(s.x, s.y, `${ITEMS[e.kind].label}! ${ITEMS[e.kind].what}`, 'combo big');
           if (!solo || e.seat === 0) renderer.punch(4);
+          break;
+        }
+        case 'perk': {
+          // A Mk V perk saved the plane: a gold spark and a callout for its pilot
+          renderer.burst(e.x, e.y, e.z, '#f2c230', 14, 3.5);
+          const say = PERK_SAY[e.id] || PERK_SAY.cardstock;
+          sendTo(e.seat, 'fx', { kind: 'toast', text: say[0] });
+          if (!mine) break;
+          sfx.zone(1);
+          const s = renderer.project(e.x, e.y + 1, e.z);
+          if (s.visible) hud.floater(s.x, s.y, say[1], 'combo big gold');
           break;
         }
         case 'tree':

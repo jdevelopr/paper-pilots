@@ -9,6 +9,7 @@ import { colorFor, TIER_COLORS, PLAYER_COLORS } from '../shared/colors.js';
 import { SIM, itemReady, buffOn } from '../game/sim.js';
 import { moverAt, moverAngle, groundAt, gapWind } from '../game/floors.js';
 import { stickerArtSvg, cleanPlaced, STICKER_SIZE, STICKER_BY_ID } from '../shared/stickers.js';
+import { UPGRADE_BY_ID, metalOf } from '../shared/upgrades.js';
 
 const INK = '#2c2416';
 const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -139,24 +140,26 @@ function speckleTexture(base, dot, n = 2500, size = 256, grid = 0) {
 // Wide Glider spreads the wings, Needle Dart is long and narrow, Stunt Fold
 // tips its wings up.
 const lvOf = (owned, id) => owned.reduce((n, x) => n + (x === id), 0);
+// Swallowtail Fold cuts a notch out of the back, leaving two long tail points.
 function foldShape(owned) {
-  const w = lvOf(owned, 'widewings'), n = lvOf(owned, 'needle'), st = lvOf(owned, 'stunt');
-  const wide = (w ? 1.25 + 0.12 * w : 1) * (n ? 0.84 - 0.04 * n : 1) * (st ? 0.95 : 1);
-  return { wide, L: n ? 1.0 + 0.06 * n : 0.85, D: st ? 0.24 + 0.06 * st : 0.14 };
+  const w = lvOf(owned, 'widewings'), n = lvOf(owned, 'needle'), st = lvOf(owned, 'stunt'), sw = lvOf(owned, 'swallowtail');
+  const wide = (w ? 1.25 + 0.12 * w : 1) * (n ? 0.84 - 0.04 * n : 1) * (st ? 0.95 : 1) * (sw ? 1.04 : 1);
+  return { wide, L: n ? 1.0 + 0.06 * n : 0.85, D: st ? 0.24 + 0.06 * st : 0.14, notch: sw ? 0.3 + 0.05 * sw : 0 };
 }
 function planeGeometry(owned) {
-  const { wide, L, D } = foldShape(owned);
+  const { wide, L, D, notch } = foldShape(owned);
   const thick = lvOf(owned, 'cardstock') * 0.05;
   const S = 0.75 * wide, K = 0.28;
+  const tipZ = L * (1 + notch * 0.35), rearZ = L * (1 - notch);
   // Nose at -z. Classic dart: two wing panels and a folded keel.
   const v = [
     0, 0, -L,          // 0 nose
-    -S, D, L,          // 1 left tip
-    0, 0, L,           // 2 centre rear (top fold)
-    S, D, L,           // 3 right tip
-    0, -K, L * 0.9,    // 4 keel bottom rear
-    -S * 0.18, 0.03, L,// 5 left inner fold
-    S * 0.18, 0.03, L, // 6 right inner fold
+    -S, D, tipZ,       // 1 left tip
+    0, 0, rearZ,       // 2 centre rear (top fold)
+    S, D, tipZ,        // 3 right tip
+    0, -K, rearZ * 0.9,// 4 keel bottom rear
+    -S * 0.18, 0.03, L * (1 - notch * 0.8),// 5 left inner fold
+    S * 0.18, 0.03, L * (1 - notch * 0.8), // 6 right inner fold
   ];
   const idx = [
     0, 1, 5, 0, 5, 2,  // left wing
@@ -242,6 +245,8 @@ function paperMaterial(seat, owned, rank) {
   const color = map ? base.lerp(new THREE.Color('#ffffff'), rank === 5 ? 0.55 : 0.25) : base;
   const opts = { color, map, flatShading: true, side: THREE.DoubleSide };
   if (owned.includes('tissue')) Object.assign(opts, { transparent: true, opacity: 0.86 - 0.08 * lvOf(owned, 'tissue') });
+  // Vellum: pale, frosted and just a little see-through
+  if (owned.includes('vellum')) Object.assign(opts, { color: color.clone().lerp(new THREE.Color('#ffffff'), 0.4), transparent: true, opacity: 0.93 });
   return shiny
     ? new THREE.MeshPhongMaterial({ ...opts, shininess: 90, specular: 0x777777 })
     : new THREE.MeshLambertMaterial(opts);
@@ -469,12 +474,78 @@ function damagePlane(root, lvl) {
   if (root.userData.stickerList?.length) applyStickers(root, root.userData.stickerList);
 }
 
+/* ------------------------------------------------ silver/gold outline --- */
+// Mk IV parts get a silver outline and Mk V parts a gold one (foil-paper
+// planes too, around the whole plane). The outline is a copy of the part drawn
+// just behind it, with every vertex pushed a few pixels out from the part's
+// centre on screen, so it reads as an even rim at any distance. It is plain
+// colour on layer 1 (no ink pass needed), so it shows at every graphics level.
+const METAL = { silver: { color: '#dfe7ef', shine: 0.6 }, gold: { color: '#ffd23f', shine: 0.7 }, ink: { color: '#2c2416', shine: 0 } };
+const _rimRes = new THREE.Vector2();
+const RIM_VERT = /* glsl */`
+uniform vec3 center; uniform vec2 res; uniform float px; uniform float back; uniform float grow;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(center + (position - center) * grow, 1.0);
+  vec4 mc = modelViewMatrix * vec4(center, 1.0);
+  mv.z -= back; mc.z -= back;
+  vec4 p = projectionMatrix * mv, c = projectionMatrix * mc;
+  vec2 d = (p.xy / p.w - c.xy / c.w) * res;
+  float l = length(d);
+  vec2 dir = l > 1e-4 ? d / l : vec2(0.0, 1.0);
+  p.xy += dir / res * 2.0 * px * p.w;
+  gl_Position = p;
+}`;
+const RIM_FRAG = /* glsl */`
+uniform vec3 color; uniform float time; uniform float shine;
+void main() {
+  // a slow glint that sweeps across the rim
+  float band = smoothstep(0.82, 1.0, sin((gl_FragCoord.x + gl_FragCoord.y) * 0.03 - time * 3.2));
+  gl_FragColor = vec4(color * (0.9 + 0.1 * sin(time * 2.1)) + band * shine, 1.0);
+  #include <colorspace_fragment>
+}`;
+// A metal rim with a thin ink line around it, so it reads against any
+// player colour (gold on the mustard plane, silver on white paper).
+function addRim(mesh, metal) {
+  rimLayer(mesh, metal, 4.5, 0.26, 1.07);
+  rimLayer(mesh, 'ink', 6.5, 0.34, 1.07);
+}
+function rimLayer(mesh, metal, width, back, grow) {
+  const m = METAL[metal];
+  if (!m || !mesh.geometry) return;
+  const geo = mesh.geometry;
+  if (!geo.boundingSphere) geo.computeBoundingSphere();
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: RIM_VERT, fragmentShader: RIM_FRAG, side: THREE.DoubleSide,
+    uniforms: {
+      color: { value: new THREE.Color(m.color) }, shine: { value: m.shine }, time: { value: 0 },
+      center: { value: geo.boundingSphere.center.clone() }, res: { value: new THREE.Vector2(1, 1) }, px: { value: width }, back: { value: back }, grow: { value: grow },
+    },
+  });
+  const rim = new THREE.Mesh(geo, mat);          // shares the geometry, so it bends with damage
+  rim.layers.set(1);
+  rim.renderOrder = metal === 'ink' ? -2 : -1;
+  rim.raycast = () => {};
+  rim.userData.rim = metal;
+  rim.onBeforeRender = r => {
+    r.getDrawingBufferSize(_rimRes);
+    const u = mat.uniforms;
+    u.res.value.copy(_rimRes);
+    u.px.value = width * Math.max(1, r.getPixelRatio());
+    u.time.value = performance.now() / 1000;
+  };
+  mesh.add(rim);
+}
+const METAL_RANK = { silver: 1, gold: 2 };
+const betterMetal = (a, b) => ((METAL_RANK[b] || 0) > (METAL_RANK[a] || 0) ? b : a);
 
 function buildPlane(seat, owned, rank = 0, stickers = []) {
   const group = new THREE.Group();
   const mat = paperMaterial(seat, owned, rank);
   const body = new THREE.Mesh(planeGeometry(owned), mat);
   group.add(body);
+  // Attachments, by part, so Mk IV/V ones can get their outline
+  const partMeshes = {};
+  const addPart = (id, ...ms) => { (partMeshes[id] ||= []).push(...ms); group.add(...ms); };
 
   const { wide, L: noseL, D: tipD } = foldShape(owned);
   if (owned.includes('stunt')) {
@@ -483,51 +554,51 @@ function buildPlane(seat, owned, rank = 0, stickers = []) {
       const fin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.18 + 0.06 * lvOf(owned, 'stunt'), 0.4), M('#f6efdc'));
       fin.position.set(s * 0.75 * wide, tipD + 0.08, 0.7);
       fin.rotation.z = s * -0.25;
-      group.add(fin);
+      addPart('stunt', fin);
     }
   }
   if (owned.includes('pencil')) {
     // Pencil Tip: a sharpened pencil stub for a nose
     const len = 0.35 + 0.08 * lvOf(owned, 'pencil');
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, len, 6), M('#f2c94c'));
-    body.rotation.x = Math.PI / 2; body.position.set(0, -0.02, -noseL + len / 2 - 0.05); group.add(body);
+    body.rotation.x = Math.PI / 2; body.position.set(0, -0.02, -noseL + len / 2 - 0.05); addPart('pencil', body);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 6), M('#e8d2a8'));
-    tip.rotation.x = -Math.PI / 2; tip.position.set(0, -0.02, -noseL - 0.12); group.add(tip);
+    tip.rotation.x = -Math.PI / 2; tip.position.set(0, -0.02, -noseL - 0.12); addPart('pencil', tip);
     const lead = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.06, 6), M('#2c2416'));
-    lead.rotation.x = -Math.PI / 2; lead.position.set(0, -0.02, -noseL - 0.21); group.add(lead);
+    lead.rotation.x = -Math.PI / 2; lead.position.set(0, -0.02, -noseL - 0.21); addPart('pencil', lead);
   }
   if (owned.includes('skids')) {
     const sk = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.9), M('#ef8fa8'));
     sk.position.set(0, -0.27, 0.35);
-    group.add(sk);
+    addPart('skids', sk);
   }
   if (owned.includes('noseclip')) {
     const clip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.34), M('#b9c1c9'));
     clip.position.set(0, -0.04, -0.62);
-    group.add(clip);
+    addPart('noseclip', clip);
   }
   if (owned.includes('flaps')) {
     for (const s of [-1, 1]) {
       const f = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.02, 0.22), M('#f7e26b'));
       f.position.set(s * 0.6 * wide, 0.14, 0.78);
-      group.add(f);
+      addPart('flaps', f);
     }
   }
   if (owned.includes('tape')) {
     const t = new THREE.Mesh(new THREE.BoxGeometry(1.0 * wide, 0.015, 0.16),
       new THREE.MeshLambertMaterial({ color: '#d8c7a0', transparent: true, opacity: 0.75 }));
     t.position.set(0, 0.06, 0.25);
-    group.add(t);
+    addPart('tape', t);
   }
   if (owned.includes('binder')) {
     const b = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.16), M('#2c2c2c'));
     b.position.set(0, -0.26, 0.7);
-    group.add(b);
+    addPart('binder', b);
   }
   if (owned.includes('magnet')) {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 8), M('#c1440e'));
     m.position.set(0, -0.12, 0.1);
-    group.add(m);
+    addPart('magnet', m);
   }
   if (owned.includes('afterburner')) {
     // Doodled flames on the tail; more levels, longer flames
@@ -537,14 +608,58 @@ function buildPlane(seat, owned, rank = 0, stickers = []) {
       const f = new THREE.Mesh(new THREE.ConeGeometry(0.06, len, 4), M(c));
       f.rotation.x = Math.PI / 2;
       f.position.set(s * 0.1, 0.04, 0.9 + len / 2);
-      group.add(f);
+      addPart('afterburner', f);
     }
   }
   if (owned.includes('rubberband')) {
     const r = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.025, 4, 10), M('#c94f3d'));
     r.position.set(0, -0.16, 0.45); r.rotation.y = Math.PI / 2;
-    group.add(r);
+    addPart('rubberband', r);
   }
+
+  if (owned.includes('staple')) {
+    // Staple Nose: a big silver staple bent over the nose
+    const sm = M('#9aa5ad');
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.34), sm);
+    bar.position.set(0, 0.07, -noseL * 0.62);
+    const legs = [-1, 1].map(s => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.05), sm);
+      leg.position.set(0, -0.02, -noseL * 0.62 + s * 0.15);
+      return leg;
+    });
+    addPart('staple', bar, ...legs);
+  }
+  if (owned.includes('bookmark')) {
+    // Bookmark Ribbon: two red silk tails streaming off the back
+    const lv = lvOf(owned, 'bookmark');
+    for (const s of [-1, 1]) {
+      const len = 0.55 + 0.07 * lv;
+      const rb = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.012, len), M('#c0392b'));
+      rb.position.set(s * 0.07, -0.05, noseL + len / 2 - 0.05);
+      rb.rotation.y = s * 0.16; rb.rotation.x = 0.12;
+      addPart('bookmark', rb);
+    }
+  }
+  if (owned.includes('highlighter')) {
+    // Highlighter: a fluorescent marker strapped under the plane
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.46, 6), M('#e9f23a'));
+    barrel.rotation.x = Math.PI / 2; barrel.position.set(0, -0.2, 0.2);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.082, 0.16, 6), M('#3c3c3c'));
+    cap.rotation.x = Math.PI / 2; cap.position.set(0, -0.2, -0.08);
+    addPart('highlighter', barrel, cap);
+  }
+
+  // Silver and gold outlines. The paper and the fold are the plane itself, so
+  // a Mk IV/V paper or fold (or Silver/Gold Foil from VP/CEO rank) outlines
+  // the whole plane; other parts outline just themselves.
+  let bodyMetal = rank >= 7 ? 'gold' : rank >= 6 ? 'silver' : '';
+  for (const id of new Set(owned)) {
+    const u = UPGRADE_BY_ID[id], metal = metalOf(lvOf(owned, id));
+    if (!u || !metal) continue;
+    if (u.slot === 'paper' || u.slot === 'fold') bodyMetal = betterMetal(bodyMetal, metal);
+    for (const m of partMeshes[id] || []) addRim(m, metal);
+  }
+  if (bodyMetal) addRim(body, bodyMetal);
 
   // Crumpled-ball stand-in, revealed when durability runs out
   const ballGeo = new THREE.IcosahedronGeometry(0.42, 1);
@@ -1069,6 +1184,7 @@ export function createPlanePreview(canvas, { reduceMotion = false } = {}) {
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
   cam.position.set(0, 2.3, 5.6); cam.lookAt(0, -0.15, 0);
+  cam.layers.enable(1);          // silver/gold part outlines
   scene.add(new THREE.HemisphereLight(0xfffaf0, 0x8a7a62, 1.6));
   const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(2, 4, 3); scene.add(sun);
   // a paper disc to stand on, with a soft shadow

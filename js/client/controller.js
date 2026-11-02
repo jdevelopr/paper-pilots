@@ -10,7 +10,7 @@ import { colorFor } from '../shared/colors.js';
 import { RANK_UNLOCKS } from '../shared/ranks.js';
 import { recordStats, placed, onBookChange } from '../shared/stickers.js';
 import { openStickerBook } from './stickerbook.js';
-import { statBars, MAX_LEVEL, MK, UPGRADES, UPGRADE_BY_ID, SLOTS, SLOT_BY_ID, partState, equippedList } from '../shared/upgrades.js';
+import { statBars, MAX_LEVEL, MK, UPGRADES, UPGRADE_BY_ID, SLOTS, SLOT_BY_ID, partState, equippedList, metalOf } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ITEM_NAMES = { donut: 'Donut: thrust', card: 'Index Card: invincible', glue: 'Glue Bottle: clip magnet', chipclip: 'Chip Bag Clip: clips +2' };
@@ -335,6 +335,9 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     }
     return out.join(' ');
   }
+  // Level pips: Mk I-III fill green, Mk IV silver, Mk V gold
+  const pipsHtml = lv => `<span class="pips">${Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${[k < lv ? 'on' : '', k === 3 ? 'p4' : k === 4 ? 'p5' : ''].join(' ').trim()}"></i>`).join('')}</span>`;
+  const metalClass = lv => { const m = metalOf(lv); return m ? ` m-${m}` : ''; };
   // What tapping a row would do, and the loadout afterwards
   function actionFor(id) {
     const parts = me.parts || {}, loadout = me.loadout || {};
@@ -369,9 +372,9 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
   function renderSlots() {
     slotsEl.innerHTML = SLOTS.map(sl => {
       const id = me.loadout?.[sl.id], u = id && UPGRADE_BY_ID[id], lv = u ? (me.parts?.[id] || 1) : 0;
-      const pips = u ? `<span class="pips">${Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('')}</span>` : '';
+      const pips = u ? pipsHtml(lv) : '';
       const inv = UPGRADES.filter(x => x.slot === sl.id && me.parts?.[x.id]).length;
-      return `<button class="hg-slot${sl.id === selSlot ? ' sel' : ''}${u ? ' fitted' : ''}" role="tab" aria-selected="${sl.id === selSlot}" data-slot="${sl.id}">
+      return `<button class="hg-slot${sl.id === selSlot ? ' sel' : ''}${u ? ' fitted' : ''}${metalClass(lv)}" role="tab" aria-selected="${sl.id === selSlot}" data-slot="${sl.id}">
         <span class="sl-n">${esc(sl.name)}</span><span class="sl-p">${esc(u ? u.name : sl.stock)}</span>${pips}${inv > (u ? 1 : 0) ? `<span class="sl-inv">${inv} owned</span>` : ''}</button>`;
     }).join('');
     for (const b of slotsEl.querySelectorAll('.hg-slot')) b.onclick = () => {
@@ -426,21 +429,25 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
       el.classList.toggle('owned', on);
       el.classList.toggle('inv', !on && lv > 0);
       el.classList.toggle('locked', a.kind === 'locked' && !on);
+      el.classList.toggle('m-silver', metalOf(lv) === 'silver');
+      el.classList.toggle('m-gold', metalOf(lv) === 'gold');
       el.disabled = !afford;
-      const pips = stock ? '' : `<span class="pips">${Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('')}</span>`;
+      const pips = stock ? '' : pipsHtml(lv);
       const right = a.kind === 'buy' || a.kind === 'upgrade' ? `<small>${a.kind === 'buy' ? 'Buy' : MK(a.next)}</small>${a.cost}${clipIcon}`
         : a.kind === 'equip' ? '<small>Equip</small>'
         : a.kind === 'locked' ? '<svg aria-hidden="true" class="lock"><use href="#i-lock"/></svg>'
         : on ? '<svg aria-hidden="true"><use href="#i-check"/></svg>' : '';
-      const name = stock ? sl.stock : `${u.name}${lv ? ` <span class="mk">${MK(lv)}</span>` : ''}`;
+      const name = stock ? sl.stock : `${u.name}${lv ? ` <span class="mk${metalClass(lv)}">${MK(lv)}</span>` : ''}`;
       const desc = stock ? '<span class="why">Stock part, free</span>'
         : a.kind === 'locked' ? `<b>${esc(u.pro)}</b> · <span class="why">${esc(a.reason)}</span>`
         : `<b>${esc(u.pro)}</b>${u.con ? ` · <em>${esc(u.con)}</em>` : ''}`;
+      // The Mk V perk: shown once you're working toward it, lit up once you have it
+      const perk = !stock && u.perk && lv >= 3 ? `<span class="perk${lv >= MAX_LEVEL ? ' got' : ''}">${esc(u.perk)}</span>` : '';
       const delta = (a.kind === 'buy' || a.kind === 'upgrade' || a.kind === 'equip') ? deltaText(now, statBars(a.after)) : '';
       el.setAttribute('aria-label', `${stock ? sl.stock : u.name}${lv ? `, ${MK(lv)}` : ''}${on ? ', equipped' : ''}${a.kind === 'locked' ? `, ${a.reason}` : ''}`);
       el.innerHTML = `<span class="un">${name}${pips}</span>
         <span class="uc">${right}</span>
-        <span class="ud">${desc}${delta ? `<span class="delta">${delta}</span>` : ''}</span>`;
+        <span class="ud">${desc}${perk}${delta ? `<span class="delta">${delta}</span>` : ''}</span>`;
     }
   }
 

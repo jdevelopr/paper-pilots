@@ -13,6 +13,10 @@
   --green: #3d6b52;
   --mustard: #e0a526;
   --danger: #b8321a;
+  --silver: #cfd8e2;
+  --silver-deep: #7f8c99;
+  --gold: #f2bf2a;
+  --gold-deep: #a8740c;
 
   --t-fast: 120ms;
   --t-base: 220ms;
@@ -850,3 +854,36 @@ body.solo .fin-tag.p1 .nm { font-size: 40px; }
 .hud-watch b { font-weight: 700; }
 .hud-watch[hidden] { display: none; }
 body.pv-touch .hud-watch { font-size: 18px; top: 64px; }
+
+/* ------------------------------------------ Mk IV silver, Mk V gold --- */
+/* Parts at Mk IV get a silver outline and Mk V a gold one, everywhere they
+   show: shop rows, slot cards, level pips, the host's upgrade chips. A slow
+   glint sweeps across them. */
+.upg.m-silver, .hg-slot.m-silver { --metal: var(--silver); --metal-deep: var(--silver-deep); }
+.upg.m-gold, .hg-slot.m-gold { --metal: var(--gold); --metal-deep: var(--gold-deep); }
+.upg.m-silver, .upg.m-gold, .hg-slot.m-silver, .hg-slot.m-gold {
+  border-color: var(--metal-deep);
+  box-shadow: inset 0 0 0 3px var(--metal), inset 0 0 0 4.5px var(--metal-deep), 2px 3px 0 var(--ink);
+  background-image: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.55) 50%, transparent 60%);
+  background-size: 300% 100%; background-repeat: no-repeat;
+  animation: slide-in var(--t-slow) var(--ease-back) backwards, glint 3.2s linear infinite;
+  animation-delay: calc(var(--i, 0) * 40ms), 0s;
+}
+.hg-slot.m-silver, .hg-slot.m-gold { animation: glint 3.2s linear infinite; }
+.hg-slot.sel.m-silver, .hg-slot.sel.m-gold { box-shadow: inset 0 0 0 3px var(--metal), inset 0 0 0 4.5px var(--metal-deep), 3px 6px 0 var(--ink); }
+@keyframes glint { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+.upg .mk.m-silver, .upg .mk.m-gold { padding: 0 6px; border-radius: 6px; color: var(--ink); }
+.upg .mk.m-silver { background: var(--silver); border: 2px solid var(--silver-deep); }
+.upg .mk.m-gold { background: var(--gold); border: 2px solid var(--gold-deep); }
+:is(.upg, .hg-slot) .pips i.p4 { border-color: var(--silver-deep); }
+:is(.upg, .hg-slot) .pips i.p5 { border-color: var(--gold-deep); }
+:is(.upg, .hg-slot) .pips i.on.p4 { background: var(--silver); box-shadow: 0 0 0 1.5px var(--silver-deep); }
+:is(.upg, .hg-slot) .pips i.on.p5 { background: var(--gold); box-shadow: 0 0 0 1.5px var(--gold-deep); }
+.upg .perk { display: block; color: var(--ink-soft); font-style: italic; }
+.upg .perk.got { color: var(--gold-deep); font-style: normal; font-weight: 700; }
+.shopcard .ups span.m-silver { background: var(--silver); border-color: var(--silver-deep); box-shadow: 0 0 0 2px var(--silver); }
+.shopcard .ups span.m-gold { background: var(--gold); border-color: var(--gold-deep); box-shadow: 0 0 0 2px var(--gold); }
+.floater.gold { color: var(--gold-deep); }
+@media (prefers-reduced-motion: reduce) {
+  .upg.m-silver, .upg.m-gold, .hg-slot.m-silver, .hg-slot.m-gold { animation: none; }
+}

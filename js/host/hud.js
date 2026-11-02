@@ -5,14 +5,15 @@ import { esc, clipIcon, planeIcon, reduceMotion } from '../ui.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM, scoreRun, ITEMS } from '../game/sim.js';
 const ITEM_COLORS = { donut: '#f29bb8', card: '#8fd0ea', glue: '#f08a2c', chipclip: '#6fbf73' };
-import { UPGRADE_BY_ID, SLOTS, MK } from '../shared/upgrades.js';
+import { UPGRADE_BY_ID, SLOTS, MK, metalOf } from '../shared/upgrades.js';
 
 // A short "build" line from the loadout: the fold names the style
 const pathOf = p => { const f = UPGRADE_BY_ID[p.loadout?.fold]; return f ? `${f.name} build` : ''; };
 
 // One chip per upgrade, with its level: "Packing Tape II".
 // One chip per equipped slot: "Cardstock Mk II"
-const upChips = p => SLOTS.filter(sl => p.loadout?.[sl.id]).map(sl => { const id = p.loadout[sl.id]; return { id: sl.id, text: `${UPGRADE_BY_ID[id]?.name ?? id} ${MK(p.parts?.[id] || 1)}` }; });
+// Mk IV chips are trimmed in silver, Mk V in gold.
+const upChips = p => SLOTS.filter(sl => p.loadout?.[sl.id]).map(sl => { const id = p.loadout[sl.id], lv = p.parts?.[id] || 1; return { id: sl.id, text: `${UPGRADE_BY_ID[id]?.name ?? id} ${MK(lv)}`, metal: metalOf(lv) }; });
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
@@ -62,7 +63,10 @@ export function createHud(root) {
       buffsEl.innerHTML = live.map(k => `<div class="buff" data-k="${k}" style="--bc:${ITEM_COLORS[k]}"><b>${esc(ITEMS[k].label)}</b> ${esc(ITEMS[k].what)}<i><u></u></i></div>`).join('');
     }
     for (const el of buffsEl.children) {
-      const k = el.dataset.k, left = (p.buffs[k] - t) / ITEMS[k].dur;
+      // (the Highlighter stretches items past their usual length: scale to the longest seen)
+      const k = el.dataset.k, rem = p.buffs[k] - t;
+      const max = el.dataset.max = Math.max(+el.dataset.max || 0, ITEMS[k].dur, rem);
+      const left = rem / max;
       el.querySelector('u').style.transform = `scaleX(${Math.max(0, Math.min(1, left)).toFixed(3)})`;
     }
   }
@@ -395,7 +399,7 @@ export function createHud(root) {
           <div class="nm">${esc(p.name)}</div>
           <div class="cl">${clipIcon}<span>${p.clips}</span></div>
           <div class="path">${esc(pathOf(p))}</div>
-          <div class="ups">${upChips(p).map(c => `<span data-id="${c.id}">${esc(c.text)}</span>`).join('')}</div>
+          <div class="ups">${upChips(p).map(c => `<span data-id="${c.id}"${c.metal ? ` class="m-${c.metal}"` : ''}>${esc(c.text)}</span>`).join('')}</div>
           <div class="state">${p.done ? 'Done' : 'Shopping'}</div>
         </div>`).join('')}</div>
       <div class="foot"><span>Next: Floor ${state.next.label ?? state.next.number} · ${esc(state.next.name)} · Race ${state.nextLeg} of ${state.legs}</span></div>`;
@@ -417,6 +421,7 @@ export function createHud(root) {
         if (!chip) { chip = document.createElement('span'); chip.dataset.id = c.id; ups.appendChild(chip); }
         if (chip.textContent !== c.text) {
           chip.textContent = c.text;
+          chip.className = c.metal ? `m-${c.metal}` : '';
           chip.style.animation = 'none'; void chip.offsetWidth; chip.style.animation = '';
         }
       }

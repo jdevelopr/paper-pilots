@@ -95,14 +95,16 @@ body #controller[data-view="shop"] {
   .hg-slot .sl-p { font-size: 15px; }
   .hg-slot .sl-n { font-size: 11px; }
   .hg-slot .sl-inv { display: none; }
-  .hg-slot .pips i { width: 8px; height: 8px; }
   .hg-build { font-size: 20px; }
   .hg-side .stats { padding: 6px 10px; font-size: 15px; }
   .hg-slotname { font-size: 24px; }
   .cv[data-v="shop"] .crank { display: none; }
 }
 .hg-slot .pips { display: inline-flex; gap: 4px; }
-.hg-slot .pips i { width: 10px; height: 10px; border: 2px solid var(--ink); border-radius: 50% 45% 55% 48%; background: #fffdf6; }
+.hg-slot .pips i { border: 2px solid var(--ink); border-radius: 50% 45% 55% 48%; background: #fffdf6; }
+@media (min-width: 861px) { .hg-slot .pips i { width: 10px; height: 10px; } }
+/* five pips have to fit a narrow slot card on phones */
+@media (max-width: 860px) { .hg-slot .pips { gap: 2px; } .hg-slot .pips i { width: 5px; height: 5px; border-width: 1.5px; } }
 .hg-slot .pips i.on { background: var(--green); }
 .upg.owned[disabled] { opacity: 1; }
 

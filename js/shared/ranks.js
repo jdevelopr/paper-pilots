@@ -24,15 +24,15 @@ export function rankOf(career = 0) {
 export const RANK = Object.fromEntries(RANKS.map((r, i) => [r.title, i]));
 
 // What each promotion unlocks. Shown when someone is promoted and in the shop.
-//   Mk II parts need Associate; Mk III parts need Supervisor.
+//   Mk II parts need Associate, Mk III Supervisor, Mk IV Manager, Mk V Director.
 //   Every title also changes the paper your plane is folded from.
 export const RANK_UNLOCKS = [
   'Plain copy paper',
   'Lined notebook paper',
   'Mk II parts unlocked · Graph paper',
   'Mk III parts unlocked · Legal pad',
-  'Kraft paper',
-  'Blueprint paper',
+  'Mk IV parts unlocked · Kraft paper',
+  'Mk V parts unlocked · Blueprint paper',
   'Silver foil paper',
   'Gold foil paper',
 ];

@@ -118,6 +118,8 @@ export function throwPlane(race, seat, aim) {
   p.yaw = p.aim.yaw;
   p.pitch = p.aim.pitch;
   p.v = SIM.launchMax * power * p.st.launch / (0.85 + 0.15 * p.st.weight);
+  // Rubber Band Launcher Mk V: let go right on GO for an extra-hard throw
+  if (p.st.perk.rubberband && race.t < 0.5) p.v *= 1.08;
   p.state = 'fly';
   p.thrownAt = race.t;
   race.events.push({ name: 'throw', seat, power: p.aim.power, boost: p.st.launch > 1 });
@@ -223,13 +225,16 @@ function trick(race, p, id) {
   if (tr.list.filter(x => x.id === id).length >= PER_FLIGHT) return;
   tr.chain = Math.min(5, tr.chain + 1);
   const mult = chainMult(tr.chain);
-  const clips = Math.round(t.value * mult);
+  // Stunt Fold Mk V: every trick after the first in a combo pays one more clip
+  const clips = Math.round(t.value * mult) + (p.st.perk.stunt && tr.chain > 1 ? 1 : 0);
   tr.clips += clips;
   tr.list.push({ id, label: t.label, value: t.value, mult, clips });
   // Afterburner Doodle: mid-flight tricks kick the plane forward. No upgrade, no boost.
   let boost = 0;
   if (p.st.trickBoost > 0 && !p.crumpled && (p.state === 'fly' || p.duct != null || p.out)) {
-    boost = Math.max(0, Math.min(p.st.trickBoost, TRICK_BOOST_CAP - p.v));
+    // Mk V: bursts are 50% bigger and may push past the usual cap
+    const big = p.st.perk.afterburner, cap = big ? TRICK_BOOST_CAP + 4 : TRICK_BOOST_CAP;
+    boost = Math.max(0, Math.min(p.st.trickBoost * (big ? 1.5 : 1), cap - p.v));
     p.v += boost;
   }
   race.events.push({ name: 'trick', seat: p.seat, id, label: t.label, value: t.value, mult, clips, boost, x: p.x, y: p.y, z: p.z });
@@ -378,7 +383,8 @@ function flyStep(race, p, dt, pz = p.z) {
   // Pitch: stick up = climb. A slight nose-down trim keeps a hands-off plane gliding.
   const vStall = SIM.vStall, vRef = SIM.vRef;
   let target = -0.05 + p.inY * 0.55;
-  if (p.v < vStall) target = lerp(target, -0.7, clamp((vStall - p.v) / vStall + 0.3, 0, 1));
+  // (Swallowtail Fold Mk V: a stall barely tips the nose down)
+  if (p.v < vStall) target = lerp(target, st.perk.swallowtail ? -0.28 : -0.7, clamp((vStall - p.v) / vStall + 0.3, 0, 1));
   p.pitch += (target - p.pitch) * clamp(2.6 * dt, 0, 1);
   p.pitch = clamp(p.pitch, -1.1, 0.9);
 
@@ -387,7 +393,8 @@ function flyStep(race, p, dt, pz = p.z) {
   const vs = clamp(p.v / vRef, 0.45, 1.3);
   p.yaw += p.roll * 1.25 * st.turn * vs * dt;
 
-  const D = SIM.dragK * st.drag * (0.85 + 0.15 * st.weight) * (1 + p.roll * p.roll * 0.5);
+  // (Sticky Note Flaps Mk V: banking costs no speed)
+  const D = SIM.dragK * st.drag * (0.85 + 0.15 * st.weight) * (1 + (st.perk.flaps ? 0 : p.roll * p.roll * 0.5));
   p.v += (-SIM.G * Math.sin(p.pitch) - D * p.v * p.v) * dt;
   p.v = clamp(p.v, 0.5, 40);
 
@@ -398,10 +405,17 @@ function flyStep(race, p, dt, pz = p.z) {
   // Paper fatigue: a plane has to keep making headway down the floor. Circling,
   // hovering in a vent or crawling along builds fatigue, and fatigue makes it
   // sink faster; flying forward with purpose shakes it off again.
+  // Bookmark Ribbon slows the build-up (and speeds recovery); at Mk V there's
+  // no fatigue at all on the last 20% of the floor. Wide Glider Mk V only
+  // starts tiring below 5.5.
   const vz = h * Math.cos(p.yaw);
-  if (vz < SIM.fatigueV) p.fatigue = Math.min(SIM.fatigueMax, (p.fatigue || 0) + (1 - Math.max(0, vz) / SIM.fatigueV) * SIM.fatigueRate * dt);
-  else p.fatigue = Math.max(0, (p.fatigue || 0) - SIM.fatigueRecover * dt);
+  const fV = st.perk.widewings ? 5.5 : SIM.fatigueV;
+  if (st.perk.bookmark && p.z > 0.8 * (f.length || 800)) p.fatigue = 0;
+  else if (vz < fV) p.fatigue = Math.min(SIM.fatigueMax, (p.fatigue || 0) + (1 - Math.max(0, vz) / fV) * SIM.fatigueRate * st.fatigue * dt);
+  else p.fatigue = Math.max(0, (p.fatigue || 0) - SIM.fatigueRecover / st.fatigue * dt);
   sink *= 1 + SIM.fatigueSink * p.fatigue;
+  // Tissue Paper Mk V: a cushion of air just above the floor
+  if (st.perk.tissue && p.y - groundAt(f, p.z) < 1.4 && p.pitch < 0.1) sink *= 0.45;
   p.x += Math.sin(p.yaw) * h * dt;
   p.z += Math.cos(p.yaw) * h * dt;
   p.y += (p.v * Math.sin(p.pitch) - sink) * dt;
@@ -416,7 +430,8 @@ function flyStep(race, p, dt, pz = p.z) {
       const fall = vnt.duct ? 1 : clamp(1 - p.y / (f.height * 0.95), 0, 1);
       p.y += vnt.s * 1.6 * st.lift * (0.5 + 0.5 * edge) * fall * dt;
       // Drafts also carry you forward: riding one is a speed boost.
-      p.v += vnt.s * 0.5 * (0.5 + 0.5 * edge) * dt;
+      // (Vellum Mk V: 50% more push)
+      p.v += vnt.s * 0.5 * (st.perk.vellum ? 1.5 : 1) * (0.5 + 0.5 * edge) * dt;
       inDraft = 'up';
     }
   }
@@ -433,7 +448,9 @@ function flyStep(race, p, dt, pz = p.z) {
   // Outside on the ledge run: a crosswind shoves you away from the building
   // ...and air rising up the facade roughly cancels your sink, so a clean
   // line can hold window height all the way along.
-  if (p.out && f.ledge) { p.x += f.ledge.side * f.ledge.wind * st.wind * dt; p.y += 1.25 * dt; }
+  // (Paper Clip Nose Mk V: crosswinds don't push you)
+  const cross = st.perk.noseclip ? 0 : st.wind;
+  if (p.out && f.ledge) { p.x += f.ledge.side * f.ledge.wind * cross * dt; p.y += 1.25 * dt; }
   // In a duct: the airflow carries you along
   if (p.duct != null && p.v < 21) p.v += 6 * dt;
   // The Rooftop park. Off the edge of the first roof a huge downdraft shoves
@@ -444,7 +461,7 @@ function flyStep(race, p, dt, pz = p.z) {
   const gp = f.gap, pk = gp?.park;
   if (pk && p.z > gp.z0 && p.z < gp.z1 && !p.crumpled) {
     const w = gapWind(gp, race.t);
-    p.x += w.side * gp.cross * 0.5 * st.wind * dt;
+    p.x += w.side * gp.cross * 0.5 * cross * dt;
     if (pz < pk.dive0 + 0.01 && p.z >= pk.dive0) race.events.push({ name: 'parkwind', seat: p.seat, phase: 'dive' });
     if (pz < pk.lift0 && p.z >= pk.lift0) race.events.push({ name: 'parkwind', seat: p.seat, phase: 'lift' });
     if (p.z < pk.dive1) {
@@ -509,9 +526,11 @@ function flyStep(race, p, dt, pz = p.z) {
     if (dz < -8 || dz > 12 || p.duct != null || p.out) continue;
     if (Math.abs(p.x - wv.x) > wv.w / 2 + 1.4 || p.y < wv.y0 - 1.4 || p.y > wv.y1 + 1.4) continue;
     if (dz < 0) { p.x += (wv.x - p.x) * 1.6 * dt; p.y += ((wv.y0 + wv.y1) / 2 - p.y) * 1.6 * dt; }
-    if (p.v < 27) p.v += (dz < 0 ? 5 : 15) * dt;
+    // (Needle Dart Mk V: the jet fires you out 10% faster)
+    const jet = st.perk.needle ? 1.1 : 1;
+    if (p.v < 27 * jet) p.v += (dz < 0 ? 5 : 15) * jet * dt;
     if (pz < wv.z && p.z >= wv.z && Math.abs(p.x - wv.x) < wv.w / 2 && p.y > wv.y0 && p.y < wv.y1) {
-      p.v = Math.min(28, p.v + 5);
+      p.v = Math.min(28 * jet, p.v + 5 * jet);
       race.events.push({ name: 'boost', seat: p.seat, kind: 'wallvent', amount: 6, x: p.x, y: p.y, z: p.z });
       trick(race, p, 'duct');
     }
@@ -521,7 +540,7 @@ function flyStep(race, p, dt, pz = p.z) {
   p.inDraft = inDraft;
   for (const b of f.blowers) {
     if (p.x > b.x0 && p.x < b.x1 && p.z > b.z0 && p.z < b.z1 && p.y < b.y1 && p.duct == null && !p.out) {
-      p.x += b.dir * b.s * st.wind * dt;
+      p.x += b.dir * b.s * cross * dt;
     }
   }
 
@@ -586,6 +605,14 @@ function touchDown(race, p, surfaceY, vy) {
   p.touchVy = vy;
   p.y = surfaceY + SIM.restH;
   if (p.crumpled) { land(race, p); return; }
+  // Eraser Skids Mk V: once per flight, touching down fast off a target skips
+  // you back up into the air (landing on a target still lands)
+  if (p.st.perk.skids && !p.skimmed && p.state === 'fly' && p.v * Math.cos(p.pitch) > 9 && !zoneAt(race.floor, p.x, p.y, p.z)) {
+    p.skimmed = true;
+    p.y = surfaceY + 0.4; p.pitch = 0.3; p.v *= 0.85;
+    race.events.push({ name: 'perk', seat: p.seat, id: 'skids', x: p.x, y: p.y, z: p.z });
+    return;
+  }
   p.v = p.v * Math.cos(p.pitch) * 0.72;
   p.pitch = 0; p.roll = 0;
   if (vy < -7) damage(race, p, (-vy - 4) * p.st.landDmg, 'floor');
@@ -627,6 +654,10 @@ function land(race, p) {
   p.landedAt = race.t;
   p.dist = Math.max(0, p.z);
   p.zone = p.crumpled ? null : zoneAt(race.floor, p.x, p.y, p.z);
+  // Binder Clip Brake Mk V: the outer ring counts as the inner ring
+  if (p.zone && p.st.perk.binder && p.zone.ring === 2) {
+    p.zone.ring = 1; p.zone.ringName = RINGS[1].name; p.zone.pay = Math.round(p.zone.base * RINGS[1].mult); p.zone.perk = 'binder';
+  }
   race.events.push({ name: 'landed', seat: p.seat, zone: p.zone, crumpled: p.crumpled });
   // Stuck It: come to rest on top of the furniture
   if (!p.crumpled && p.tr && p.y - SIM.restH > groundAt(race.floor, p.z) + 0.5) trick(race, p, 'perch');
@@ -863,10 +894,13 @@ function collide(race, p, px, py, pz) {
       let side = p.x >= (b.x0 + b.x1) / 2 ? 1 : -1;
       if ((side > 0 ? b.x1 + r + 0.05 : b.x0 - r - 0.05) * side > lim) side = -side;   // no room that way
       const nx = side > 0 ? b.x1 + r + 0.05 : b.x0 - r - 0.05;
-      if (Math.abs(nx) <= lim) { p.x = nx; p.yaw += side * 0.18; }
+      // Staple Nose softens the knock (less turn, speed loss and damage);
+      // at Mk V moving things don't slow you at all.
+      const kn = p.st.knock;
+      if (Math.abs(nx) <= lim) { p.x = nx; p.yaw += side * 0.18 * kn; }
       else p.z = Math.min(pz, b.z0 - r - 0.05);       // wedged against the wall: just held back
-      p.v *= Math.min(0.85, 0.6 * p.st.bounce);
-      if (race.t - (p.moverT ?? -9) > 0.4) { p.moverT = race.t; damage(race, p, Math.max(vn, 3.5), 'hit'); }
+      if (!p.st.perk.staple) p.v *= 1 - (1 - Math.min(0.85, 0.6 * p.st.bounce)) * kn;
+      if (race.t - (p.moverT ?? -9) > 0.4) { p.moverT = race.t; damage(race, p, 2.5 + (Math.max(vn, 3.5) - 2.5) * kn, 'hit'); }
       if (p.state === 'fall') p.v *= 0.3;
       continue;
     }
@@ -938,7 +972,10 @@ function scrape(race, p, vn, away, kind, headOn = false) {
   } else {
     p.yaw = Math.atan2(away * 0.14, fwd);
     const square = Math.min(1, vn / Math.max(1, p.v));
-    p.v *= Math.max(0.5, 1 - 0.5 * square);
+    // Glossy Photo Paper Mk V: slick enough that a glancing scrape costs no speed
+    if (!p.st.perk.glossy) p.v *= Math.max(0.5, 1 - 0.5 * square);
+    // Pencil Tip Mk V: glance off and spring forward a little
+    if (p.st.perk.pencil && p.state === 'fly' && race.t - (p.scrapeT ?? -9) >= 0.35) p.v = Math.min(26, p.v + 1.5);
   }
   if (race.t - (p.scrapeT ?? -9) < 0.35) return;     // still grinding along the same wall
   p.scrapeT = race.t;
@@ -949,12 +986,23 @@ function damage(race, p, impact, kind) {
   if (p.crumpled) return;
   // Index Card: nothing hurts you (and your trick chain survives) while it lasts
   if (buffOn(race, p, 'card')) return;
+  const dmg = Math.max(0, impact - 2.5) * 5.2 * p.st.dmg;
+  // Cardstock Mk V: the first real hit of each flight bounces off
+  if (dmg > 0 && p.st.perk.cardstock && !p.shrugged && p.state === 'fly') {
+    p.shrugged = true;
+    race.events.push({ name: 'perk', seat: p.seat, id: 'cardstock', x: p.x, y: p.y, z: p.z });
+    return;
+  }
   p.lastHit = race.t;
   if (p.tr && p.tr.chain > 1) race.events.push({ name: 'chainbreak', seat: p.seat, chain: p.tr.chain });
   if (p.tr) p.tr.chain = 0;
-  const dmg = Math.max(0, impact - 2.5) * 5.2 * p.st.dmg;
   if (dmg <= 0) return;
   p.hp = Math.max(0, p.hp - dmg);
+  // Packing Tape Mk V: once per race, holds the plane together at 1 durability
+  if (p.hp <= 0 && p.st.perk.tape && !p.taped) {
+    p.taped = true; p.hp = 1;
+    race.events.push({ name: 'perk', seat: p.seat, id: 'tape', x: p.x, y: p.y, z: p.z });
+  }
   race.events.push({ name: 'hit', seat: p.seat, dmg: Math.round(dmg), kind, x: p.x, y: p.y, z: p.z });
   if (p.hp <= 0) {
     p.crumpled = true;
@@ -980,7 +1028,9 @@ function pickups(race, p) {
       if (!itemReady(race, it)) continue;
       if ((p.x - it.x) ** 2 + (p.y - it.y) ** 2 + (p.z - it.z) ** 2 > ITEM_R * ITEM_R) continue;
       it.takenAt = race.t;
-      p.buffs = { ...(p.buffs || {}), [it.kind]: race.t + ITEMS[it.kind].dur };
+      p.buffs = { ...(p.buffs || {}), [it.kind]: race.t + ITEMS[it.kind].dur * p.st.itemTime };
+      // Highlighter Mk V: every item also patches the plane up a little
+      if (p.st.perk.highlighter) p.hp = Math.min(p.maxHp, p.hp + 15);
       race.events.push({ name: 'item', seat: p.seat, kind: it.kind, i, x: it.x, y: it.y, z: it.z });
     }
   }

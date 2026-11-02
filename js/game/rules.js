@@ -1,6 +1,6 @@
 // rules.js: match-level rules (rounds, payouts, the shop). Pure, no DOM, no network.
 
-import { UPGRADE_BY_ID, SLOT_BY_ID, partState, equippedList } from '../shared/upgrades.js';
+import { UPGRADE_BY_ID, SLOT_BY_ID, partState, equippedList, MK, MAX_LEVEL } from '../shared/upgrades.js';
 import { FLOORS, floorPayMult } from './floors.js';
 
 // Match points are each race's score (distance points + target points, see
@@ -101,7 +101,7 @@ export function buy(match, seat, id) {
   const up = UPGRADE_BY_ID[id];
   if (!pl || !up) return { ok: false, reason: 'Unknown part' };
   const st = partState(pl.parts, id, rankOf(pl.career).level);
-  if (st.state === 'maxed') return { ok: false, reason: 'Already Mk III' };
+  if (st.state === 'maxed') return { ok: false, reason: `Already ${MK(MAX_LEVEL)}` };
   if (st.state !== 'open') return { ok: false, reason: st.reason };
   if (pl.clips < st.cost) return { ok: false, reason: 'Not enough clips' };
   pl.clips -= st.cost;

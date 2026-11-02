@@ -207,7 +207,13 @@ const BUILDS = [
   ['widewings', 'tissue', 'widewings', 'rubberband', 'magnet', 'widewings', 'tissue', 'flaps', 'rubberband', 'tissue', 'magnet', 'flaps', 'rubberband', 'magnet', 'flaps'],
   ['needle', 'rubberband', 'needle', 'afterburner', 'flaps', 'needle', 'glossy', 'afterburner', 'flaps', 'rubberband', 'glossy', 'afterburner', 'flaps', 'rubberband', 'glossy'],
   ['cardstock', 'tape', 'cardstock', 'binder', 'widewings', 'tape', 'cardstock', 'noseclip', 'binder', 'widewings', 'tape', 'noseclip', 'widewings', 'binder', 'noseclip'],
-];
+  ['swallowtail', 'vellum', 'swallowtail', 'bookmark', 'staple', 'vellum', 'swallowtail', 'highlighter', 'bookmark', 'vellum', 'staple', 'highlighter', 'bookmark', 'staple', 'highlighter'],
+].map(list => {
+  // The main part (the first on the list) goes to Mk IV partway through; after
+  // Mk III everywhere, Mk IV of the rest in the same order, then Mk V.
+  const order = [...new Set(list)];
+  return [...list.slice(0, 10), order[0], ...list.slice(10), ...order.slice(1), ...order];
+});
 export function botShop(bot, clips, parts = {}, rank = Infinity) {
   const wish = BUILDS[bot.seat % BUILDS.length];
   const have = { ...parts };

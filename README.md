@@ -22,8 +22,8 @@ The host runs the only simulation. Each race it sends every player the floor and
 | Temp | | Lined notebook |
 | Associate | Mk II of any part | Graph paper |
 | Supervisor | Mk III of any part | Legal pad |
-| Manager | | Kraft paper |
-| Director | | Blueprint |
+| Manager | Mk IV of any part | Kraft paper |
+| Director | Mk V of any part | Blueprint |
 | VP | | Silver foil |
 | CEO | | Gold foil |
 
@@ -64,35 +64,42 @@ Raised zones (desk tops, the fridge, a rack) are targets too.
 
 ### Upgrades: your plane's loadout
 
-Your plane has **five slots**, and each one holds one part. Every slot starts with a free stock part, and there are three parts to buy for each slot. **Buying a part puts it straight into its slot.** Whatever it replaced goes into your **inventory**: everything you've bought stays yours for the rest of the match, so you can swap back for free between races. Only equipped parts do anything.
+Your plane has **five slots**, and each one holds one part. Every slot starts with a free stock part, and there are four parts to buy for each slot (20 in all). **Buying a part puts it straight into its slot.** Whatever it replaced goes into your **inventory**: everything you've bought stays yours for the rest of the match, so you can swap back for free between races. Only equipped parts do anything.
 
-Each part goes up to **Mk III**. Mk II needs Associate rank, and Mk III needs Supervisor. Prices are ×1, ×2.2 and ×4 the part's base price. Upgrades reset every match, so everyone starts with a plain plane.
+Each part goes up to **Mk V**. Mk II needs Associate rank, Mk III Supervisor, Mk IV Manager and Mk V Director. Each level costs ×1.3, ×3.4, ×6.5, ×8.5 and ×11 the part's base price (a Wide Glider all the way to Mk V is 1,290 clips). Mk IV and Mk V each add about half of what Mk III added, and **Mk V also switches on the part's perk** (last column). Upgrades reset every match, so everyone starts with a plain plane.
 
-| Slot | Part | Base price | Does | Catch |
-|---|---|---|---|---|
-| Paper | Cardstock | 35 | Much more durability | Heavier, sinks faster |
-| Paper | Tissue Paper | 38 | Floats much longer | Fragile |
-| Paper | Glossy Photo Paper | 35 | Keeps its speed | Slides far on landing |
-| Fold | Wide Glider | 42 | Glides much farther | Turns slower |
-| Fold | Needle Dart | 42 | Fast and slippery | Sinks a bit faster |
-| Fold | Stunt Fold | 38 | Very sharp turns | More drag |
-| Nose | Paper Clip Nose | 29 | Fans and wind barely push you | Slightly heavier |
-| Nose | Pencil Tip | 32 | Bounce off walls keeping speed | |
-| Nose | Fridge Magnet | 29 | Pulls in clips from far away (Mk III: +1 per pickup) | |
-| Tail | Sticky Note Flaps | 29 | Sharper turns | A little drag |
-| Tail | Binder Clip Brake | 26 | Stops dead on landing | |
-| Tail | Eraser Skids | 26 | Hard landings don't hurt | |
-| Gadget | Rubber Band Launcher | 32 | Much harder launch | |
-| Gadget | Afterburner Doodle | 38 | Every mid-flight trick gives a burst of speed, with ink slipstream lines off the wing tips | |
-| Gadget | Packing Tape | 32 | Takes much less damage | |
+**Silver and gold.** A Mk IV part gets a silver outline and a Mk V part a gold one, with a slow glint, on the 3D plane and everywhere in the shop (part rows, Mk badge, level pips, slot cards) and on the host's upgrade chips. A Mk IV/V paper or fold outlines the whole plane, and so do the Silver Foil (VP) and Gold Foil (CEO) papers. The outline is drawn as plain colour, so it shows on every graphics setting.
+
+| Slot | Part | Mk I price | Does | Catch | Mk V perk |
+|---|---|---|---|---|---|
+| Paper | Cardstock | 46 | Much more durability | Heavier, sinks faster | Shrugs off the first hit of every flight |
+| Paper | Tissue Paper | 49 | Floats much longer | Fragile | Floats just above the floor before touching down |
+| Paper | Glossy Photo Paper | 46 | Keeps its speed | Slides far on landing | Scraping along walls costs no speed |
+| Paper | Vellum | 47 | Vents lift you much higher | Takes a bit more damage | Vents also push you forward 50% harder |
+| Fold | Wide Glider | 55 | Glides much farther | Turns slower | Paper fatigue starts later (below 5.5 instead of 7) |
+| Fold | Needle Dart | 55 | Fast and slippery | Sinks a bit faster | Wall vents fire you out 10% faster |
+| Fold | Stunt Fold | 49 | Very sharp turns | More drag | +1 clip for every trick after the first in a combo |
+| Fold | Swallowtail Fold | 52 | Barely sinks when slow | Lower top speed | A stall hardly drops your nose |
+| Nose | Paper Clip Nose | 38 | Fans and wind barely push you | Slightly heavier | Crosswinds don't push you at all |
+| Nose | Pencil Tip | 42 | Bounce off walls keeping speed |  | Glancing off a wall gives a little speed |
+| Nose | Fridge Magnet | 38 | Pulls in paper clips from far away |  | +1 more clip per pickup |
+| Nose | Staple Nose | 39 | Moving obstacles barely knock you | Slightly heavier | Moving obstacles don't slow you at all |
+| Tail | Sticky Note Flaps | 38 | Sharper turns | A little drag | Banking costs no speed |
+| Tail | Binder Clip Brake | 34 | Stops dead on landing |  | Landing on a target's outer ring counts as the inner ring |
+| Tail | Eraser Skids | 34 | Hard landings don’t hurt |  | Once a flight, touching down fast off a target skips you back into the air |
+| Tail | Bookmark Ribbon | 36 | Paper fatigue builds slower | A little drag | No fatigue at all on the last 20% of the floor |
+| Gadget | Rubber Band Launcher | 42 | Much harder launch |  | A harder throw when you let go right on GO |
+| Gadget | Afterburner Doodle | 49 | Tricks give a burst of speed, with ink slipstream lines off the wing tips |  | Trick bursts are 50% bigger and can top 26 |
+| Gadget | Packing Tape | 42 | Takes much less damage |  | Once per race, a hit that would crumple you leaves 1 durability |
+| Gadget | Highlighter | 39 | Power-up items last longer |  | Every item also repairs 15 durability |
 
 **Between races the shop opens as a full-screen Hangar** on every player's screen. Your plane sits on a paper turntable, turning slowly, and you can drag it to spin it. Five slot cards under it show what's fitted and at what Mk, and you pick a slot to see its parts. On a desktop, hovering a part shows the plane with it fitted before you buy. **The shop shows exactly what you're getting.** Six stat bars (Launch, Speed, Glide, Turning, Toughness, Landing) show your current plane. Every row says what tapping it does (Buy, the next Mk level, or Equip) and how each bar would move, as green ▲ and red ▼ marks. Rows that are locked say why.
 
-**Parts change the plane's look**, so builds are easy to tell apart on the host screen. The fold sets the silhouette: wide wings, a long narrow needle, or upturned stunt fins, and higher Mk levels make each one more extreme. Tissue paper goes see-through, glossy paper shines, and cardstock gets a visible second layer. You can also see the pencil nose, magnet, tape, flaps, binder clip, skids, rubber band and doodled flames.
+**Parts change the plane's look**, so builds are easy to tell apart on the host screen. The fold sets the silhouette: wide wings, a long narrow needle, or upturned stunt fins, and higher Mk levels make each one more extreme. Tissue paper goes see-through, glossy paper shines, and cardstock gets a visible second layer. Vellum is pale and frosted, and the Swallowtail Fold has a notched, forked tail. You can also see the pencil nose, staple, magnet, tape, flaps, bookmark ribbons, binder clip, skids, rubber band, highlighter and doodled flames.
 
 The host's Supply closet board shows each player's equipped parts and their Mk levels.
 
-In a simulated 6-floor match, the best computer pilot finished with a nearly maxed loadout only on the last floors, and weaker ones still had gaps. Computer rivals each build toward a style: a glider, a fast dart, or a tough brick.
+Computer rivals each build toward a style: a glider, a fast dart, a tough brick, or a build of the newer parts (Swallowtail, Vellum, Staple Nose, Bookmark Ribbon, Highlighter). In simulated 7-floor matches (3 races each) they finish around Manager–Director with most parts at Mk I–III; only the strongest sometimes gets its main part to Mk IV, and Mk V is a goal for a player who saves for it.
 
 ### The Rooftop (Floor 6)
 
