@@ -72,15 +72,24 @@ body[data-leaving] .screen { animation: screen-out 180ms var(--ease-in) forwards
 @keyframes screen-in { from { opacity: 0; transform: translateY(14px) rotate(-.4deg); } }
 @keyframes screen-out { to { opacity: 0; transform: translateY(-10px) rotate(.4deg); } }
 
+/* Menu screens are exactly one screen tall and scroll inside themselves when
+   their content is taller (phones, landscape). Auto margins on the first and
+   last child centre short content without clipping the top of tall content. */
 #home, #name, #solo, #lobby {
-  min-height: 100dvh;
+  height: 100dvh;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 28px;
   padding: max(20px, env(safe-area-inset-top)) 18px max(20px, env(safe-area-inset-bottom));
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
+:is(#home, #name, #solo, #lobby) > :first-child { margin-top: auto; }
+:is(#home, #name, #solo, #lobby) > :last-child { margin-bottom: auto; }
+:is(#home, #name, #solo, #lobby) > * { flex-shrink: 0; }
 
 /* --------------------------------------------------------------- paper --- */
 .note {
