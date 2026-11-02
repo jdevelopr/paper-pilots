@@ -136,6 +136,12 @@ export function stickerSvg(id, { px } = {}) {
 
 addTrickStamps(TRICKS);
 
+// The plain art (no die-cut filter) as a standalone SVG, for drawing into a canvas
+export function stickerArtSvg(id, px = 128) {
+  const st = STICKER_BY_ID[id];
+  return st ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -6 76 76" width="${px}" height="${px}">${st.art}</svg>` : '';
+}
+
 /* ------------------------------------------------------------ the book --- */
 
 const KEY = 'stickerbook';

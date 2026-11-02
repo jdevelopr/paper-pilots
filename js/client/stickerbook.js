@@ -72,7 +72,7 @@ function paint() {
   for (const c of grid.querySelectorAll('.sb-cell')) c.onclick = () => {
     const id = c.dataset.id;
     if (!progressOf(id).got) { toast(STICKERS.find(s => s.id === id).hint, 2200); return; }
-    armed = armed === id ? null : id;
+    armed = id;
     select(-1);
     vibrate(8);
     paint();

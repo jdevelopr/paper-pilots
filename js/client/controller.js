@@ -333,7 +333,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     }).catch(() => { preview = null; });
   }
   function paintPreview() {
-    if (preview && preview !== 'loading') preview.set(me.seat, previewOwned || me.owned || [], me.rank?.level ?? 0);
+    if (preview && preview !== 'loading') preview.set(me.seat, previewOwned || me.owned || [], me.rank?.level ?? 0, placed());
   }
   function renderSlots() {
     slotsEl.innerHTML = SLOTS.map(sl => {
@@ -482,7 +482,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
   // Stickers: tell the host what's on our plane (on every phase, so a
   // reconnect or a new room always has it), and whenever the book changes
   const sendStickers = () => link.input({ k: 'stickers', list: placed() });
-  onBookChange(sendStickers);
+  onBookChange(() => { sendStickers(); paintPreview(); });
   if (solo) sendStickers();
   q('.hg-stk').onclick = () => { vibrate(8); openStickerBook({ seat: me.seat, owned: me.owned || [], rank: me.rank?.level ?? 0 }); };
 

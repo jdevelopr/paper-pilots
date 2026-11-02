@@ -8,7 +8,7 @@ import { createInk } from './ink.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM, itemReady, buffOn } from '../game/sim.js';
 import { moverAt, groundAt, gapWind } from '../game/floors.js';
-import { stickerSvg, cleanPlaced, STICKER_SIZE } from '../shared/stickers.js';
+import { stickerArtSvg, cleanPlaced, STICKER_SIZE, STICKER_BY_ID } from '../shared/stickers.js';
 
 const INK = '#2c2416';
 const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -308,15 +308,48 @@ function buildItem(kind) {
 /* ------------------------------------------------------------ stickers --- */
 // Sticker art is SVG; each one is drawn once into a canvas texture and shared.
 const STICKER_TEX = new Map();
+// The die-cut border is drawn here with plain canvas calls (a white outline
+// stamped around the art, then a soft ink edge), because some browsers draw
+// SVGs that use filters as a blank image.
 function stickerTexture(id) {
   if (STICKER_TEX.has(id)) return STICKER_TEX.get(id);
-  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const S = 128, c = document.createElement('canvas'); c.width = c.height = S;
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   STICKER_TEX.set(id, tex);
+  const silhouette = (img, color) => {
+    const s = document.createElement('canvas'); s.width = s.height = S;
+    const x = s.getContext('2d');
+    x.drawImage(img, 0, 0, S, S);
+    x.globalCompositeOperation = 'source-in';
+    x.fillStyle = color; x.fillRect(0, 0, S, S);
+    return s;
+  };
+  const draw = img => {
+    const x = c.getContext('2d');
+    x.clearRect(0, 0, S, S);
+    const ink = silhouette(img, '#2c2416'), white = silhouette(img, '#ffffff');
+    x.globalAlpha = 0.45;
+    for (let a = 0; a < 16; a++) x.drawImage(ink, Math.cos(a / 16 * Math.PI * 2) * 9, Math.sin(a / 16 * Math.PI * 2) * 9);
+    x.globalAlpha = 1;
+    for (let a = 0; a < 16; a++) x.drawImage(white, Math.cos(a / 16 * Math.PI * 2) * 7, Math.sin(a / 16 * Math.PI * 2) * 7);
+    x.drawImage(img, 0, 0, S, S);
+    tex.needsUpdate = true;
+  };
+  // If the art can't be drawn at all, still show something: a round badge
+  const fallback = () => {
+    const x = c.getContext('2d');
+    x.fillStyle = '#ffffff'; x.beginPath(); x.arc(S / 2, S / 2, S * 0.44, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#f2c94c'; x.strokeStyle = '#2c2416'; x.lineWidth = 6;
+    x.beginPath(); x.arc(S / 2, S / 2, S * 0.36, 0, Math.PI * 2); x.fill(); x.stroke();
+    x.fillStyle = '#2c2416'; x.font = `700 ${S * 0.4}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText((STICKER_BY_ID[id]?.name || '?')[0], S / 2, S / 2 + 3);
+    tex.needsUpdate = true;
+  };
   const img = new Image();
-  img.onload = () => { c.getContext('2d').drawImage(img, 0, 0, 128, 128); tex.needsUpdate = true; };
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(stickerSvg(id, { px: 128 }));
+  img.onload = () => { try { draw(img); } catch { fallback(); } };
+  img.onerror = fallback;
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(stickerArtSvg(id, S));
   return tex;
 }
 const STICKER_MATS = new Map();
@@ -333,16 +366,16 @@ const _ray = new THREE.Raycaster(), _o = new THREE.Vector3(), _d = new THREE.Vec
 // the paper when a new fold changes the plane's shape (and is left off if the
 // spot no longer has any paper under it).
 // Drop a flat decal onto the paper: aim from point p along -n, sit on the surface hit
-function placeDecal(paper, p, n, mat, rot, size, lift = 0.012) {
+function placeDecal(paper, p, n, mat, rot, size, lift = 0.012, keep = false) {
   _n.fromArray(n).normalize();
   if (_n.lengthSq() < 0.5) _n.set(0, 1, 0);
   _o.fromArray(p).addScaledVector(_n, 0.4);
   _d.copy(_n).negate();
   _ray.set(paper.localToWorld(_o.clone()), _d.clone().transformDirection(paper.matrixWorld));
   const hit = _ray.intersectObject(paper, false)[0];
-  if (!hit) return null;
-  const pt = paper.worldToLocal(hit.point.clone());
-  const nrm = hit.face.normal.clone();
+  if (!hit && !keep) return null;
+  const pt = hit ? paper.worldToLocal(hit.point.clone()) : new THREE.Vector3().fromArray(p);
+  const nrm = hit ? hit.face.normal.clone() : _n.clone();
   if (nrm.dot(_n) < 0) nrm.negate();
   const m = new THREE.Mesh(stickerGeo, mat);
   m.position.copy(pt).addScaledVector(nrm, lift);
@@ -361,7 +394,7 @@ function applyStickers(root, list) {
   body.add(g); root.userData.stickers = g;
   body.updateMatrixWorld(true);
   cleanPlaced(list).forEach((st, i) => {
-    const m = placeDecal(paper, st.p, st.n, stickerMaterial(st.id), st.r, STICKER_SIZE * st.s);
+    const m = placeDecal(paper, st.p, st.n, stickerMaterial(st.id), st.r, STICKER_SIZE * st.s, 0.012, true);
     if (!m) return;
     m.userData.index = i;
     g.add(m); g.userData.items.push(m);
