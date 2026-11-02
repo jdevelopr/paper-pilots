@@ -13,6 +13,7 @@ import { openStickerBook } from './stickerbook.js';
 import { statBars, MAX_LEVEL, MK, UPGRADES, UPGRADE_BY_ID, SLOTS, SLOT_BY_ID, partState, equippedList } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const ITEM_NAMES = { donut: 'Donut: thrust', card: 'Index Card: invincible', glue: 'Glue Bottle: clip magnet', chipclip: 'Chip Bag Clip: clips +2' };
 
 export function mountController(root, link, { solo = false, onAgain = null, onMenu = null } = {}) {
   root.innerHTML = `
@@ -532,6 +533,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
         if (d.kind === 'boost') { phoneFlash('gust'); vibrate(d.ring ? [10, 20, 30] : [8, 16, 8]); }
         if (d.kind === 'trick') { phoneToast(`${d.label} +${d.clips}${d.mult > 1 ? ` x${d.mult}` : ''}${d.boost ? ' · Boost!' : ''}`); phoneFlash('clip'); vibrate([12, 30, 12, 30, 20 + d.mult * 10]); }
         if (d.kind === 'chainbreak') phoneToast(`Chain broken`);
+        if (d.kind === 'item') { phoneToast(`${ITEM_NAMES[d.item] || 'Item'}!`); vibrate([12, 30, 12, 30, 40]); }
         if (d.kind === 'toast') { phoneToast(d.text); vibrate([10, 20, 10]); }
         if (d.kind === 'clip' && d.chain > 1) phoneToast(`x${d.chain}`);
         if (d.kind === 'close') vibrate([10, 25, 10]);

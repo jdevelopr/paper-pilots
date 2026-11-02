@@ -808,13 +808,41 @@ export function generateFloor(theme, seed = 1) {
     addClip(laneX(bz) + T.pick([-1, 1]) * T.r(4, 9), gap && inGap(bz) ? park.floorY + T.r(3, 10) : T.r(9, H - 2.5) + (gap ? G(bz) : 0), bz, { n: 5, big: true });
   }
 
+  /* Power-up items: about one per 150 units, on the risky lines (in front of
+     wall vents, through doorways, over furniture, off to the side of the lane).
+     Each respawns a few seconds after someone grabs it (see sim.js). */
+  const items = [];
+  {
+    const KINDS = ['donut', 'donut', 'donut', 'card', 'card', 'glue', 'glue', 'chipclip', 'chipclip'];
+    const cand = [];
+    for (const wv of wallVents) cand.push([wv.x, (wv.y0 + wv.y1) / 2, wv.z - 5, 3]);
+    for (const d of doors) cand.push([d.x, Math.min(d.h - 1.6, 4.5), d.z + 3.5, 2]);
+    for (const o of objects) if ((o.type === 'desk' || o.type === 'table' || o.type === 'counter') && !o.launch) cand.push([o.x, (o.y || 0) + o.h + 1.7, o.z, 1]);
+    for (let z = 50; z < L - 30; z += T.r(25, 45)) {
+      const x = laneX(z) + T.pick([-1, 1]) * T.r(8, 14);
+      cand.push([x, gap && inGap(z) ? park.cruise + T.r(-1.5, 2) : G(z) + T.r(3.5, 7), z, 1]);
+    }
+    // risky spots first (vents, doorways), shuffled within each kind of spot
+    const order = cand.map(c => [c, c[3] + T.r(0, 1.2)]).sort((a, b) => b[1] - a[1]).map(x => x[0]);
+    const want = Math.max(3, Math.round(L / 150));
+    for (const [x, y, z] of order) {
+      if (items.length >= want) break;
+      if (z < 40 || z > L - 20 || Math.abs(x) > W / 2 - 1.5 || y > H - 1.5 || y < G(z) + 1) continue;
+      if (solidAt(x, y, z) || (park && treeAt({ gap }, x, y, z, 1))) continue;
+      if (items.some(it => Math.abs(it.z - z) < 45)) continue;
+      if (zones.some(zn => Math.abs(zn.z - z) < zn.d / 2 + 4 && Math.abs(zn.x - x) < zn.w / 2 + 4)) continue;
+      items.push({ kind: T.pick(KINDS), x, y, z });
+    }
+    items.sort((a, b) => a.z - b.z);
+  }
+
   const tier4 = zones.find(z => z.tier === 4);
   return {
     id: theme.id, number: theme.number, name: theme.name,
     carpet: theme.carpet, wall: theme.wall, accent: theme.accent,
     width: W, height: H, length: L, seed,
     stakes: `${tier4.label} pays ${tier4.pay}`,
-    objects, boxes, vents, fans, blowers, zones, clips, movers,
+    objects, boxes, vents, fans, blowers, zones, clips, movers, items,
     open: !!theme.open, gap,   // Rooftop: open sky, and the gap between the buildings
     windows, ledge, ducts,   // shortcuts (floor 4+)
     halls: hallSpans,

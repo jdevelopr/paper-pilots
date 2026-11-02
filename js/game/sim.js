@@ -32,6 +32,19 @@ export const SIM = {
   fatigueV: 7, fatigueRate: 0.9, fatigueRecover: 0.6, fatigueMax: 3, fatigueSink: 0.9,
 };
 
+// Power-up items. Fly through one and its bonus kicks in at once; grabbing the
+// same kind again while it runs restarts its clock. An item comes back a few
+// seconds after someone takes it, so pilots further back still get a chance.
+export const ITEMS = {
+  donut:    { label: 'Donut',         dur: 3,  what: 'Thrust' },
+  card:     { label: 'Index Card',    dur: 5,  what: 'Invincible' },
+  glue:     { label: 'Glue Bottle',   dur: 5,  what: 'Clip magnet' },
+  chipclip: { label: 'Chip Bag Clip', dur: 10, what: 'Clips +2' },
+};
+export const ITEM_RESPAWN = 8, ITEM_R = 1.7, GLUE_R = 7;
+export const itemReady = (race, it) => race.t - it.takenAt >= ITEM_RESPAWN;
+export const buffOn = (race, p, k) => (p.buffs?.[k] ?? -1) > race.t;
+
 // Scoring. A run scores distance points (how far down the floor you got, out
 // of 10, landed on a target or not) plus target points for landing on one,
 // worth the full amount under the target's par time and shrinking to nothing
@@ -81,9 +94,10 @@ export function createRace(floor, players) {
     };
   });
   const clips = floor.clips.map(c => ({ ...c, taken: -1 }));
+  const items = (floor.items || []).map(it => ({ ...it, takenAt: -99 }));
   // Planes fly the same on every floor; longer floors just allow longer flights
   // (riding vents) before stragglers are forced down.
-  return { floor, timeLimit: SIM.raceTime + (floor.length || 200) / 10, t: 0, planes, clips, events: [], over: false, overAt: null };
+  return { floor, timeLimit: SIM.raceTime + (floor.length || 200) / 10, t: 0, planes, clips, items, events: [], over: false, overAt: null };
 }
 
 /* -------------------------------------------------------------- inputs --- */
@@ -478,6 +492,8 @@ function flyStep(race, p, dt, pz = p.z) {
       }
     }
   }
+  // Donut: a burst of thrust that also holds you up
+  if (buffOn(race, p, 'donut')) { if (p.v < 27) p.v += 10 * dt; p.y += 0.9 * dt; }
   // Wall vents: a narrow slot in a wall with air rushing through it. Line up and
   // it sucks you in; thread it and the jet on the far side fires you forward.
   for (const wv of f.wallVents || []) {
@@ -923,6 +939,8 @@ function scrape(race, p, vn, away, kind, headOn = false) {
 
 function damage(race, p, impact, kind) {
   if (p.crumpled) return;
+  // Index Card: nothing hurts you (and your trick chain survives) while it lasts
+  if (buffOn(race, p, 'card')) return;
   p.lastHit = race.t;
   if (p.tr && p.tr.chain > 1) race.events.push({ name: 'chainbreak', seat: p.seat, chain: p.tr.chain });
   if (p.tr) p.tr.chain = 0;
@@ -946,7 +964,20 @@ function damage(race, p, impact, kind) {
 
 function pickups(race, p) {
   if (p.state !== 'fly' && p.state !== 'slide') return;
-  const R = SIM.clipR * p.st.magnet;
+  // Items
+  if (!p.crumpled) {
+    const items = race.items || [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!itemReady(race, it)) continue;
+      if ((p.x - it.x) ** 2 + (p.y - it.y) ** 2 + (p.z - it.z) ** 2 > ITEM_R * ITEM_R) continue;
+      it.takenAt = race.t;
+      p.buffs = { ...(p.buffs || {}), [it.kind]: race.t + ITEMS[it.kind].dur };
+      race.events.push({ name: 'item', seat: p.seat, kind: it.kind, i, x: it.x, y: it.y, z: it.z });
+    }
+  }
+  // Glue Bottle: a huge clip magnet for a few seconds
+  const R = buffOn(race, p, 'glue') ? GLUE_R : SIM.clipR * p.st.magnet;
   const R2 = R * R;
   for (let i = 0; i < race.clips.length; i++) {
     const c = race.clips[i];
@@ -954,7 +985,8 @@ function pickups(race, p) {
     const d2 = (p.x - c.x) ** 2 + (p.y - c.y) ** 2 + (p.z - c.z) ** 2;
     if (d2 < R2) {
       c.taken = p.seat;
-      const n = (c.n || 1) + (p.st.clipBonus || 0);
+      // Chip Bag Clip: every clip is worth 2 more while it lasts
+      const n = (c.n || 1) + (p.st.clipBonus || 0) + (buffOn(race, p, 'chipclip') ? 2 : 0);
       p.clips += n;
       race.events.push({ name: 'clip', seat: p.seat, i, n });
       // Clip Sweep: five pickups inside 3 s

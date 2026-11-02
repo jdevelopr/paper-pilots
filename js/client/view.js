@@ -8,7 +8,8 @@
 import { createRenderer } from '../host/render3d.js';
 import { createHud } from '../host/hud.js';
 import { THEMES, generateFloor } from '../game/floors.js';
-import { createRace } from '../game/sim.js';
+import { createRace, ITEMS } from '../game/sim.js';
+const ITEM_KINDS = Object.keys(ITEMS);
 import { colorFor } from '../shared/colors.js';
 
 const STATES = ['held', 'fly', 'slide', 'fall', 'landed'];
@@ -74,7 +75,10 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
       p.aim.yaw = pb[12]; p.aim.pitch = pb[13]; p.aim.power = pb[14];
       p.clips = pb[15]; p.zone = pb[16]; p.duct = pb[17] >= 0 ? pb[17] : null; p.out = pb[18] ? {} : null;
       p.thrownAt = pb[19] >= 0 ? pb[19] : null; p.fatigue = pb[20] || 0; p.landedAt = pb[21] >= 0 ? pb[21] : null;
+      p.buffs = {}; (pb[22] || []).forEach((left, j) => { if (left > 0) p.buffs[ITEM_KINDS[j]] = race.t + left; });
     }
+    const gone = new Set(B.s.it || []);
+    (race.items || []).forEach((it, j) => { it.takenAt = gone.has(j) ? race.t : -99; });
     const taken = new Set(B.s.c);
     race.clips.forEach((c, j) => { c.taken = taken.has(j) ? 1 : -1; });
   }
@@ -109,6 +113,11 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
       if (s.visible) hud.clipFly(s, me.seat, d.n || 1);
     }
     if (d.kind === 'tree') renderer.treeHit(d.x, d.y, d.z);
+    if (d.kind === 'item') {
+      const s = renderer.project(me.x, me.y + 1, me.z);
+      if (s.visible) hud.floater(s.x, s.y, `${ITEMS[d.item].label}! ${ITEMS[d.item].what}`, 'combo big');
+      renderer.punch(4);
+    }
     if (d.kind === 'trick') {
       const s = renderer.project(me.x, me.y + 1.4, me.z);
       hud.trick(s.visible ? s : null, '', d.label, d.clips, d.mult, colorFor(me.seat));

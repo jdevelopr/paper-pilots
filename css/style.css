@@ -764,3 +764,12 @@ body.pv-touch .trick-rail .trick b { font-size: 26px; } body.pv-touch .trick-rai
 .rrow .par.under { background: rgba(61,107,82,.2); }
 body.pv-touch .hud-par { font-size: 20px; } body.pv-touch .hud-tired { font-size: 24px; top: 18%; }
 @media (prefers-reduced-motion: reduce) { .hud-tired { animation: none; } }
+
+/* active item bonuses */
+.hud-buffs { position: absolute; left: 50%; top: 124px; transform: translateX(-50%); display: flex; gap: 10px; pointer-events: none; }
+.hud-buffs .buff { position: relative; padding: 3px 12px 8px; font-size: 22px; background: var(--paper); border: 2px solid var(--ink);
+  border-left: 8px solid var(--bc); border-radius: 8px 10px 7px 9px; box-shadow: 2px 3px 0 rgba(44,36,22,.5); white-space: nowrap; animation: pop 260ms var(--ease-back); }
+.hud-buffs .buff b { font-weight: 700; }
+.hud-buffs .buff i { position: absolute; left: 8px; right: 8px; bottom: 3px; height: 4px; background: rgba(44,36,22,.15); border-radius: 2px; overflow: hidden; }
+.hud-buffs .buff u { position: absolute; inset: 0; background: var(--bc); transform-origin: left; }
+body.pv-touch .hud-buffs { top: 96px; gap: 6px; } body.pv-touch .hud-buffs .buff { font-size: 16px; padding: 2px 8px 7px; }

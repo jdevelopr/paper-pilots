@@ -3,7 +3,8 @@
 
 import { esc, clipIcon, planeIcon, reduceMotion } from '../ui.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
-import { SIM, scoreRun } from '../game/sim.js';
+import { SIM, scoreRun, ITEMS } from '../game/sim.js';
+const ITEM_COLORS = { donut: '#f29bb8', card: '#8fd0ea', glue: '#f08a2c', chipclip: '#6fbf73' };
 import { UPGRADE_BY_ID, SLOTS, MK } from '../shared/upgrades.js';
 
 // A short "build" line from the loadout: the fold names the style
@@ -21,6 +22,7 @@ export function createHud(root) {
       <div class="racers"></div>
       <div class="hud-top"><div class="hud-chip hud-floor"></div><div class="hud-chip hud-timer"></div><div class="hud-chip hud-clips" hidden>${clipIcon}<span>0</span></div><div class="hud-chip hud-par" hidden></div></div>
       <div class="hud-tired" hidden>Keep moving forward!</div>
+      <div class="hud-buffs"></div>
       <div class="progress"></div>
       <div class="tags"></div>
     </div>
@@ -40,7 +42,20 @@ export function createHud(root) {
   const myClips = q('.hud-clips'), myClipsN = myClips.querySelector('span');
   let meSeat = null, inFlight = 0;
   const setMe = seat => { meSeat = seat; myClips.hidden = seat == null; };
-  const parEl = q('.hud-par'), tiredEl = q('.hud-tired');
+  const parEl = q('.hud-par'), tiredEl = q('.hud-tired'), buffsEl = q('.hud-buffs');
+  // Active item bonuses on your plane, each with a draining bar
+  function paintBuffs(p, t) {
+    const live = Object.keys(ITEMS).filter(k => (p.buffs?.[k] ?? 0) > t && p.state !== 'landed');
+    const key = live.join(',');
+    if (buffsEl.dataset.key !== key) {
+      buffsEl.dataset.key = key;
+      buffsEl.innerHTML = live.map(k => `<div class="buff" data-k="${k}" style="--bc:${ITEM_COLORS[k]}"><b>${esc(ITEMS[k].label)}</b> ${esc(ITEMS[k].what)}<i><u></u></i></div>`).join('');
+    }
+    for (const el of buffsEl.children) {
+      const k = el.dataset.k, left = (p.buffs[k] - t) / ITEMS[k].dur;
+      el.querySelector('u').style.transform = `scaleX(${Math.max(0, Math.min(1, left)).toFixed(3)})`;
+    }
+  }
   // Par for the next target ahead of your plane: time left, or how far over you are
   function paintPar(p, t) {
     if (!floor || p.state === 'held' || p.state === 'landed' || p.crumpled || p.thrownAt == null) { parEl.hidden = true; return; }
@@ -121,6 +136,7 @@ export function createHud(root) {
         if (myClipsN.textContent !== v) myClipsN.textContent = v;
         paintPar(p, raceState.t);
         tiredEl.hidden = !(p.state === 'fly' && (p.fatigue || 0) > 0.6);
+        paintBuffs(p, raceState.t);
       }
       const el = racerEls.get(p.seat);
       if (!el) continue;

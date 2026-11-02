@@ -4,7 +4,7 @@
 //
 //   intro -> race -> results -> shop -> intro (next floor) ... -> final
 
-import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM } from '../game/sim.js';
+import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM, ITEMS, itemReady } from '../game/sim.js';
 import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, equip, finalStandings, SHOP_MS, legOf, rankOf } from '../game/rules.js';
 import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js';
 import { generateFloor } from '../game/floors.js';
@@ -153,8 +153,10 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       p: race.planes.map(q => [q.seat, r2(q.x), r2(q.y), r2(q.z), r2(q.yaw), r2(q.pitch), r2(q.roll), STATES.indexOf(q.state), q.crumpled ? 1 : 0,
         Math.round(q.hp), q.maxHp, r2(q.v), r2(q.aim.yaw), r2(q.aim.pitch), r2(q.aim.power), q.clips,
         q.zone ? { label: q.zone.label, pay: q.zone.pay, tier: q.zone.tier, ring: q.zone.ring, par: q.zone.par } : null, q.duct ?? -1, q.out ? 1 : 0,
-        q.thrownAt == null ? -1 : r2(q.thrownAt), r2(q.fatigue || 0), q.landedAt == null ? -1 : r2(q.landedAt)]),
+        q.thrownAt == null ? -1 : r2(q.thrownAt), r2(q.fatigue || 0), q.landedAt == null ? -1 : r2(q.landedAt),
+        Object.keys(ITEMS).map(k => Math.max(0, r2((q.buffs?.[k] ?? 0) - race.t)))]),
       c: race.clips.reduce((a, c, i) => (c.taken >= 0 && a.push(i), a), []),
+      it: race.items.reduce((a, it, i) => (!itemReady(race, it) && a.push(i), a), []),
     };
   }
   // Announce lead changes, but not every time two planes swap noses mid-air
@@ -310,6 +312,17 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           if (!solo || e.seat === 0) renderer.punch(e.kind === 'ring' ? 5 : 3);
           sendTo(e.seat, 'fx', { kind: 'boost', amount: e.amount, ring: e.kind === 'ring' });
           break;
+        case 'item': {
+          // Grabbed a power-up: a pop of colour where it was, and a callout for its pilot
+          renderer.itemPop(e.x, e.y, e.z, e.kind);
+          sendTo(e.seat, 'fx', { kind: 'item', item: e.kind });
+          if (!mine) break;
+          sfx.zone(2);
+          const s = renderer.project(e.x, e.y + 1, e.z);
+          if (s.visible) hud.floater(s.x, s.y, `${ITEMS[e.kind].label}! ${ITEMS[e.kind].what}`, 'combo big');
+          if (!solo || e.seat === 0) renderer.punch(4);
+          break;
+        }
         case 'tree':
           renderer.treeHit(e.x, e.y, e.z);
           sendTo(e.seat, 'fx', { kind: 'tree', x: e.x, y: e.y, z: e.z });

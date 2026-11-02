@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { createInk } from './ink.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
-import { SIM } from '../game/sim.js';
+import { SIM, itemReady, buffOn } from '../game/sim.js';
 import { moverAt, groundAt, gapWind } from '../game/floors.js';
 import { stickerSvg, cleanPlaced, STICKER_SIZE } from '../shared/stickers.js';
 
@@ -245,6 +245,64 @@ function paperMaterial(seat, owned, rank) {
   return shiny
     ? new THREE.MeshPhongMaterial({ ...opts, shininess: 90, specular: 0x777777 })
     : new THREE.MeshLambertMaterial(opts);
+}
+
+/* -------------------------------------------------------------- items --- */
+// Power-up pickups, modelled small and chunky so they read from a distance
+export const ITEM_COLORS = { donut: '#f29bb8', card: '#8fd0ea', glue: '#f08a2c', chipclip: '#6fbf73' };
+function buildItem(kind) {
+  const g = new THREE.Group();
+  if (kind === 'donut') {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.2, 8, 16), M('#d9a066'));
+    const icing = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.21, 8, 16, Math.PI * 2), M('#f29bb8'));
+    icing.scale.set(1, 1, 0.6); icing.position.z = 0.06;
+    g.add(ring, icing);
+    const sp = ['#f6efdc', '#8fd0ea', '#f2c94c', '#6fbf73'];
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2, r = 0.42 + (i % 2 ? 0.08 : -0.08);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.03), M(sp[i % 4]));
+      b.position.set(Math.cos(a) * r, Math.sin(a) * r, 0.2); b.rotation.z = a * 3;
+      g.add(b);
+    }
+  } else if (kind === 'card') {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 80;
+    const x = c.getContext('2d');
+    x.fillStyle = '#fffdf6'; x.fillRect(0, 0, 128, 80);
+    x.strokeStyle = '#e2a0a0'; x.lineWidth = 3; x.beginPath(); x.moveTo(0, 18); x.lineTo(128, 18); x.stroke();
+    x.strokeStyle = '#9fb6c8'; x.lineWidth = 2;
+    for (let y = 30; y < 80; y += 11) { x.beginPath(); x.moveTo(0, y); x.lineTo(128, y); x.stroke(); }
+    x.strokeStyle = '#2c2416'; x.lineWidth = 4; x.strokeRect(2, 2, 124, 76);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const card = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.75, 0.03), [M('#fffdf6'), M('#fffdf6'), M('#fffdf6'), M('#fffdf6'), new THREE.MeshLambertMaterial({ map: t }), new THREE.MeshLambertMaterial({ map: t })]);
+    card.rotation.z = 0.15;
+    g.add(card);
+  } else if (kind === 'glue') {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.7, 10), M('#fffdf6'));
+    const label = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.305, 0.32, 10, 1, true), M('#f08a2c'));
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.24, 0.2, 10), M('#f08a2c'));
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.26, 8), M('#f08a2c'));
+    neck.position.y = 0.45; tip.position.y = 0.67;
+    g.add(body, label, neck, tip);
+  } else {
+    // a chip-bag clip: two bright plastic jaws on a spring
+    for (const s of [-1, 1]) {
+      const jaw = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.12, 0.22), M('#6fbf73'));
+      jaw.position.set(0, s * 0.1, 0); jaw.rotation.z = s * 0.08;
+      g.add(jaw);
+    }
+    const spring = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.04, 6, 12), M('#9aa5ad'));
+    spring.position.x = 0.32; spring.rotation.y = Math.PI / 2;
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.36, 0.24), M('#f2c94c'));
+    grip.position.x = -0.5;
+    g.add(spring, grip);
+  }
+  // a soft halo so it stands out from the furniture
+  const halo = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 24), new THREE.MeshBasicMaterial({ color: ITEM_COLORS[kind], transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+  halo.layers.set(1);
+  g.add(halo);
+  g.userData.halo = halo;
+  g.scale.setScalar(1.15);
+  return g;
 }
 
 /* ------------------------------------------------------------ stickers --- */
@@ -969,7 +1027,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   scene.add(planeLayer);
 
   let floor = null;
-  const anims = { fans: [], vents: [], blowers: [], clips: [], signs: [], leds: [], movers: [], wallvents: [] };
+  const anims = { fans: [], vents: [], blowers: [], clips: [], signs: [], leds: [], movers: [], wallvents: [], items: [] };
   const planes = new Map();   // seat -> { root, shadow, trail, trailPts, aim }
   const TRAIL_N = 26;
   const dotGeo = new THREE.SphereGeometry(0.07, 5, 4);
@@ -1105,6 +1163,11 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     }
   }
   const tmpO3 = new THREE.Object3D();
+  // Someone grabbed an item: a pop of its colour
+  function itemPop(x, y, z, kind) {
+    confetti(x, y, z, [ITEM_COLORS[kind], '#f6efdc', '#f2c94c'], 22);
+    ring(x, y, z, ITEM_COLORS[kind], 3);
+  }
   // A plane clipped a park tree: shake it and knock some leaves loose
   function treeHit(x, y, z) {
     flutter(x, y + 0.5, z, ['#5e8a3f', '#6d9445', '#7a9a3c', '#c9a43a'], 12, 3, 1.8);
@@ -1865,12 +1928,20 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       env.add(g);
       anims.clips.push({ g, i, ph: i * 0.7, gone: 0 });
     });
+
+    // Power-up items
+    (f.items || []).forEach((it, i) => {
+      const g = buildItem(it.kind);
+      g.position.set(it.x, it.y, -it.z);
+      env.add(g);
+      anims.items.push({ g, i, it, ph: i * 1.3, gone: 0 });
+    });
   }
 
   /* ----------------------------------------------------------- planes --- */
   function setPlanes(list) {
     for (const p of planes.values()) {
-      planeLayer.remove(p.root, p.shadow, p.trail, p.aim, ...p.slips.map(l => l.m));
+      planeLayer.remove(p.root, p.shadow, p.trail, p.aim, p.shield, p.glueRing, ...p.slips.map(l => l.m));
     }
     planes.clear();
     for (const { seat, owned, rank, stickers } of list) {
@@ -1891,7 +1962,14 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       }
       const slips = [makeSlipLine(), makeSlipLine()];
       planeLayer.add(root, shadow, trail, aim, ...slips.map(l => l.m));
-      planes.set(seat, { root, shadow, trail, trailPts, aim, slips, boostT: 0, lastState: 'held' });
+      // Item effects: a shimmering bubble (Index Card) and a sticky ring (Glue Bottle)
+      const shield = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25, 1), new THREE.MeshBasicMaterial({ color: '#bfe6f5', transparent: true, opacity: 0.28, depthWrite: false, wireframe: true }));
+      const glueRing = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.05, 6, 40), new THREE.MeshBasicMaterial({ color: '#f08a2c', transparent: true, opacity: 0.4, depthWrite: false }));
+      glueRing.rotation.x = Math.PI / 2;
+      shield.layers.set(1); glueRing.layers.set(1);
+      shield.visible = glueRing.visible = false;
+      planeLayer.add(shield, glueRing);
+      planes.set(seat, { root, shadow, trail, trailPts, aim, slips, boostT: 0, lastState: 'held', shield, glueRing });
     }
   }
 
@@ -2143,6 +2221,16 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       c.g.position.y = (floor.clips[c.i]?.y ?? 0) + Math.sin(time * 2 + c.ph) * 0.15 + c.gone * 1.2;
       c.g.scale.setScalar(1 + c.gone * 0.6 - c.gone * c.gone * 1.5);
     }
+    for (const a of anims.items) {
+      const ready = !race?.items?.[a.i] || itemReady(race, race.items[a.i]);
+      // taken: shrink away; back again: pop in
+      a.gone = ready ? Math.max(0, a.gone - dt * 3) : Math.min(1, a.gone + dt * 5);
+      a.g.visible = a.gone < 0.99;
+      a.g.rotation.y = time * 2 + a.ph;
+      a.g.position.y = a.it.y + Math.sin(time * 2.4 + a.ph) * 0.2;
+      a.g.scale.setScalar(1.15 * (1 - a.gone) * (1 + Math.sin(time * 5 + a.ph) * 0.05));
+      a.g.userData.halo.lookAt(camera.position);
+    }
     for (const s of anims.signs) s.rotation.y = Math.atan2(camera.position.x - s.position.x, camera.position.z - s.position.z);
 
     for (const b of bits) {
@@ -2190,6 +2278,18 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       const crumpled = p.crumpled;
       root.userData.body.visible = !crumpled;
       root.userData.ball.visible = crumpled;
+      // Item effects on the plane
+      const flyingNow = (p.state === 'fly' || p.state === 'slide') && !crumpled;
+      v.shield.visible = flyingNow && buffOn(race, p, 'card');
+      if (v.shield.visible) { v.shield.position.set(p.x, p.y, -p.z); v.shield.rotation.set(time * 0.8, time * 1.3, 0); v.shield.scale.setScalar(1 + Math.sin(time * 9) * 0.05); }
+      v.glueRing.visible = flyingNow && buffOn(race, p, 'glue');
+      if (v.glueRing.visible) { v.glueRing.position.set(p.x, p.y, -p.z); v.glueRing.scale.setScalar(2.6 + Math.sin(time * 6) * 0.15); }
+      if (flyingNow && buffOn(race, p, 'donut')) {
+        // thrust: puffs of sugar and flame off the tail
+        v.puffT = (v.puffT ?? 0) - dt;
+        if (v.puffT <= 0) { v.puffT = 0.04; burst(p.x - Math.sin(p.yaw) * 0.9, p.y, p.z - Math.cos(p.yaw) * 0.9, Math.random() < 0.5 ? '#f08a2c' : '#f29bb8', 2, 1.5); }
+      }
+      if (flyingNow && buffOn(race, p, 'chipclip') && Math.random() < dt * 6) burst(p.x, p.y + 0.4, p.z, '#f2c94c', 1, 1.2);
       // Visible damage: the paper bends, kinks and tears as health drops
       if (!crumpled && p.maxHp) {
         const lvl = Math.round(Math.max(0, Math.min(1, 1 - p.hp / p.maxHp)) * 8) / 8;
@@ -2297,5 +2397,5 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   resize();
   window.addEventListener('resize', resize);
 
-  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, get floor() { return floor; } };
+  return { setFloor, setPlanes, frame, boost, burst, confetti, gust, ring, hitPlane, punch, shake, project, resize, treeHit, itemPop, get floor() { return floor; } };
 }
