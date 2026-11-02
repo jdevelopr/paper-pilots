@@ -185,3 +185,11 @@ body.lefty .aim .angle { order: 2; }
 .prefs .seg legend { font-size: 22px; min-width: 0; }
 .prefs .seg span { height: 40px; min-width: 0; font-size: 19px; padding: 0 12px; border-radius: 10px 14px 9px 13px; }
 #joiner-controls .prefs .seg legend { color: #fff8e6; text-shadow: 0 1px 0 rgba(44,36,22,.6); }
+
+/* phones: clip counts sit on the right, above the joystick when sideways (left side if left-handed) */
+body.pv-touch .clip-rail { right: 12px; top: 22%; }
+body.pv-touch .clipcount { font-size: 22px; } body.pv-touch .clipcount.big { font-size: 28px; }
+@media (orientation: landscape) and (max-height: 600px) {
+  body.pv-touch .clip-rail { top: 14%; }
+  body.pv-touch.lefty .clip-rail { right: auto; left: 12px; align-items: flex-start; }
+}

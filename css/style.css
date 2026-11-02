@@ -798,3 +798,15 @@ body.pv-touch .hud-buffs { top: 96px; gap: 6px; } body.pv-touch .hud-buffs .buff
 .aim-count.go { color: var(--mustard); font-size: 140px; }
 .aim-count.tick { animation: count-pop 900ms var(--ease-back) forwards; }
 body.pv-touch .aim-count { font-size: 90px; } body.pv-touch .aim-count.go { font-size: 110px; } body.pv-touch .aim-count.set { font-size: 48px; }
+
+/* clip pickup counts: a small stack on the right side, out of the way of the flying */
+.clip-rail { position: absolute; right: 24px; top: 30%; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+body.solo .clip-rail { right: 380px; }
+body.solo:has(#controller[data-view="fly"]) .clip-rail { right: 24px; }
+.clipcount { display: flex; align-items: center; gap: 6px; font-family: var(--display); font-weight: 700; font-size: 30px; color: var(--ink);
+  text-shadow: -2px -2px 0 #fff8e6, 2px -2px 0 #fff8e6, -2px 2px 0 #fff8e6, 2px 2px 0 #fff8e6; animation: clipcount 1.1s var(--ease-out) forwards; }
+.clipcount svg { width: 11px; height: 24px; color: #6b747c; }
+.clipcount.combo { color: #a8741a; font-size: 34px; }
+.clipcount.big { color: #a8741a; font-size: 40px; }
+@keyframes clipcount { 0% { opacity: 0; transform: translateX(20px) scale(.7); } 15% { opacity: 1; transform: translateX(0) scale(1.1); } 30% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
+@media (prefers-reduced-motion: reduce) { .clipcount { animation: none; } }

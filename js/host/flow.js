@@ -288,7 +288,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           if (!mine) break;
           sfx.ding(chain);
           const s = renderer.project(c.x, c.y, c.z);
-          if (s.visible) hud.floater(s.x, s.y, chain > 1 ? `+${e.n}  x${chain}` : `+${e.n}`, chain > 2 ? 'combo big' : chain > 1 ? 'combo' : '');
+          // the count pops up at the side of the screen; the clip itself still flies to your counter
+          hud.clipCount(chain > 1 ? `+${e.n}  x${chain}` : `+${e.n}`, chain);
           if (s.visible) hud.clipFly(s, e.seat, e.n);
           if (c.big) { renderer.confetti(c.x, c.y, c.z, ['#c3cad1', '#e0a526', '#f6efdc'], 24); renderer.punch(3); }
           break;

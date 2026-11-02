@@ -26,7 +26,7 @@ export function createHud(root) {
       <div class="progress"></div>
       <div class="tags"></div>
     </div>
-    <div class="floaters"><div class="trick-rail" aria-live="polite"></div></div>
+    <div class="floaters"><div class="trick-rail" aria-live="polite"></div><div class="clip-rail"></div></div>
     <div class="overlay intro" hidden></div>
     <div class="overlay board-wrap" hidden></div>
     <div class="banner-wrap"></div>
@@ -277,6 +277,17 @@ export function createHud(root) {
     el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit');
   }
 
+  // Clip pickups: "+1 x3" pops up in a small stack at the side of the screen
+  function clipCount(text, chain = 1) {
+    const rail = q('.clip-rail');
+    const el = document.createElement('div');
+    el.className = `clipcount${chain > 2 ? ' big' : chain > 1 ? ' combo' : ''}`;
+    el.innerHTML = `${clipIcon}<span>${esc(text)}</span>`;
+    rail.appendChild(el);
+    while (rail.children.length > 3) rail.firstElementChild.remove();
+    setTimeout(() => el.remove(), 1100);
+  }
+
   function floater(x, y, text, cls = '', ink = 0) {
     const f = document.createElement('div');
     f.className = `floater ${cls}`;
@@ -430,5 +441,5 @@ export function createHud(root) {
   function showRace() { race.hidden = false; boardWrap.hidden = true; intro.hidden = true; }
   function setHint(t) { hint.textContent = t || ''; }
 
-  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, clipFly, setMe, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
+  return { setRace, update, setLeadChange, combo, flash, trick, racerHit, clipFly, clipCount, setMe, floater, banner, showIntro, results, shop, shopTimer, final, hideBoards, showRace, setHint };
 }
