@@ -729,6 +729,22 @@ function collide(race, p, px, py, pz) {
     }
     const wasOutX = px < b.x0 - r + 0.02 || px > b.x1 + r - 0.02;
     const h = p.v * Math.cos(p.pitch);
+    if (b.mover) {
+      // Something moving (a cart, a drone, a flock) knocks you aside and slows
+      // you, but you keep flying the way you were going. Only walls and
+      // furniture turn you around.
+      const vn = h * (wasOutX ? Math.abs(Math.sin(p.yaw)) : Math.abs(Math.cos(p.yaw)));
+      const lim = f.width / 2 - r - 0.05;
+      let side = p.x >= (b.x0 + b.x1) / 2 ? 1 : -1;
+      if ((side > 0 ? b.x1 + r + 0.05 : b.x0 - r - 0.05) * side > lim) side = -side;   // no room that way
+      const nx = side > 0 ? b.x1 + r + 0.05 : b.x0 - r - 0.05;
+      if (Math.abs(nx) <= lim) { p.x = nx; p.yaw += side * 0.18; }
+      else p.z = Math.min(pz, b.z0 - r - 0.05);       // wedged against the wall: just held back
+      p.v *= Math.min(0.85, 0.6 * p.st.bounce);
+      if (race.t - (p.moverT ?? -9) > 0.4) { p.moverT = race.t; damage(race, p, Math.max(vn, 3.5), 'hit'); }
+      if (p.state === 'fall') p.v *= 0.3;
+      continue;
+    }
     if (wasOutX) {
       const vn = Math.abs(h * Math.sin(p.yaw));
       p.x = px;
