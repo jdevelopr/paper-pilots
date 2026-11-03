@@ -195,3 +195,9 @@ body.pv-touch .clipcount { font-size: 22px; } body.pv-touch .clipcount.big { fon
   body.pv-touch .clip-rail { top: 14%; }
   body.pv-touch.lefty .clip-rail { right: auto; left: 12px; align-items: flex-start; }
 }
+/* Match setup: Golf / Race and the cup picker */
+.seg[hidden] { display: none; }
+.cup-pick span { font-size: 19px; height: 40px; min-width: 0; padding: 0 12px; border-radius: 10px 14px 9px 13px; }
+.cup-pick input:checked + span, .mode-pick input:checked + span { transform: rotate(-2deg) scale(1.04); }
+.mode-desc { margin: -4px 0 0; font-family: var(--body); font-size: 17px; color: #fff8e6; text-shadow: 0 1px 0 rgba(44,36,22,.6); }
+.note .mode-desc { color: var(--ink-soft); text-shadow: none; }

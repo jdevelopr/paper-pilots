@@ -4,10 +4,10 @@
 //
 //   intro -> race -> results -> shop -> intro (next floor) ... -> final
 
-import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM, ITEMS, itemReady } from '../game/sim.js';
+import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM, ITEMS, itemReady, raceOrder } from '../game/sim.js';
 import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, equip, finalStandings, SHOP_MS, legOf, rankOf } from '../game/rules.js';
 import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js';
-import { generateFloor } from '../game/floors.js';
+import { makeFloor } from '../game/floors.js';
 import { UPGRADES, SLOTS, MAX_LEVEL } from '../shared/upgrades.js';
 import { colorFor } from '../shared/colors.js';
 import { sfx, setWind } from './audio.js';
@@ -70,13 +70,18 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     startRound();
   }
 
+  // "Race 2/3" on a floor in Golf; "Race 2 of 3" through the cup in Race mode
+  const isRace = () => match?.mode === 'race';
+  const roundLabel = () => (isRace() ? `Race ${match.round + 1}/${match.floors.length}` : `Race ${legOf(match)}/${match.racesPerFloor}`);
+  const bestKey = f => (isRace() ? `race_${f.id}` : f.id);
+
   function startRound() {
     clearTimers();
     // Anyone who joined since the last round gets a seat at the table now.
     for (const h of humans()) addPlayer(match, h.seat, h.name);
     // Every race gets a freshly generated layout of this floor's theme.
     const seed = (rng() * 2 ** 31) >>> 0;
-    const floor = layout = generateFloor(currentFloor(match), seed);
+    const floor = layout = makeFloor(currentFloor(match), seed, match.mode);
     raceSeats = Object.keys(match.players).map(Number).sort((a, b) => a - b);
     race = createRace(floor, raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
     for (const [seat, b] of bots) b.brain = createBot(seat, b.skill, rng);
@@ -89,11 +94,11 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     if (solo) hud.setMe(0);
     // Every player's own screen builds the exact same layout from the same seed
     lastLayout = {
-      theme: floor.id, seed, label: `Race ${legOf(match)}/${match.racesPerFloor}`, first: match.round === 0,
+      theme: floor.id, seed, mode: match.mode, label: roundLabel(), first: match.round === 0,
       seats: raceSeats.map(seat => ({ seat, name: nameOf(seat), owned: match.players[seat].owned, rank: rankOf(match.players[seat].career).level, stickers: stickersBy.get(seat) || [] })),
     };
     if (!solo) broadcast('layout', lastLayout);
-    hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title, best: match.players[seat].best[floor.id] ?? 0 })), `Race ${legOf(match)}/${match.racesPerFloor}`);
+    hud.setRace(floor, raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title, best: match.players[seat].best[bestKey(floor)] ?? 0 })), roundLabel());
 
     const ms = match.round === 0 ? INTRO_FIRST_MS : INTRO_MS;
     startsAt = Date.now() + ms;
@@ -101,7 +106,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     broadcastPhase();
     sfx.elevator();
     hud.showIntro({
-      floor, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: match.racesPerFloor,
+      floor, round: match.round, rounds: match.floors.length, leg: isRace() ? match.round + 1 : legOf(match), legs: isRace() ? match.floors.length : match.racesPerFloor,
+      mode: match.mode, cup: isRace() ? match.cup : null,
       players: raceSeats.map(seat => ({ seat, name: nameOf(seat), rank: rankOf(match.players[seat].career).title })), startsAt: () => startsAt,
     }, label => {
       if (label === 'GO!') { sfx.go(); hud.flash('go'); renderer.punch(10); renderer.shake(0.25); }
@@ -157,7 +163,9 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         Math.round(q.hp), q.maxHp, r2(q.v), r2(q.aim.yaw), r2(q.aim.pitch), r2(q.aim.power), q.clips,
         q.zone ? { label: q.zone.label, pay: q.zone.pay, tier: q.zone.tier, ring: q.zone.ring, par: q.zone.par } : null, q.duct ?? -1, q.out ? 1 : 0,
         q.thrownAt == null ? -1 : r2(q.thrownAt), r2(q.fatigue || 0), q.landedAt == null ? -1 : r2(q.landedAt),
-        Object.keys(ITEMS).map(k => Math.max(0, r2((q.buffs?.[k] ?? 0) - race.t)))]),
+        Object.keys(ITEMS).map(k => Math.max(0, r2((q.buffs?.[k] ?? 0) - race.t))),
+        // race mode: finished (and when), furthest point reached, waiting for the janitor
+        q.finished ? r2(q.finishedAt) : -1, r2(q.maxZ || 0), q.respawnAt != null ? 1 : 0]),
       c: race.clips.reduce((a, c, i) => (c.taken >= 0 && a.push(i), a), []),
       it: race.items.reduce((a, it, i) => (!itemReady(race, it) && a.push(i), a), []),
     };
@@ -338,7 +346,27 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
           sendTo(e.seat, 'fx', { kind: 'crumple' });
           break;
         case 'timeout':
-          hud.banner(`${nameOf(e.seat)} ran out of air`);
+          hud.banner(isRace() ? `${nameOf(e.seat)} didn't finish in time` : `${nameOf(e.seat)} ran out of air`);
+          break;
+        // Race mode
+        case 'finish': {
+          const ord = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'][e.place - 1] || `${e.place}th`;
+          hud.banner(`${nameOf(e.seat)} finishes ${ord}! ${e.t}s`, 2000);
+          if (e.place === 1) { sfx.fanfare(); renderer.shake(0.3); } else sfx.zone(Math.max(0, 4 - e.place));
+          if (p) renderer.confetti(p.x, p.y + 0.3, p.z, [colorFor(e.seat), '#f6efdc', '#2c2416'], e.place === 1 ? 40 : 18);
+          sendTo(e.seat, 'fx', { kind: 'toast', text: `You finished ${ord}!` });
+          break;
+        }
+        case 'respawn': {
+          renderer.burst(e.x, e.y, e.z, '#f6efdc', 18, 3);
+          sendTo(e.seat, 'fx', { kind: 'toast', text: 'The janitor put you back in!' });
+          const s = renderer.project(e.x, e.y + 1, e.z);
+          if (mine && s.visible) hud.floater(s.x, s.y, 'Back in!', 'combo');
+          break;
+        }
+        case 'skim':
+          sfx.land();
+          renderer.burst(e.x, e.y - 0.4, e.z, '#e9dcbc', 6, 2);
           break;
         case 'boost':
           // Rooftop park: threaded a wind ring, or caught a tailwind stream
@@ -475,7 +503,9 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         seat: h.seat, name: pl.name, clips: pl.clips, points: pl.points, owned: pl.owned, parts: pl.parts, loadout: pl.loadout,
         state: p?.state ?? 'none', hp: p ? Math.round(p.hp) : 0, maxHp: p?.maxHp ?? 100,
         run: (p?.clips ?? 0) + (p?.tr?.clips ?? 0), chain: p?.tr?.chain ?? 0, crumpled: !!p?.crumpled, zone: p?.zone ?? null,
-        dist: p ? Math.round(p.z) : 0, best: Math.round(pl.best[currentFloor(match).id] ?? 0),
+        dist: p ? Math.round(p.z) : 0, best: Math.round(pl.best[bestKey(currentFloor(match))] ?? 0),
+        mode: match.mode, finished: !!p?.finished, finishT: p?.finished ? Math.round((p.finishedAt - (p.thrownAt ?? 0)) * 10) / 10 : null,
+        respawning: p?.respawnAt != null, place: p && isRace() ? raceOrder(race).indexOf(p) + 1 : null,
         rank: rankOf(pl.career),
         // seconds until a plane still on the desk gets thrown for you
         autoIn: phase === 'race' && p?.state === 'held' ? Math.max(0, Math.round((SIM.throwWindow - race.t) * 10) / 10) : null,
@@ -487,7 +517,9 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     const f = layout || currentFloor(match);
     const next = match.floors[match.round + 1];
     broadcast('phase', {
-      phase, round: match.round, rounds: match.floors.length, leg: legOf(match), legs: match.racesPerFloor,
+      phase, round: match.round, rounds: match.floors.length,
+      leg: isRace() ? match.round + 1 : legOf(match), legs: isRace() ? match.floors.length : match.racesPerFloor,
+      mode: match.mode, cup: isRace() ? match.cup : null,
       floor: { number: f.number, label: f.label, name: f.name, stakes: f.stakes },
       next: next ? { number: next.number, name: next.name, leg: legOf(match, match.round + 1) } : null,
       inMs: Math.max(0, startsAt - Date.now()),
@@ -505,7 +537,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     sendStats(rows);
     setPhase('results');
     sfx.fanfare();
-    hud.results(rows, layout, isLastRound(match), legOf(match), match.racesPerFloor);
+    hud.results(rows, layout, isLastRound(match), isRace() ? match.round + 1 : legOf(match), isRace() ? match.floors.length : match.racesPerFloor, isRace() ? { cup: match.cup } : null);
     const promos = rows.filter(r => r.promoted);
     if (promos.length) later(1800, () => { sfx.fanfare(); hud.banner(promos.map(r => `${r.name} promoted to ${r.promoted}`).join(' · '), 3500);
       if (promos.length === 1) later(3600, () => hud.banner(promos[0].unlock, 3000)); });
@@ -575,6 +607,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     const looks = new Map(planeLooks().map(l => [l.seat, l]));
     renderer.setPodium(finalRows.slice(0, 3).map(r => ({ seat: r.seat, ...(looks.get(r.seat) || { owned: r.owned || [] }) })));
     hud.final(finalRows, {
+      cup: isRace() ? match.cup : null,
       soloMenu: solo,
       onAgain: () => { if (solo) start(setupWanted); else onExit?.('lobby'); },
       onMenu: () => onExit?.('menu'),

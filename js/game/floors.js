@@ -396,6 +396,29 @@ for (const t of THEMES) t.length = Math.round(BASE_LENGTH * GROWTH ** (t.number 
 // rules.js picks the floors for a match from this list.
 export const FLOORS = THEMES;
 
+/* ------------------------------------------------------------ race mode --- */
+// Race mode is a straight race to a finish arch: shorter floors (about a minute
+// of flying), no landing targets, the finish just before the far wall. Cups
+// are fixed sets of floors played one race each, or a custom pick.
+export const RACE_LENGTH = n => 600 + 50 * (n - 1);
+export const CUPS = [
+  { id: 'ground', name: 'Ground Floor Cup', floors: ['lobby', 'cubicles', 'breakroom'] },
+  { id: 'upstairs', name: 'Upstairs Cup', floors: ['servers', 'executive', 'rooftop'] },
+  { id: 'basement', name: 'Basement Cup', floors: ['basement', 'lobby', 'servers'] },
+  { id: 'all', name: 'All-Floors Cup', floors: ['lobby', 'cubicles', 'breakroom', 'servers', 'executive', 'rooftop', 'basement'] },
+];
+// The one place a floor is built from (theme, seed, mode): host and players
+// all call this, so every screen builds the exact same layout.
+export function makeFloor(theme, seed, mode = 'golf') {
+  if (mode !== 'race') return generateFloor(theme, seed);
+  const f = generateFloor({ ...theme, length: RACE_LENGTH(theme.number) }, seed);
+  f.mode = 'race';
+  f.zones = [];
+  f.finish = { z: f.length - 18 };
+  f.stakes = 'First to the finish wins';
+  return f;
+}
+
 /* ----------------------------------------------------------- generator --- */
 
 export function generateFloor(theme, seed = 1) {

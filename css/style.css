@@ -969,3 +969,18 @@ body.pv-touch .hud-watch { font-size: 18px; top: 64px; }
 /* Hard feats in the sticker book: a gold-trimmed card */
 .sb-cell.hard { border-color: var(--gold-deep); box-shadow: inset 0 0 0 2px var(--gold), 2px 3px 0 var(--ink); }
 .sb-cell.hard.locked { border-color: var(--gold-deep); }
+
+/* ---------------------------------------------------------- race mode --- */
+/* Your place, big, in the top-left of your view */
+.hud-pos { position: absolute; left: 18px; top: 128px; display: flex; align-items: baseline; gap: 2px; pointer-events: none;
+  font-family: var(--display); font-weight: 700; color: #fff8e6; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 3px 4px 0 rgba(44,36,22,.4); }
+.hud-pos[hidden] { display: none; }
+.hud-pos b { font-size: 76px; line-height: .9; }
+.hud-pos small { font-size: 30px; }
+.hud-pos.bump b { animation: count-pop 600ms var(--ease-back); }
+body.pv-touch .hud-pos { top: 96px; left: 12px; } body.pv-touch .hud-pos b { font-size: 52px; } body.pv-touch .hud-pos small { font-size: 22px; }
+/* the finish on the course strip */
+.progress .zt.fin { width: 1.4%; border: 1.5px solid var(--ink);
+  background: repeating-conic-gradient(#2c2416 0 25%, #fffdf6 0 50%) 0 0 / 8px 8px; }
+.fin-cup { text-align: center; font-family: var(--display); font-size: 30px; margin-bottom: 6px; }
+@media (prefers-reduced-motion: reduce) { .hud-pos.bump b { animation: none; } }

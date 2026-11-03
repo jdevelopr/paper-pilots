@@ -46,6 +46,16 @@ function estimateReach(bot, floor, p, aim) {
 }
 
 function plan(bot, floor, p, aim) {
+  if (floor.finish) {
+    // Race mode: aim past the finish arch and ride the vents on the way
+    bot.target = { x: laneX(floor, floor.finish.z + 6), z: floor.finish.z + 8, tier: -1, race: true };
+    bot.reach = floor.length;
+    bot.ways = floor.vents
+      .filter(v => v.z > 8 && v.z < floor.finish.z - 18 && !inHall(floor, v.z, 15) && Math.abs(v.x - laneX(floor, v.z)) < 6 && bot.rng() < 0.15 + bot.skill * 0.35)
+      .sort((a, b) => a.z - b.z)
+      .map(v => ({ x: v.x, z: v.z, vent: v }));
+    return;
+  }
   const reach = estimateReach(bot, floor, p, aim);
   // Best zone comfortably inside that reach; weaker bots sometimes play it safe,
   // stronger ones sometimes gamble on the next zone out using vents.
@@ -72,8 +82,9 @@ export function botAim(bot, floor, p) {
     power: clamp(0.7 + bot.skill * 0.3 - bot.rng() * 0.15, 0.4, 1),
   };
   plan(bot, floor, p, aim);
+  if (floor.finish) aim.power = clamp(0.85 + bot.skill * 0.15 - bot.rng() * 0.1, 0.6, 1);
   // Going for the first mat: a softer throw so it doesn't sail past.
-  if (bot.target.tier === 0 && bot.reach > bot.target.z + 40) aim.power = clamp(aim.power - 0.3, 0.3, 1);
+  else if (bot.target.tier === 0 && bot.reach > bot.target.z + 40) aim.power = clamp(aim.power - 0.3, 0.3, 1);
   return aim;
 }
 
@@ -134,11 +145,14 @@ export function botSteer(bot, race, p) {
     const ahead = p.z + 12;
     x = way.z - p.z > 15 ? steerToward(p, laneX(f, ahead), ahead) : steerToward(p, way.x, way.z);
     y = clamp((p.v - (Math.hypot(way.x - p.x, way.z - p.z) < way.vent.r ? 9 : 11.5)) * 0.28, -1, 1);
-  } else if (hall || tg.z - p.z > 45) {
+  } else if (hall || tg.z - p.z > 45 || tg.race) {
     // Far from the target (or in a hallway): follow the clear lane at an efficient speed.
     const ahead = p.z + (hall ? 7 : 12);
     x = steerToward(p, laneX(f, ahead), ahead);
     y = clamp((p.v - 11.5) * 0.28, -1, 1);
+    // Race mode: speed matters more than glide; hold a middle height and let
+    // the dives build speed
+    if (tg.race) y = clamp((Math.min(f.height * 0.45, 6) - p.y) * 0.22 + (p.v - 15) * 0.05, -1, 1);
     // A doorway ahead: get under the lintel in time.
     const door = (f.doors || []).find(d => d.z > p.z - 1 && d.z - p.z < 45);
     if (door) {

@@ -7,7 +7,7 @@
 
 import { createRenderer } from '../host/render3d.js';
 import { createHud } from '../host/hud.js';
-import { THEMES, generateFloor } from '../game/floors.js';
+import { THEMES, makeFloor } from '../game/floors.js';
 import { createRace, ITEMS } from '../game/sim.js';
 const ITEM_KINDS = Object.keys(ITEMS);
 import { colorFor } from '../shared/colors.js';
@@ -29,12 +29,12 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
   function setLayout(L) {
     const theme = THEMES.find(t => t.id === L.theme);
     if (!theme) return;
-    const floor = generateFloor(theme, L.seed);
+    const floor = makeFloor(theme, L.seed, L.mode);
     seats = L.seats.map(s => s.seat);
     // Same starting positions as the host: build the race the same way
     race = createRace(floor, L.seats.map(s => ({ seat: s.seat, owned: s.owned })));
     race.events = [];
-    introLen = L.first ? 6500 : 5000;
+    introLen = L.first ? 13000 : 5000;
     snaps = [];
     renderer.setFloor(floor);
     renderer.setPlanes(L.seats.map(s => ({ seat: s.seat, owned: s.owned, rank: s.rank, stickers: s.stickers || [] })));
@@ -76,6 +76,7 @@ export function createPlayerView({ stage, hudRoot, getSeat }) {
       p.clips = pb[15]; p.zone = pb[16]; p.duct = pb[17] >= 0 ? pb[17] : null; p.out = pb[18] ? {} : null;
       p.thrownAt = pb[19] >= 0 ? pb[19] : null; p.fatigue = pb[20] || 0; p.landedAt = pb[21] >= 0 ? pb[21] : null;
       p.buffs = {}; (pb[22] || []).forEach((left, j) => { if (left > 0) p.buffs[ITEM_KINDS[j]] = race.t + left; });
+      p.finished = pb[23] >= 0; p.finishedAt = pb[23] >= 0 ? pb[23] : null; p.maxZ = pb[24] ?? p.z; p.respawnAt = pb[25] ? race.t + 1 : null;
     }
     const gone = new Set(B.s.it || []);
     (race.items || []).forEach((it, j) => { it.takenAt = gone.has(j) ? race.t : -99; });

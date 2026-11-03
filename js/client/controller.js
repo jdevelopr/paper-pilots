@@ -101,7 +101,9 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
   // card; "Skip tutorial" closes them all until the next match.
   const touch = () => document.body.classList.contains('pv-touch');
   const TIPS = {
-    goal: () => '<b>The goal:</b> throw your paper plane down the office floor and land it on a target. Targets farther away pay more points and clips.',
+    goal: () => phase.mode === 'race'
+      ? '<b>The goal:</b> fly down the floor and through the <b>FINISH</b> arch first. There\'s no landing: touch the floor and you skim back up. If you crumple, the janitor puts you back after a moment.'
+      : '<b>The goal:</b> throw your paper plane down the office floor and land it on a target. Targets farther away pay more points and clips.',
     throw: () => touch()
       ? '<b>Throw:</b> put your thumb on the pad, <b>pull back</b>, and <b>let go on GO!</b> Pull farther for a harder throw. Drag sideways to aim, and use the slider for the angle.'
       : '<b>Throw:</b> <b>hold Space</b> to pull back, and <b>let go on GO!</b> Hold longer for a harder throw. Left and Right aim, Up and Down set the angle.',
@@ -582,6 +584,18 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
   /* -------------------------------------------------------- messages --- */
   function paintLanded() {
     const card = q('.landed-card');
+    if (me.mode === 'race') {
+      // Race mode: finished (and where), waiting for the janitor, or out of time
+      const ord = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
+      card.classList.toggle('miss', !me.finished);
+      card.style.background = me.finished ? 'var(--paper)' : '';
+      q('.zl').innerHTML = me.finished ? `Finished ${ord[(me.place || 1) - 1] || ''}` : me.respawning ? 'Crumpled!' : 'Out of time';
+      q('.zp').innerHTML = me.finished ? `${me.finishT}s` : '';
+      const zb = q('.zb'), newBest = me.finished && me.best > 0 && me.finishT < me.best;
+      zb.classList.toggle('pb', newBest);
+      zb.textContent = me.respawning ? 'The janitor is on the way' : !me.finished ? '' : newBest ? `New best time` : me.best ? `Best ${me.best}s` : '';
+      return;
+    }
     const z = landed?.zone ?? me.zone;
     const crumpled = landed?.crumpled ?? me.crumpled;
     card.classList.toggle('miss', !z);
@@ -613,6 +627,12 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     const ord = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
     q('.r-place').textContent = ord[row.place - 1];
     q('.r-zone').textContent = `+${row.earned.total} clips · +${row.points} ${row.points === 1 ? 'pt' : 'pts'}`;
+    if (row.race) {
+      q('.r-brk').textContent = [row.finished ? `Finished in ${row.finishT}s` : `Didn't finish (${Math.round(row.dist)} ft)`, row.pb ? 'New best time' : '', row.earned.tricks ? `Tricks +${row.earned.tricks}` : ''].filter(Boolean).join(' · ');
+      q('.r-promo').innerHTML = row.promoted ? `Promoted to ${esc(row.promoted)}<small>${esc(row.unlock || '')}</small>` : '';
+      if (row.promoted) vibrate([30, 60, 30, 60, 120]);
+      return;
+    }
     const extras = [`Distance ${row.distPts ?? 0}`, row.zone && !row.crumpled ? `Target ${row.targetPts ?? 0} (${row.flightT}s, par ${row.par}s)` : '', row.pb ? 'New best' : '', row.earned.tricks ? `Tricks +${row.earned.tricks}` : '', row.zoneStreak >= 2 ? `Zone streak x${row.zoneStreak}` : '', row.cleanStreak >= 2 ? `Clean streak x${row.cleanStreak}` : ''].filter(Boolean);
     q('.r-brk').textContent = [row.crumpled ? 'Crumpled' : row.zone ? `${row.zone}${row.ring ? ` (${row.ring})` : ''}` : 'Missed the zones', ...extras].join(' · ');
     q('.r-promo').innerHTML = row.promoted ? `Promoted to ${esc(row.promoted)}<small>${esc(row.unlock || '')}</small>` : '';

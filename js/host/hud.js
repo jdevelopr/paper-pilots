@@ -3,7 +3,7 @@
 
 import { esc, clipIcon, planeIcon, reduceMotion } from '../ui.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
-import { SIM, scoreRun, ITEMS } from '../game/sim.js';
+import { SIM, scoreRun, ITEMS, raceOrder } from '../game/sim.js';
 const ITEM_COLORS = { donut: '#f29bb8', card: '#8fd0ea', glue: '#f08a2c', chipclip: '#6fbf73', coffee: '#8b5a2b', eraser: '#e8607a', bubble: '#7fd6c2' };
 import { UPGRADE_BY_ID, SLOTS, MK, metalOf } from '../shared/upgrades.js';
 
@@ -23,6 +23,7 @@ export function createHud(root) {
       <div class="racers"></div>
       <div class="hud-top"><div class="hud-chip hud-floor"></div><div class="hud-chip hud-timer"></div><div class="hud-chip hud-clips" hidden>${clipIcon}<span>0</span></div><div class="hud-chip hud-par" hidden></div></div>
       <div class="hud-tired" hidden>Keep moving forward!</div>
+      <div class="hud-pos" hidden><b></b><small></small></div>
       <div class="hud-chip hud-watch" hidden></div>
       <div class="hud-buffs"></div>
       <div class="progress"></div>
@@ -39,6 +40,8 @@ export function createHud(root) {
   const intro = q('.intro'), boardWrap = q('.board-wrap'), bannerWrap = q('.banner-wrap'), hint = q('.hint');
 
   let racerEls = new Map(), tagEls = new Map(), pipEls = new Map();
+  const posEl = q('.hud-pos'), posN = posEl.querySelector('b'), posOf = posEl.querySelector('small');
+  let stretchCalled = false;
   let floor = null;
   // Your own clip counter (solo and player views), which collected clips fly into
   const myClips = q('.hud-clips'), myClipsN = myClips.querySelector('span');
@@ -91,6 +94,13 @@ export function createHud(root) {
     racerEls = new Map(); tagEls = new Map(); pipEls = new Map();
     inFlight = 0; myClipsN.textContent = '0';
     // Course strip: zone ticks along the length, pips for each plane.
+    stretchCalled = false;
+    if (f.finish) {
+      const fin = document.createElement('div');
+      fin.className = 'zt fin';
+      fin.style.left = `${(f.finish.z / f.length) * 100}%`;
+      progress.appendChild(fin);
+    }
     for (const zn of f.zones) {
       const z = document.createElement('div');
       z.className = 'zt';
@@ -135,6 +145,7 @@ export function createHud(root) {
   // Live running order by score (distance + target points). Cards slide
   // into place when positions change, and the leader's name tag wears a crown.
   function placeOrder(planes, t) {
+    if (floor?.finish) return raceOrder({ planes });
     // the same score the results use: distance points plus par-scaled target points
     const sc = new Map(planes.map(p => [p, floor ? scoreRun(floor, p, t).total : 0]));
     return [...planes].sort((a, b) => (sc.get(b) - sc.get(a)) || (b.z - a.z));
@@ -161,6 +172,7 @@ export function createHud(root) {
       hp.classList.toggle('low', p.hp / p.maxHp < 0.35);
       let sub = STATE_LABEL[p.state] || '';
       if (p.state === 'landed') sub = p.crumpled ? 'Crumpled' : p.zone ? `${p.zone.label} +${p.zone.pay}` : 'Missed';
+      if (floor.finish && p.state === 'landed') sub = p.finished ? `Finished · ${(p.finishedAt - (p.thrownAt ?? 0)).toFixed(1)}s` : p.respawnAt != null ? 'Janitor on the way' : 'Out of time';
       // Still on the desk after GO: count down the last seconds before the auto-throw
       const autoLeft = p.state === 'held' && raceState.t > 0 ? Math.ceil(SIM.throwWindow - raceState.t) : null;
       const autoShow = autoLeft != null && autoLeft <= 5 && autoLeft > 0;
@@ -185,6 +197,18 @@ export function createHud(root) {
       pip.style.left = `${Math.max(0, Math.min(100, (p.z / floor.length) * 100))}%`;
     }
     const order = placeOrder(raceState.planes, raceState.t);
+    // Race mode: your place, big, and a call when the leader hits the final stretch
+    if (floor.finish) {
+      const mine = meSeat != null ? order.findIndex(p => p.seat === meSeat) : -1;
+      const show = mine >= 0 && raceState.planes.some(p => p.state !== 'held');
+      posEl.hidden = !show;
+      if (show) {
+        const v = ORD[mine] || `${mine + 1}th`;
+        if (posN.textContent !== v) { posN.textContent = v; posEl.classList.remove('bump'); void posEl.offsetWidth; posEl.classList.add('bump'); }
+        posOf.textContent = `/${order.length}`;
+      }
+      if (!stretchCalled && order[0] && !order[0].finished && (order[0].maxZ ?? order[0].z) > floor.finish.z * 0.8) { stretchCalled = true; banner('Final stretch!', 1600); }
+    } else posEl.hidden = true;
     const key = order.map(p => p.seat).join(',');
     const anyFlying = raceState.planes.some(p => p.state !== 'held');
     order.forEach((p, i) => {
@@ -339,7 +363,15 @@ export function createHud(root) {
         <li><b>Steer:</b> the joystick or arrow keys. Up climbs, down dives, left and right turn.</li>
       </ol>
     </div>`;
-  function showIntro({ floor: f, round, rounds, leg, legs, players, startsAt }, onTick) {
+  const HOWTO_RACE = `<div class="howto note">
+      <h3>How to race</h3>
+      <ol>
+        <li><b>The goal:</b> fly down the floor and through the <b>FINISH</b> arch first. No landing: touch the floor and you skim back up.</li>
+        <li><b>Throw:</b> pull back on the slingshot pad (or hold Space) and <b>let go on GO!</b></li>
+        <li><b>Steer:</b> the joystick or arrow keys. Dive for speed, ride the vents, and if you crumple the janitor puts you back.</li>
+      </ol>
+    </div>`;
+  function showIntro({ floor: f, round, rounds, leg, legs, players, startsAt, mode, cup }, onTick) {
     cancelAnimationFrame(countRaf);
     race.hidden = true;
     boardWrap.hidden = true;
@@ -348,10 +380,10 @@ export function createHud(root) {
       <div class="elevator">
         <div class="disp"><svg aria-hidden="true"${f.id === 'basement' ? ' style="transform:rotate(180deg)"' : ''}><use href="#i-up"/></svg><span>${f.label ?? f.number}</span></div>
         <div class="fname">${esc(f.name)}</div>
-        <div class="stakes">Race ${leg} of ${legs} · ${esc(f.stakes)}</div>
+        <div class="stakes">${cup ? `${esc(cup)} · ` : ''}Race ${leg} of ${legs} · ${esc(f.stakes)}</div>
         <div class="callin">${players.map((p, i) => `<span style="--c:${colorFor(p.seat)};--i:${i}">${esc(p.name)}<small>${esc(p.rank || '')}</small></span>`).join('')}</div>
       </div>
-      ${round === 0 && !document.body.classList.contains('solo') && !document.body.classList.contains('solo-touch') ? HOWTO : ''}
+      ${round === 0 && !document.body.classList.contains('solo') && !document.body.classList.contains('solo-touch') ? (mode === 'race' ? HOWTO_RACE : HOWTO) : ''}
       <div class="count" hidden></div>`;
     const panel = intro.querySelector('.elevator'), count = intro.querySelector('.count'), howto = intro.querySelector('.howto');
     let last = null;
@@ -380,16 +412,19 @@ export function createHud(root) {
     return boardWrap.firstElementChild;
   }
 
-  function results(rows, f, isLast, leg, legs) {
+  function results(rows, f, isLast, leg, legs, raceInfo = null) {
+    const fin = r => (r.finished ? `Finished · ${r.finishT}s` : `Didn't finish (${Math.round(r.dist)} ft)`);
     const html = `
-      <h2>Floor ${f.label ?? f.number} · Race ${leg} <small>${isLast ? 'Final race' : leg === legs ? 'Shop, then up a floor' : 'Shop next'}</small></h2>
+      <h2>${raceInfo ? `${esc(raceInfo.cup)} · Race ${leg} of ${legs}` : `Floor ${f.label ?? f.number} · Race ${leg}`} <small>${isLast ? 'Final race' : raceInfo ? 'Shop next' : leg === legs ? 'Shop, then up a floor' : 'Shop next'}</small></h2>
       <div class="rows">${rows.map((r, i) => `
         <div class="rrow" style="--c:${colorFor(r.seat)};--i:${i}">
           <div class="pl">${r.place}</div>
           <div class="nm">${esc(r.name)}<div class="rk">${r.promoted ? `<b class="promo">Promoted: ${esc(r.promoted)}</b>` : esc(r.rank)}</div></div>
+          ${r.race ? `<div class="zn">${fin(r)}
+            <div class="brk">${r.pb ? '<b class="pb">New best time</b> · ' : ''}place +${r.earned.zone}${r.earned.pickup ? ` · pickups ${r.earned.pickup}` : ''}${r.earned.tricks ? ` · tricks ${r.earned.tricks}` : ''}${r.earned.streak ? ` · streak ${r.earned.streak}` : ''}</div></div>` : `
           <div class="zn">${r.crumpled ? 'Crumpled' : r.zone ? `${esc(r.zone)}${r.ring ? ` <small class="ring">${esc(r.ring)}</small>` : ''}` : `Missed (${Math.round(r.dist)} ft)`}
             <div class="brk">${Math.round(r.dist)} ft${r.pb ? ' · <b class="pb">New best</b>' : ''} · distance ${plural(r.distPts ?? 0, 'pt')}${r.zone && !r.crumpled ? ` · target ${plural(r.targetPts ?? 0, 'pt')} <span class="par${r.parFactor >= 1 ? ' under' : ''}">${r.flightT}s, par ${r.par}s</span>` : ''}${r.earned.tricks ? ` · tricks ${r.earned.tricks}` : ''}${r.earned.streak ? ` · streak ${r.earned.streak}` : ''}</div>
-            ${r.zoneStreak >= 2 || r.cleanStreak >= 2 || r.trickList?.length ? `<div class="badges">${r.zoneStreak >= 2 ? `<span>Zone streak x${r.zoneStreak}</span>` : ''}${r.cleanStreak >= 2 ? `<span>Clean streak x${r.cleanStreak}</span>` : ''}${r.trickList?.length ? `<span class="tk">${r.trickList.length} trick${r.trickList.length > 1 ? 's' : ''}${Math.max(...r.trickList.map(t => t.mult)) > 1 ? `, best x${Math.max(...r.trickList.map(t => t.mult))}` : ''}</span>` : ''}</div>` : ''}</div>
+            ${r.zoneStreak >= 2 || r.cleanStreak >= 2 || r.trickList?.length ? `<div class="badges">${r.zoneStreak >= 2 ? `<span>Zone streak x${r.zoneStreak}</span>` : ''}${r.cleanStreak >= 2 ? `<span>Clean streak x${r.cleanStreak}</span>` : ''}${r.trickList?.length ? `<span class="tk">${r.trickList.length} trick${r.trickList.length > 1 ? 's' : ''}${Math.max(...r.trickList.map(t => t.mult)) > 1 ? `, best x${Math.max(...r.trickList.map(t => t.mult))}` : ''}</span>` : ''}</div>` : ''}</div>`}
           <div class="earn">+<span data-to="${r.earned.total}">0</span>${clipIcon}</div>
           <div class="pts">+${r.points} · ${plural(r.totalPoints, 'pt')}</div>
         </div>`).join('')}</div>`;
@@ -453,7 +488,7 @@ export function createHud(root) {
   // the HUD adds a name tag over each of the top three planes, and a strip at
   // the bottom with everyone else and the buttons.
   let finTagEls = new Map();
-  function final(rows, { onAgain, onMenu, soloMenu }) {
+  function final(rows, { onAgain, onMenu, soloMenu, cup }) {
     const top = rows.slice(0, 3), rest = rows.slice(3);
     race.hidden = true; intro.hidden = true; boardWrap.hidden = false;
     boardWrap.innerHTML = `
@@ -466,6 +501,7 @@ export function createHud(root) {
             <div class="sub">${plural(r.points, 'pt')} · ${plural(r.wins, 'win')}</div>
           </div>`).join('')}</div>
         <div class="fin-bottom note">
+          ${cup ? `<div class="fin-cup">${esc(cup)} winner: <b>${esc(rows[0]?.name || '')}</b></div>` : ''}
           ${rest.length ? `<div class="fin-rest">${rest.map(r => `
             <div class="fin-row" style="--c:${colorFor(r.seat)}"><b>${r.place}</b> ${esc(r.name)} <span>${plural(r.points, 'pt')}</span></div>`).join('')}</div>` : ''}
           <div class="foot">

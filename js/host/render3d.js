@@ -2320,6 +2320,44 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       anims.signs.push(sign);
     }
 
+    // Race mode: the finish arch, a checkered banner on two posts across the
+    // whole floor, with a checkered strip on the floor under it
+    if (f.finish) {
+      const fz = f.finish.z, Wd = f.width, gy = groundAt(f, fz);
+      const top = Math.min(f.height - 0.6, gy + (f.open ? 14 : f.height - 0.6));
+      const chk = (cols, rows, text) => {
+        const c = document.createElement('canvas'); c.width = 1024; c.height = Math.round(1024 * rows / cols);
+        const x = c.getContext('2d'), sq = c.width / cols;
+        for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) { x.fillStyle = (i + j) % 2 ? '#2c2416' : '#fffdf6'; x.fillRect(i * sq, j * sq, sq + 1, sq + 1); }
+        if (text) {
+          x.fillStyle = '#e0a526'; x.strokeStyle = '#2c2416'; x.lineWidth = sq * 0.22;
+          const bw = c.width * 0.42, bh = c.height * 0.8;
+          x.fillRect((c.width - bw) / 2, (c.height - bh) / 2, bw, bh); x.strokeRect((c.width - bw) / 2, (c.height - bh) / 2, bw, bh);
+          x.fillStyle = '#2c2416'; x.font = `700 ${Math.round(bh * 0.72)}px Caveat, "Patrick Hand", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+          x.fillText(text, c.width / 2, c.height / 2 + bh * 0.05);
+        }
+        const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+      };
+      const g = new THREE.Group();
+      const bannerH = 2.2;
+      const banner = new THREE.Mesh(new THREE.BoxGeometry(Wd - 1, bannerH, 0.25), new THREE.MeshLambertMaterial({ map: chk(24, 2, 'FINISH') }));
+      banner.position.set(0, top - bannerH / 2, -fz);
+      for (const sx of [-1, 1]) {
+        const post = boxMesh(0.7, top - gy, 0.7, '#c1440e', sx * (Wd / 2 - 0.9), gy + (top - gy) / 2, -fz);
+        g.add(post);
+      }
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(Wd - 1, 3), new THREE.MeshLambertMaterial({ map: chk(24, 2), polygonOffset: true, polygonOffsetFactor: -2 }));
+      strip.rotation.x = -Math.PI / 2; strip.position.set(0, gy + 0.03, -fz); strip.layers.set(1);
+      // little pennants strung from the banner
+      for (let i = 0; i < 14; i++) {
+        const pen = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 3), M(['#e2462e', '#f2c94c', '#1e4d6b', '#6fbf73'][i % 4]));
+        pen.rotation.x = Math.PI; pen.position.set(-Wd / 2 + 2 + i * (Wd - 4) / 13, top - bannerH - 0.45, -fz);
+        g.add(pen);
+      }
+      g.add(banner, strip);
+      env.add(g);
+    }
+
     // Moving obstacles
     for (const m of f.movers || []) {
       const { g, spin } = buildMover(m);
@@ -2450,7 +2488,8 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
     if (focus != null) {
       const me = race.planes.find(p => p.seat === focus);
       if (me) {
-        const done = me.state === 'landed' || me.crumpled;
+        // (a race plane waiting for the janitor stays on screen)
+        const done = (me.state === 'landed' || me.crumpled) && me.respawnAt == null;
         if (!done) doneAt = null;
         else if (doneAt == null) doneAt = time;
         watching = null;

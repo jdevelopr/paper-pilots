@@ -46,6 +46,26 @@ export const ITEMS = {
   bubble:   { label: 'Bubble Wrap',   dur: 5,  what: 'Float up' },
 };
 export const ITEM_RESPAWN = 8, ITEM_R = 1.7, GLUE_R = 7;
+
+/* ------------------------------------------------------------ race mode --- */
+// Race mode (floor.finish set): first across the finish arch wins. Planes don't
+// land: touching down skims you back up, the building's air keeps you at a
+// cruising speed, and a crumpled plane is scooped up by the janitor and put
+// back on the lane after RESPAWN_S seconds with half its durability.
+export const RACE_PTS = [15, 12, 10, 8, 6, 4, 2, 1];
+export const RACE = { cruise: 13, cruiseAccel: 5, skimV: 9, respawnS: 2, close: 25 };
+export const isRaceMode = race => race.mode === 'race';
+// x of the clear lane at z (the floor's lane control points)
+export function laneAt(floor, z) {
+  const c = floor.lane || [[0, 0]];
+  for (let i = 1; i < c.length; i++) if (z <= c[i][0]) { const [z0, x0] = c[i - 1], [z1, x1] = c[i]; return x0 + (x1 - x0) * ((z - z0) / Math.max(1e-6, z1 - z0)); }
+  return c[c.length - 1][1];
+}
+// Live running order: finishers by time, then everyone else by how far along
+export function raceOrder(race) {
+  return [...race.planes].sort((a, b) =>
+    (a.finished && b.finished ? a.finishedAt - b.finishedAt : 0) || ((b.finished ? 1 : 0) - (a.finished ? 1 : 0)) || (b.maxZ - a.maxZ));
+}
 export const itemReady = (race, it) => race.t - it.takenAt >= ITEM_RESPAWN;
 export const buffOn = (race, p, k) => (p.buffs?.[k] ?? -1) > race.t;
 
@@ -101,7 +121,11 @@ export function createRace(floor, players) {
   const items = (floor.items || []).map(it => ({ ...it, takenAt: -99 }));
   // Planes fly the same on every floor; longer floors just allow longer flights
   // (riding vents) before stragglers are forced down.
-  return { floor, timeLimit: SIM.raceTime + (floor.length || 200) / 10, t: 0, planes, clips, items, events: [], over: false, overAt: null };
+  // Race mode: about a minute of flying to the finish arch; once the winner is
+  // through, everyone else gets RACE_CLOSE seconds to finish.
+  const isRace = !!floor.finish;
+  const timeLimit = isRace ? 40 + floor.length / 9 : SIM.raceTime + (floor.length || 200) / 10;
+  return { floor, mode: isRace ? 'race' : 'golf', timeLimit, t: 0, planes, clips, items, events: [], over: false, overAt: null, finishers: 0 };
 }
 
 /* -------------------------------------------------------------- inputs --- */
@@ -149,8 +173,21 @@ export function stepRace(race, dt = SIM.dt) {
       if (race.t > SIM.throwWindow) throwPlane(race, p.seat, { ...p.aim, power: Math.max(p.aim.power, 0.25) });
       continue;
     }
-    if (p.state === 'landed') continue;
+    if (p.state === 'landed') {
+      // Race mode: the janitor puts a crumpled plane back on the lane
+      if (p.respawnAt != null && race.t >= p.respawnAt) {
+        if (race.t >= race.timeLimit) { p.respawnAt = null; p.dnf = true; }
+        else respawn(race, p);
+      }
+      continue;
+    }
 
+    // Race mode: out of time means you didn't finish (no crumple)
+    if (isRaceMode(race) && race.t > race.timeLimit && (p.state === 'fly' || p.state === 'fall' || p.state === 'slide')) {
+      p.state = 'landed'; p.dnf = true; p.landedAt = race.t; p.dist = Math.max(0, p.maxZ); p.respawnAt = null;
+      race.events.push({ name: 'timeout', seat: p.seat });
+      continue;
+    }
     // Out of time: stragglers stuck circling in a vent get dropped.
     if (race.t > race.timeLimit && p.state === 'fly') {
       p.state = 'fall'; p.crumpled = true; p.hp = 0;
@@ -160,7 +197,7 @@ export function stepRace(race, dt = SIM.dt) {
     stepPlane(race, p, dt);
   }
 
-  if (!race.over && race.planes.every(p => p.state === 'landed')) {
+  if (!race.over && race.planes.every(p => p.state === 'landed' && p.respawnAt == null)) {
     race.over = true; race.overAt = race.t;
   }
   return race;
@@ -379,6 +416,37 @@ export function stepPlane(race, p, dt) {
   pickups(race, p);
   flightTricks(race, p, px, py, pz, dt, pyaw);
   p.maxZ = Math.max(p.maxZ, p.z);
+  const fz = race.floor.finish?.z;
+  if (fz != null && p.state !== 'landed' && !p.crumpled && pz < fz && p.z >= fz) finishRace(race, p);
+}
+
+function finishRace(race, p) {
+  p.finished = true; p.finishedAt = race.t; p.place = ++race.finishers;
+  p.state = 'landed'; p.landedAt = race.t; p.dist = race.floor.length; p.maxZ = Math.max(p.maxZ, p.z); p.v = 0;
+  race.events.push({ name: 'finish', seat: p.seat, place: p.place, t: Math.round((race.t - (p.thrownAt ?? 0)) * 10) / 10 });
+  // first one through: everyone else gets a little longer to finish
+  if (p.place === 1) race.timeLimit = Math.min(race.timeLimit, race.t + RACE.close);
+}
+
+function respawn(race, p) {
+  const f = race.floor, r = SIM.planeR;
+  let z = Math.max(6, p.maxZ - 2), x = clamp(laneAt(f, z), -f.width / 2 + 2, f.width / 2 - 2), y = groundAt(f, z) + 5;
+  if (f.gap?.park && z > f.gap.z0 && z < f.gap.z1) y = f.gap.park.cruise;
+  // find a clear spot: up over furniture, or a little further along
+  for (let i = 0; i < 30; i++) {
+    const hit = f.boxes.find(b => x > b.x0 - r - 0.5 && x < b.x1 + r + 0.5 && z > b.z0 - r - 0.5 && z < b.z1 + r + 0.5 && y > b.y0 - r - 0.5 && y < b.y1 + r + 0.5);
+    if (!hit) break;
+    if (hit.y1 + 1.6 < f.height - 1.5) y = hit.y1 + 1.6;
+    else { z += 3; x = clamp(laneAt(f, z), -f.width / 2 + 2, f.width / 2 - 2); y = groundAt(f, z) + 5; }
+  }
+  Object.assign(p, {
+    x, y, z, yaw: 0, pitch: 0, roll: 0, v: 11, vy: 0, state: 'fly', crumpled: false, hp: Math.round(p.maxHp * 0.5),
+    respawnAt: null, landedAt: null, fatigue: 0, out: null, duct: null, zone: null,
+  });
+  if (p.tr) p.tr.chain = 0;
+  // a moment of safety right after the drop
+  p.buffs = { ...(p.buffs || {}), card: race.t + 1.2 };
+  race.events.push({ name: 'respawn', seat: p.seat, x, y, z });
 }
 
 function flyStep(race, p, dt, pz = p.z) {
@@ -402,6 +470,8 @@ function flyStep(race, p, dt, pz = p.z) {
   // Bubble Wrap: speed never drops while it lasts, so you can climb for free
   const dv = (-SIM.G * Math.sin(p.pitch) - D * p.v * p.v) * dt;
   p.v += buffOn(race, p, 'bubble') ? Math.max(0, dv) : dv;
+  // Race mode: the building's air keeps you moving at a cruising speed
+  if (race.mode === 'race' && p.v < RACE.cruise && !p.crumpled) p.v += RACE.cruiseAccel * dt;
   p.v = clamp(p.v, 0.5, 40);
 
   const sinkRatio = clamp((vRef / Math.max(p.v, 0.5)) ** 2, 0.55, 5 * st.stallDrop);
@@ -614,6 +684,15 @@ function touchDown(race, p, surfaceY, vy) {
   p.touchVy = vy;
   p.y = surfaceY + SIM.restH;
   if (p.crumpled) { land(race, p); return; }
+  // Race mode: no landing. Touching down skims you back up into the air (a
+  // hard hit still hurts).
+  if (isRaceMode(race) && p.state === 'fly') {
+    if (vy < -7) damage(race, p, (-vy - 4) * p.st.landDmg, 'floor');
+    if (p.crumpled) { if (p.state !== 'landed') land(race, p); return; }
+    p.y = surfaceY + 0.5; p.pitch = Math.max(p.pitch, 0.22); p.v = Math.max(p.v * 0.85, RACE.skimV);
+    if (race.t - (p.skimT ?? -9) > 0.6) { p.skimT = race.t; race.events.push({ name: 'skim', seat: p.seat, x: p.x, y: p.y, z: p.z }); }
+    return;
+  }
   // Eraser Skids Mk V: once per flight, touching down fast off a target skips
   // you back up into the air (landing on a target still lands)
   if (p.st.perk.skids && !p.skimmed && p.state === 'fly' && p.v * Math.cos(p.pitch) > 9 && !zoneAt(race.floor, p.x, p.y, p.z)) {
@@ -658,6 +737,14 @@ function fallStep(race, p, dt, pz = p.z) {
 }
 
 function land(race, p) {
+  if (isRaceMode(race) && !p.finished) {
+    // A race plane only comes down to stop when it's crumpled: the janitor is on the way
+    if (p.crumpled) {
+      p.state = 'landed'; p.v = 0; p.landedAt = race.t; p.respawnAt = race.t + RACE.respawnS;
+      race.events.push({ name: 'landed', seat: p.seat, zone: null, crumpled: true, respawning: true });
+      return;
+    }
+  }
   p.state = 'landed';
   p.v = 0;
   p.landedAt = race.t;
@@ -1073,6 +1160,17 @@ function pickups(race, p) {
 // Ranking: by score (distance points + target points), then distance flown,
 // then who landed first.
 export function standings(race) {
+  if (isRaceMode(race)) {
+    // Race: finish order, then how far along; points by place
+    const L = race.floor.length || 800;
+    return raceOrder(race).map((p, i) => ({
+      seat: p.seat, zone: null, crumpled: false, finished: !!p.finished, dnf: !p.finished,
+      dist: Math.round((p.finished ? L : p.maxZ) * 10) / 10, clips: p.clips, landedAt: p.landedAt,
+      finishT: p.finished ? Math.round((p.finishedAt - (p.thrownAt ?? 0)) * 10) / 10 : null,
+      clean: p.hp >= p.maxHp && p.lastHit == null, tricks: p.tr ? p.tr.list : [], trickClips: p.tr ? p.tr.clips : 0,
+      score: { distPts: Math.round(10 * Math.min(1, (p.finished ? L : p.maxZ) / L)), targetPts: 0, total: RACE_PTS[i] ?? 0, parFactor: 0, race: true },
+    }));
+  }
   return [...race.planes]
     .map(p => ({
       seat: p.seat, zone: p.zone, crumpled: p.crumpled,
