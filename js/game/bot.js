@@ -5,7 +5,8 @@
 
 import { stepPlane, createRace, throwPlane, SIM, itemReady, buffOn } from './sim.js';
 import { moverBox, treeAt, treeTop, groundAt } from './floors.js';
-import { partState } from '../shared/upgrades.js';
+import { partState, UPGRADES, UPGRADE_BY_ID } from '../shared/upgrades.js';
+import { PART_VALUE } from './part-values.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -320,7 +321,8 @@ const RACE_BUILDS = [
   const list = [a, b, a, c, d, a, b, e, c, b, d, e, c, d, e];
   return [...list.slice(0, 10), a, ...list.slice(10), b, c, d, e, a, b, c, d, e];
 });
-export function botShop(bot, clips, parts = {}, rank = Infinity) {
+// The old fixed-order shopper, kept for comparison runs (see botPlanShop).
+export function botShopFixed(bot, clips, parts = {}, rank = Infinity) {
   const wish = (bot.race ? RACE_BUILDS : BUILDS)[bot.seat % BUILDS.length];
   const have = { ...parts };
   const buys = [];
@@ -335,6 +337,92 @@ export function botShop(bot, clips, parts = {}, rank = Infinity) {
     have[id] = (have[id] || 0) + 1; buys.push(id); left -= st.cost;
   }
   return buys;
+}
+
+/* Strategic shopping. PART_VALUE (measured headlessly, see part-values.js)
+   says what each part is worth on each floor at Mk I, III and V: seconds
+   saved per race in Race mode, points gained per race in Golf. Each shop visit
+   a bot:
+     - values every possible purchase as the gain over the best part it
+       already owns for that slot, on the floors still to come, times the
+       races left, per clip;
+     - buys the best one it can afford, or saves for a clearly better one it
+       can afford by next shop;
+     - leans toward toughness after a race where it crumpled;
+     - has a small personal leaning toward one slot, so the bots differ;
+     - fits the best part it owns in each slot for the next floor (swaps are free).
+   ctx: { mode, floorsLeft: [floor ids], crumples, income } */
+const TOUGH = new Set(['cardstock', 'tape']);
+const LEAN = ['fold', 'gadget', 'paper', 'tail', 'nose'];
+function partValue(mode, floorsLeft, id, lv) {
+  if (!lv) return 0;
+  const table = PART_VALUE[mode] || PART_VALUE.golf;
+  const fl = floorsLeft.length ? floorsLeft : Object.keys(table);
+  let sum = 0;
+  for (const f of fl) {
+    const v = table[f]?.[id];
+    if (!v) continue;
+    sum += lv === 1 ? v[0] : lv === 2 ? (v[0] + v[1]) / 2 : lv === 3 ? v[1] : lv === 4 ? (v[1] + v[2]) / 2 : v[2];
+  }
+  return sum / fl.length;
+}
+export function botPlanShop(bot, clips, parts = {}, rank = Infinity, ctx = {}) {
+  const mode = ctx.mode === 'race' ? 'race' : 'golf';
+  const floorsLeft = ctx.floorsLeft || [];
+  const racesLeft = Math.max(1, floorsLeft.length);
+  const lean = LEAN[bot.seat % LEAN.length];
+  const want = (id, lv) => {
+    const u = UPGRADE_BY_ID[id];
+    let v = partValue(mode, floorsLeft, id, lv);
+    if (v > 0 && TOUGH.has(id) && ctx.crumples) v *= 1 + 0.35 * Math.min(3, ctx.crumples);
+    if (v > 0 && u.slot === lean) v *= 1.15;
+    return v;
+  };
+  const have = { ...parts };
+  const slotBest = slot => Math.max(0, ...UPGRADES.filter(u => u.slot === slot && have[u.id]).map(u => want(u.id, have[u.id])));
+  const buys = [];
+  let left = clips;
+  for (let guard = 0; guard < 12; guard++) {
+    const opts = [];
+    for (const u of UPGRADES) {
+      const st = partState(have, u.id, rank);
+      if (st.state !== 'open') continue;
+      const gain = want(u.id, (have[u.id] || 0) + 1) - slotBest(u.slot);
+      if (gain <= 0.05) continue;
+      opts.push({ id: u.id, cost: st.cost, gain, score: (gain * racesLeft) / st.cost });
+    }
+    if (!opts.length) break;
+    opts.sort((a, b) => b.score - a.score);
+    const top = opts[0];
+    const afford = opts.filter(o => o.cost <= left);
+    let pick = null;
+    if (top.cost <= left) pick = top;
+    else {
+      // Worth saving for? Only if it's clearly better and affordable by next shop
+      const nextShop = left + (ctx.income || 0);
+      const alt = afford[0];
+      if (racesLeft > 1 && top.cost <= nextShop && (!alt || alt.score < top.score * 0.6)) break;
+      pick = alt || null;
+    }
+    if (!pick) break;
+    have[pick.id] = (have[pick.id] || 0) + 1; buys.push(pick.id); left -= pick.cost;
+  }
+  // Fit the best part owned in each slot for the next floor
+  const next = floorsLeft[0] ? [floorsLeft[0]] : floorsLeft;
+  const loadout = {};
+  for (const sl of new Set(UPGRADES.map(u => u.slot))) {
+    let best = null, bv = 0.05;
+    for (const u of UPGRADES) if (u.slot === sl && have[u.id]) {
+      const v = partValue(mode, next, u.id, have[u.id]);
+      if (v > bv) { bv = v; best = u.id; }
+    }
+    loadout[sl] = best;      // null: stock is best here
+  }
+  return { buys, loadout };
+}
+// Simple form (old callers): just the list of buys
+export function botShop(bot, clips, parts = {}, rank = Infinity, ctx = {}) {
+  return botPlanShop(bot, clips, parts, rank, ctx).buys;
 }
 
 export function mulberry32(seed) {

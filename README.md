@@ -115,7 +115,7 @@ Each part goes up to **Mk V**. Mk II needs Associate rank, Mk III Supervisor, Mk
 
 The host's Supply closet board shows each player's equipped parts and their Mk levels.
 
-Computer rivals each build toward a style: a glider, a fast dart, a tough brick, or a build of the newer parts (Swallowtail, Vellum, Staple Nose, Bookmark Ribbon, Highlighter). In simulated 7-floor matches (3 races each) they finish around Manager–Director with most parts at Mk I–III; only the strongest sometimes gets its main part to Mk IV, and Mk V is a goal for a player who saves for it.
+**Computer rivals shop strategically.** Every part's worth was measured headlessly on every floor at Mk I, III and V (seconds saved per race in Race mode, points gained per race in Golf; the table is `js/game/part-values.js`). In the shop each rival weighs every possible purchase as the gain over its best part for that slot, on the floors still to come, times the races left, per clip. It buys the best it can afford, or saves for a clearly better one it can afford by the next shop. It leans toward toughness after a race where it crumpled, has a small personal leaning toward one slot so the rivals differ, and fits its best part in each slot for the next floor. In simulated matches against the old fixed shopping lists (same skill, seats swapped), the strategic shoppers won every match in both modes: 8 of 8 Golf matches and 6 of 6 All-Floors Cups.
 
 ### The Rooftop (Floor 6)
 

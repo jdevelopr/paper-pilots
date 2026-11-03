@@ -6,7 +6,7 @@
 
 import { createRace, aimPlane, throwPlane, steer, stepRace, standings, SIM, ITEMS, itemReady, raceOrder } from '../game/sim.js';
 import { createMatch, addPlayer, currentFloor, isLastRound, payout, buy, equip, finalStandings, SHOP_MS, legOf, rankOf } from '../game/rules.js';
-import { createBot, botAim, botSteer, botShop, mulberry32 } from '../game/bot.js';
+import { createBot, botAim, botSteer, botPlanShop, mulberry32 } from '../game/bot.js';
 import { makeFloor } from '../game/floors.js';
 import { UPGRADES, SLOTS, MAX_LEVEL } from '../shared/upgrades.js';
 import { colorFor } from '../shared/colors.js';
@@ -567,7 +567,14 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     shopDone = new Set();
     for (const [seat, b] of bots) {
       const pl = match.players[seat];
-      for (const id of botShop(b.brain, pl.clips, pl.parts, rankOf(pl.career).level)) buy(match, seat, id);
+      // Strategic shopping: measured part values for the floors still to come,
+      // what it can afford, how it did last race (see botPlanShop)
+      const plan = botPlanShop(b.brain, pl.clips, pl.parts, rankOf(pl.career).level, {
+        mode: match.mode, floorsLeft: match.floors.slice(match.round + 1).map(f => f.id),
+        crumples: raceStats.get(seat)?.crumples || 0, income: pl.career / (match.round + 1),
+      });
+      for (const id of plan.buys) buy(match, seat, id);
+      for (const [slot, id] of Object.entries(plan.loadout)) equip(match, seat, id || `stock:${slot}`);
       shopDone.add(seat);
     }
     startsAt = Date.now() + SHOP_MS;
