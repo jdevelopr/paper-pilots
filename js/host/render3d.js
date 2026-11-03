@@ -254,7 +254,7 @@ function paperMaterial(seat, owned, rank) {
 
 /* -------------------------------------------------------------- items --- */
 // Power-up pickups, modelled small and chunky so they read from a distance
-export const ITEM_COLORS = { donut: '#f29bb8', card: '#8fd0ea', glue: '#f08a2c', chipclip: '#6fbf73' };
+export const ITEM_COLORS = { donut: '#f29bb8', card: '#8fd0ea', glue: '#f08a2c', chipclip: '#6fbf73', coffee: '#8b5a2b', eraser: '#e8607a', bubble: '#7fd6c2' };
 function buildItem(kind) {
   const g = new THREE.Group();
   if (kind === 'donut') {
@@ -288,6 +288,33 @@ function buildItem(kind) {
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.26, 8), M('#f08a2c'));
     neck.position.y = 0.45; tip.position.y = 0.67;
     g.add(body, label, neck, tip);
+  } else if (kind === 'coffee') {
+    // a takeaway coffee cup: tapered paper cup, kraft sleeve, white lid
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.25, 0.8, 10), M('#fffdf6'));
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.29, 0.3, 10), M('#b98b5e'));
+    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.1, 10), M('#f6efdc'));
+    const sip = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.08, 10), M('#f6efdc'));
+    sleeve.position.y = -0.02; lid.position.y = 0.44; sip.position.y = 0.52;
+    g.add(cup, sleeve, lid, sip);
+  } else if (kind === 'eraser') {
+    // the classic two-tone pink and blue eraser
+    const pink = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.3, 0.36), M('#ef8fa8'));
+    const blue = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.3, 0.36), M('#5b8fc9'));
+    pink.position.x = -0.26; blue.position.x = 0.26;
+    const g2 = new THREE.Group(); g2.add(pink, blue); g2.rotation.z = 0.25;
+    g.add(g2);
+  } else if (kind === 'bubble') {
+    // a square of bubble wrap: a clear sheet covered in little domes
+    const sheet = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.03, 0.9), new THREE.MeshLambertMaterial({ color: '#dff4f0', transparent: true, opacity: 0.8 }));
+    g.add(sheet);
+    const domeGeo = new THREE.SphereGeometry(0.11, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+    const domeMat = new THREE.MeshLambertMaterial({ color: '#bfeee3', transparent: true, opacity: 0.85 });
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
+      const d = new THREE.Mesh(domeGeo, domeMat);
+      d.position.set(-0.39 + i * 0.26, 0.015, -0.27 + j * 0.27);
+      g.add(d);
+    }
+    g.rotation.x = Math.PI / 2 - 0.35;      // stand it up facing the pilots
   } else {
     // a chip-bag clip: two bright plastic jaws on a spring
     for (const s of [-1, 1]) {
@@ -2332,7 +2359,7 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
   /* ----------------------------------------------------------- planes --- */
   function setPlanes(list) {
     for (const p of planes.values()) {
-      planeLayer.remove(p.root, p.shadow, p.trail, p.aim, p.shield, p.glueRing, ...p.slips.map(l => l.m));
+      planeLayer.remove(p.root, p.shadow, p.trail, p.aim, p.shield, p.glueRing, p.bubble, ...p.slips.map(l => l.m));
     }
     planes.clear();
     for (const { seat, owned, rank, stickers } of list) {
@@ -2357,10 +2384,11 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       const shield = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25, 1), new THREE.MeshBasicMaterial({ color: '#bfe6f5', transparent: true, opacity: 0.28, depthWrite: false, wireframe: true }));
       const glueRing = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.05, 6, 40), new THREE.MeshBasicMaterial({ color: '#f08a2c', transparent: true, opacity: 0.4, depthWrite: false }));
       glueRing.rotation.x = Math.PI / 2;
-      shield.layers.set(1); glueRing.layers.set(1);
-      shield.visible = glueRing.visible = false;
-      planeLayer.add(shield, glueRing);
-      planes.set(seat, { root, shadow, trail, trailPts, aim, slips, boostT: 0, lastState: 'held', shield, glueRing });
+      const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.7, 16, 10), new THREE.MeshPhongMaterial({ color: '#d6f5ee', transparent: true, opacity: 0.22, depthWrite: false, shininess: 120, specular: 0xffffff }));
+      shield.layers.set(1); glueRing.layers.set(1); bubble.layers.set(1);
+      shield.visible = glueRing.visible = bubble.visible = false;
+      planeLayer.add(shield, glueRing, bubble);
+      planes.set(seat, { root, shadow, trail, trailPts, aim, slips, boostT: 0, lastState: 'held', shield, glueRing, bubble });
     }
   }
 
@@ -2924,11 +2952,15 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       if (v.shield.visible) { v.shield.position.set(p.x, p.y, -p.z); v.shield.rotation.set(time * 0.8, time * 1.3, 0); v.shield.scale.setScalar(1 + Math.sin(time * 9) * 0.05); }
       v.glueRing.visible = flyingNow && buffOn(race, p, 'glue');
       if (v.glueRing.visible) { v.glueRing.position.set(p.x, p.y, -p.z); v.glueRing.scale.setScalar(2.6 + Math.sin(time * 6) * 0.15); }
-      if (flyingNow && buffOn(race, p, 'donut')) {
-        // thrust: puffs of sugar and flame off the tail
+      if (flyingNow && (buffOn(race, p, 'donut') || buffOn(race, p, 'coffee'))) {
+        // thrust: puffs of sugar and flame off the tail (coffee: steam and coffee)
+        const cof = !buffOn(race, p, 'donut');
         v.puffT = (v.puffT ?? 0) - dt;
-        if (v.puffT <= 0) { v.puffT = 0.04; burst(p.x - Math.sin(p.yaw) * 0.9, p.y, p.z - Math.cos(p.yaw) * 0.9, Math.random() < 0.5 ? '#f08a2c' : '#f29bb8', 2, 1.5); }
+        if (v.puffT <= 0) { v.puffT = 0.04; burst(p.x - Math.sin(p.yaw) * 0.9, p.y, p.z - Math.cos(p.yaw) * 0.9, cof ? (Math.random() < 0.5 ? '#f6efdc' : '#8b5a2b') : (Math.random() < 0.5 ? '#f08a2c' : '#f29bb8'), 2, 1.5); }
       }
+      // Bubble Wrap: the plane rides inside a wobbly bubble
+      v.bubble.visible = flyingNow && buffOn(race, p, 'bubble');
+      if (v.bubble.visible) { v.bubble.position.set(p.x, p.y, -p.z); v.bubble.scale.set(1 + Math.sin(time * 7) * 0.06, 1 + Math.cos(time * 6) * 0.06, 1); }
       if (flyingNow && buffOn(race, p, 'chipclip') && Math.random() < dt * 6) burst(p.x, p.y + 0.4, p.z, '#f2c94c', 1, 1.2);
       // Visible damage: the paper bends, kinks and tears as health drops
       if (!crumpled && p.maxHp) {

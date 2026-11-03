@@ -13,7 +13,8 @@ import { openStickerBook } from './stickerbook.js';
 import { statBars, MAX_LEVEL, MK, UPGRADES, UPGRADE_BY_ID, SLOTS, SLOT_BY_ID, partState, equippedList, metalOf } from '../shared/upgrades.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-const ITEM_NAMES = { donut: 'Donut: thrust', card: 'Index Card: invincible', glue: 'Glue Bottle: clip magnet', chipclip: 'Chip Bag Clip: clips +2' };
+const ITEM_NAMES = { donut: 'Donut: thrust', card: 'Index Card: invincible', glue: 'Glue Bottle: clip magnet', chipclip: 'Chip Bag Clip: clips +2',
+  coffee: 'Coffee Cup: thrust', eraser: 'Eraser: repaired', bubble: 'Bubble Wrap: float up' };
 
 export function mountController(root, link, { solo = false, onAgain = null, onMenu = null } = {}) {
   root.innerHTML = `

@@ -40,6 +40,10 @@ export const ITEMS = {
   card:     { label: 'Index Card',    dur: 5,  what: 'Invincible' },
   glue:     { label: 'Glue Bottle',   dur: 5,  what: 'Clip magnet' },
   chipclip: { label: 'Chip Bag Clip', dur: 10, what: 'Clips +2' },
+  // added 2026-11-02
+  coffee:   { label: 'Coffee Cup',    dur: 5,  what: 'Thrust' },
+  eraser:   { label: 'Eraser',        dur: 0,  what: 'Repairs 35', heal: 35 },
+  bubble:   { label: 'Bubble Wrap',   dur: 5,  what: 'Float up' },
 };
 export const ITEM_RESPAWN = 8, ITEM_R = 1.7, GLUE_R = 7;
 export const itemReady = (race, it) => race.t - it.takenAt >= ITEM_RESPAWN;
@@ -395,7 +399,9 @@ function flyStep(race, p, dt, pz = p.z) {
 
   // (Sticky Note Flaps Mk V: banking costs no speed)
   const D = SIM.dragK * st.drag * (0.85 + 0.15 * st.weight) * (1 + (st.perk.flaps ? 0 : p.roll * p.roll * 0.5));
-  p.v += (-SIM.G * Math.sin(p.pitch) - D * p.v * p.v) * dt;
+  // Bubble Wrap: speed never drops while it lasts, so you can climb for free
+  const dv = (-SIM.G * Math.sin(p.pitch) - D * p.v * p.v) * dt;
+  p.v += buffOn(race, p, 'bubble') ? Math.max(0, dv) : dv;
   p.v = clamp(p.v, 0.5, 40);
 
   const sinkRatio = clamp((vRef / Math.max(p.v, 0.5)) ** 2, 0.55, 5 * st.stallDrop);
@@ -414,6 +420,8 @@ function flyStep(race, p, dt, pz = p.z) {
   else if (vz < fV) p.fatigue = Math.min(SIM.fatigueMax, (p.fatigue || 0) + (1 - Math.max(0, vz) / fV) * SIM.fatigueRate * st.fatigue * dt);
   else p.fatigue = Math.max(0, (p.fatigue || 0) - SIM.fatigueRecover / st.fatigue * dt);
   sink *= 1 + SIM.fatigueSink * p.fatigue;
+  // ...and it floats you gently upward instead of sinking
+  if (buffOn(race, p, 'bubble')) sink = -1.4;
   // Tissue Paper Mk V: a cushion of air just above the floor
   if (st.perk.tissue && p.y - groundAt(f, p.z) < 1.4 && p.pitch < 0.1) sink *= 0.45;
   p.x += Math.sin(p.yaw) * h * dt;
@@ -518,7 +526,8 @@ function flyStep(race, p, dt, pz = p.z) {
     }
   }
   // Donut: a burst of thrust that also holds you up
-  if (buffOn(race, p, 'donut')) { if (p.v < 27) p.v += 10 * dt; p.y += 0.9 * dt; }
+  // Donut (3 s) and Coffee Cup (5 s): a burst of thrust that also holds you up
+  if (buffOn(race, p, 'donut') || buffOn(race, p, 'coffee')) { if (p.v < 27) p.v += 10 * dt; p.y += 0.9 * dt; }
   // Wall vents: a narrow slot in a wall with air rushing through it. Line up and
   // it sucks you in; thread it and the jet on the far side fires you forward.
   for (const wv of f.wallVents || []) {
@@ -1029,6 +1038,8 @@ function pickups(race, p) {
       if ((p.x - it.x) ** 2 + (p.y - it.y) ** 2 + (p.z - it.z) ** 2 > ITEM_R * ITEM_R) continue;
       it.takenAt = race.t;
       p.buffs = { ...(p.buffs || {}), [it.kind]: race.t + ITEMS[it.kind].dur * p.st.itemTime };
+      // Eraser: rubs out the damage at once
+      if (ITEMS[it.kind].heal) p.hp = Math.min(p.maxHp, p.hp + ITEMS[it.kind].heal);
       // Highlighter Mk V: every item also patches the plane up a little
       if (p.st.perk.highlighter) p.hp = Math.min(p.maxHp, p.hp + 15);
       race.events.push({ name: 'item', seat: p.seat, kind: it.kind, i, x: it.x, y: it.y, z: it.z });

@@ -917,7 +917,7 @@ export function generateFloor(theme, seed = 1) {
      Each respawns a few seconds after someone grabs it (see sim.js). */
   const items = [];
   {
-    const KINDS = ['donut', 'donut', 'donut', 'card', 'card', 'glue', 'glue', 'chipclip', 'chipclip'];
+    const KINDS = ['donut', 'donut', 'donut', 'card', 'card', 'glue', 'glue', 'chipclip', 'chipclip', 'coffee', 'coffee', 'eraser', 'eraser', 'bubble', 'bubble'];
     const cand = [];
     for (const wv of wallVents) cand.push([wv.x, (wv.y0 + wv.y1) / 2, wv.z - 5, 3]);
     for (const d of doors) cand.push([d.x, Math.min(d.h - 1.6, 4.5), d.z + 3.5, 2]);

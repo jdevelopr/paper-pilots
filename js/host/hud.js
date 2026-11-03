@@ -4,7 +4,7 @@
 import { esc, clipIcon, planeIcon, reduceMotion } from '../ui.js';
 import { colorFor, TIER_COLORS } from '../shared/colors.js';
 import { SIM, scoreRun, ITEMS } from '../game/sim.js';
-const ITEM_COLORS = { donut: '#f29bb8', card: '#8fd0ea', glue: '#f08a2c', chipclip: '#6fbf73' };
+const ITEM_COLORS = { donut: '#f29bb8', card: '#8fd0ea', glue: '#f08a2c', chipclip: '#6fbf73', coffee: '#8b5a2b', eraser: '#e8607a', bubble: '#7fd6c2' };
 import { UPGRADE_BY_ID, SLOTS, MK, metalOf } from '../shared/upgrades.js';
 
 // A short "build" line from the loadout: the fold names the style
