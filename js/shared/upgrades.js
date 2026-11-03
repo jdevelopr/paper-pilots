@@ -59,7 +59,7 @@ export const UPGRADES = [
 
   { id: 'vellum', slot: 'paper', name: 'Vellum', base: 36,
     pro: 'Vents lift you much higher', con: 'Takes a bit more damage', perk: 'Perk: vents also push you forward 50% harder',
-    step: both(mul('lift', [1.35, 1.15, 1.12]), mul('dmg', [1.12, 1.04, 1.04])) },
+    step: both(mul('lift', [1.525, 1.225, 1.18]), mul('dmg', [1.12, 1.04, 1.04])) },
 
   /* -------------------------------------------------------------- fold --- */
   { id: 'widewings', slot: 'fold', name: 'Wide Glider', base: 42,
