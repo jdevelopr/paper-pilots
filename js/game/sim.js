@@ -48,7 +48,7 @@ export const ITEMS = {
 export const ITEM_RESPAWN = 8, ITEM_R = 1.7, GLUE_R = 7;
 
 /* ------------------------------------------------------------ race mode --- */
-// Race mode (floor.finish set): first across the finish arch wins. Planes don't
+// Race mode (floor.finish set): first plane to stick into the cork board on the back wall wins. Planes don't
 // land: touching down skims you back up, the building's air keeps you at a
 // cruising speed, and a crumpled plane is scooped up by the janitor and put
 // back on the lane after RESPAWN_S seconds with half its durability.
@@ -121,7 +121,7 @@ export function createRace(floor, players) {
   const items = (floor.items || []).map(it => ({ ...it, takenAt: -99 }));
   // Planes fly the same on every floor; longer floors just allow longer flights
   // (riding vents) before stragglers are forced down.
-  // Race mode: about a minute of flying to the finish arch; once the winner is
+  // Race mode: 1.5-2.5 minutes of flying to the cork board; once the winner is
   // through, everyone else gets RACE_CLOSE seconds to finish.
   const isRace = !!floor.finish;
   const timeLimit = isRace ? 40 + floor.length / 9 : SIM.raceTime + (floor.length || 200) / 10;
@@ -412,17 +412,24 @@ export function stepPlane(race, p, dt) {
   else if (p.state === 'slide') slideStep(race, p, dt);
   else if (p.state === 'fall') fallStep(race, p, dt, pz);
   if (p.state === 'landed') return;
+  // Race mode: reaching the cork board on the back wall sticks you into it
+  const fz = race.floor.finish?.z;
+  if (fz != null && p.state === 'fly' && !p.crumpled && p.duct == null && !p.out && p.z >= fz) { finishRace(race, p); return; }
   collide(race, p, px, py, pz);
   pickups(race, p);
   flightTricks(race, p, px, py, pz, dt, pyaw);
   p.maxZ = Math.max(p.maxZ, p.z);
-  const fz = race.floor.finish?.z;
-  if (fz != null && p.state !== 'landed' && !p.crumpled && pz < fz && p.z >= fz) finishRace(race, p);
 }
 
 function finishRace(race, p) {
+  const f = race.floor;
   p.finished = true; p.finishedAt = race.t; p.place = ++race.finishers;
-  p.state = 'landed'; p.landedAt = race.t; p.dist = race.floor.length; p.maxZ = Math.max(p.maxZ, p.z); p.v = 0;
+  p.state = 'landed'; p.landedAt = race.t; p.dist = f.length; p.v = 0;
+  // stuck in the cork, nose first, a little tipped the way you came in
+  p.z = f.length - 0.55; p.maxZ = Math.max(p.maxZ, p.z);
+  p.x = clamp(p.x, -f.width / 2 + 1.2, f.width / 2 - 1.2);
+  p.y = clamp(p.y, groundAt(f, p.z) + 0.8, f.height - 0.8);
+  p.yaw = clamp(p.yaw, -0.35, 0.35); p.pitch = clamp(p.pitch, -0.3, 0.3) - 0.08; p.roll = clamp(p.roll, -0.4, 0.4);
   race.events.push({ name: 'finish', seat: p.seat, place: p.place, t: Math.round((race.t - (p.thrownAt ?? 0)) * 10) / 10 });
   // first one through: everyone else gets a little longer to finish
   if (p.place === 1) race.timeLimit = Math.min(race.timeLimit, race.t + RACE.close);

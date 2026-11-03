@@ -102,7 +102,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
   const touch = () => document.body.classList.contains('pv-touch');
   const TIPS = {
     goal: () => phase.mode === 'race'
-      ? '<b>The goal:</b> fly down the floor and through the <b>FINISH</b> arch first. There\'s no landing: touch the floor and you skim back up. If you crumple, the janitor puts you back after a moment.'
+      ? '<b>The goal:</b> fly down the floor and stick your plane into the <b>cork board</b> on the back wall first. There\'s no landing: touch the floor and you skim back up. If you crumple, the janitor puts you back after a moment.'
       : '<b>The goal:</b> throw your paper plane down the office floor and land it on a target. Targets farther away pay more points and clips.',
     throw: () => touch()
       ? '<b>Throw:</b> put your thumb on the pad, <b>pull back</b>, and <b>let go on GO!</b> Pull farther for a harder throw. Drag sideways to aim, and use the slider for the angle.'

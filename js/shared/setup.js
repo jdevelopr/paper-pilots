@@ -59,7 +59,7 @@ export function mountSetup(el, name) {
     el.querySelector('.floors-pick').hidden = race && !custom;
     el.querySelector('.races-pick').hidden = race;
     el.querySelector('.mode-desc').textContent = race
-      ? 'Race to the finish arch. First across wins; crash and the janitor puts you back.'
+      ? 'Race to the cork board on the back wall. First plane stuck in it wins; crash and the janitor puts you back.'
       : 'Throw for distance and land on the targets. Farther targets pay more.';
     let txt;
     if (race) {

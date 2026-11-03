@@ -397,10 +397,12 @@ for (const t of THEMES) t.length = Math.round(BASE_LENGTH * GROWTH ** (t.number 
 export const FLOORS = THEMES;
 
 /* ------------------------------------------------------------ race mode --- */
-// Race mode is a straight race to a finish arch: shorter floors (about a minute
-// of flying), no landing targets, the finish just before the far wall. Cups
+// Race mode is a straight race to the finish: a big cork board covering the
+// back wall. Fly into it and your plane sticks there, nose first; first one
+// stuck wins. Tracks of 1,200-1,800 (1.5-2.5 minutes of flying), no targets.
+// (On the open Rooftop the board stands on posts at the far end of the roof.) Cups
 // are fixed sets of floors played one race each, or a custom pick.
-export const RACE_LENGTH = n => 600 + 50 * (n - 1);
+export const RACE_LENGTH = n => 1200 + 100 * (n - 1);
 export const CUPS = [
   { id: 'ground', name: 'Ground Floor Cup', floors: ['lobby', 'cubicles', 'breakroom'] },
   { id: 'upstairs', name: 'Upstairs Cup', floors: ['servers', 'executive', 'rooftop'] },
@@ -414,7 +416,7 @@ export function makeFloor(theme, seed, mode = 'golf') {
   const f = generateFloor({ ...theme, length: RACE_LENGTH(theme.number) }, seed);
   f.mode = 'race';
   f.zones = [];
-  f.finish = { z: f.length - 18 };
+  f.finish = { z: f.length - 0.6, board: true };
   f.stakes = 'First to the finish wins';
   return f;
 }

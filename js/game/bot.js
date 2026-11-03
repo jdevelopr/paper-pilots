@@ -47,7 +47,7 @@ function estimateReach(bot, floor, p, aim) {
 
 function plan(bot, floor, p, aim) {
   if (floor.finish) {
-    // Race mode: aim past the finish arch and ride the vents on the way
+    // Race mode: aim for the cork board on the back wall and ride the vents on the way
     bot.target = { x: laneX(floor, floor.finish.z + 6), z: floor.finish.z + 8, tier: -1, race: true };
     bot.reach = floor.length;
     bot.ways = floor.vents

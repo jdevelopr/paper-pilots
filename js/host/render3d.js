@@ -2320,9 +2320,52 @@ export function createRenderer(canvas, { reduceMotion = false } = {}) {
       anims.signs.push(sign);
     }
 
-    // Race mode: the finish arch, a checkered banner on two posts across the
-    // whole floor, with a checkered strip on the floor under it
-    if (f.finish) {
+    // Race mode: a cork board covering the back wall (on the Rooftop it stands
+    // on posts at the far end of the roof), with a FINISH notice pinned up top
+    if (f.finish?.board) {
+      const L = f.length, Wd = f.width, gy = groundAt(f, L - 1);
+      const bh = f.height - gy, bw = Wd;
+      const c = document.createElement('canvas'); c.width = 1024; c.height = Math.round(1024 * bh / bw);
+      const x = c.getContext('2d');
+      x.fillStyle = '#b98b5e'; x.fillRect(0, 0, c.width, c.height);
+      for (let i = 0; i < 9000; i++) {
+        x.fillStyle = Math.random() < 0.5 ? `rgba(90,55,25,${0.15 + Math.random() * 0.3})` : `rgba(235,200,150,${0.1 + Math.random() * 0.25})`;
+        const r = 1 + Math.random() * 2.5; x.fillRect(Math.random() * c.width, Math.random() * c.height, r, r);
+      }
+      // wooden frame
+      const fr = c.width * 0.022;
+      x.fillStyle = '#8b5a2b'; x.fillRect(0, 0, c.width, fr); x.fillRect(0, c.height - fr, c.width, fr); x.fillRect(0, 0, fr, c.height); x.fillRect(c.width - fr, 0, fr, c.height);
+      x.strokeStyle = '#2c2416'; x.lineWidth = 4; x.strokeRect(2, 2, c.width - 4, c.height - 4); x.strokeRect(fr, fr, c.width - fr * 2, c.height - fr * 2);
+      // pinned office notes scattered about
+      const note = (cx, cy, w, h, col, rot, lines) => {
+        x.save(); x.translate(cx, cy); x.rotate(rot);
+        x.fillStyle = 'rgba(44,36,22,.25)'; x.fillRect(-w / 2 + 5, -h / 2 + 6, w, h);
+        x.fillStyle = col; x.fillRect(-w / 2, -h / 2, w, h);
+        x.strokeStyle = 'rgba(44,36,22,.35)'; x.lineWidth = 2;
+        for (let i = 1; i <= lines; i++) { x.beginPath(); x.moveTo(-w / 2 + 10, -h / 2 + i * h / (lines + 1)); x.lineTo(w / 2 - 10, -h / 2 + i * h / (lines + 1)); x.stroke(); }
+        x.fillStyle = '#e2462e'; x.beginPath(); x.arc(0, -h / 2 + 10, 7, 0, Math.PI * 2); x.fill();
+        x.restore();
+      };
+      let rs = (f.seed || 1) >>> 0; const R = () => ((rs = (Math.imul(rs, 1664525) + 1013904223) >>> 0) / 4294967296);
+      for (let i = 0; i < 14; i++) note(fr * 3 + R() * (c.width - fr * 6), c.height * 0.35 + R() * c.height * 0.55, 60 + R() * 50, 50 + R() * 50, ['#fff7c2', '#fffdf6', '#cfe8f7', '#f9d1dc'][i % 4], (R() - 0.5) * 0.5, 3);
+      // the FINISH notice: a big checkered banner pinned across the top
+      const bwid = c.width * 0.6, bhgt = c.height * 0.16, bx = (c.width - bwid) / 2, by = fr * 2.2, sq = bhgt / 2;
+      x.save(); x.translate(c.width / 2, by + bhgt / 2); x.rotate(-0.015); x.translate(-c.width / 2, -(by + bhgt / 2));
+      for (let i = 0; i * sq < bwid; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#2c2416' : '#fffdf6'; x.fillRect(bx + i * sq, by + j * sq, Math.min(sq, bwid - i * sq), sq); }
+      const tw = bwid * 0.55;
+      x.fillStyle = '#e0a526'; x.fillRect((c.width - tw) / 2, by - 6, tw, bhgt + 12);
+      x.strokeStyle = '#2c2416'; x.lineWidth = 5; x.strokeRect((c.width - tw) / 2, by - 6, tw, bhgt + 12);
+      x.fillStyle = '#2c2416'; x.font = `700 ${Math.round(bhgt * 0.85)}px Caveat, "Patrick Hand", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText('FINISH', c.width / 2, by + bhgt / 2 + 2);
+      for (const px of [bx + 10, bx + bwid - 10]) { x.fillStyle = '#1e4d6b'; x.beginPath(); x.arc(px, by + 8, 8, 0, Math.PI * 2); x.fill(); }
+      x.restore();
+      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+      const board = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.3), [M('#8b5a2b'), M('#8b5a2b'), M('#8b5a2b'), M('#8b5a2b'), new THREE.MeshLambertMaterial({ map: tex }), M('#8b5a2b')]);
+      board.position.set(0, gy + bh / 2, -(L - 0.15));
+      env.add(board);
+      if (f.open) for (const sx of [-1, 1]) env.add(boxMesh(0.8, bh, 0.8, '#6b4a2a', sx * (bw / 2 - 1), gy + bh / 2, -(L + 0.4)));
+    }
+    if (f.finish && !f.finish.board) {
       const fz = f.finish.z, Wd = f.width, gy = groundAt(f, fz);
       const top = Math.min(f.height - 0.6, gy + (f.open ? 14 : f.height - 0.6));
       const chk = (cols, rows, text) => {

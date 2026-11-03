@@ -366,7 +366,7 @@ export function createHud(root) {
   const HOWTO_RACE = `<div class="howto note">
       <h3>How to race</h3>
       <ol>
-        <li><b>The goal:</b> fly down the floor and through the <b>FINISH</b> arch first. No landing: touch the floor and you skim back up.</li>
+        <li><b>The goal:</b> fly down the floor and stick your plane into the <b>cork board</b> on the back wall first. No landing: touch the floor and you skim back up.</li>
         <li><b>Throw:</b> pull back on the slingshot pad (or hold Space) and <b>let go on GO!</b></li>
         <li><b>Steer:</b> the joystick or arrow keys. Dive for speed, ride the vents, and if you crumple the janitor puts you back.</li>
       </ol>
