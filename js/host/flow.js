@@ -37,6 +37,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   const stickersBy = stickers;
   // What each pilot did this race, for their sticker book
   let raceStats = new Map();
+  let matchCrumples = new Map();   // seat -> crumples this match (for Untouchable)
   const bump = (seat, k, n = 1) => { const st = raceStats.get(seat) || {}; st[k] = (st[k] || 0) + n; raceStats.set(seat, st); };
 
   const later = (ms, fn) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
@@ -58,6 +59,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     renderer.setPodium(null);
     match = createMatch(setup);
     bots = new Map();
+    matchCrumples = new Map();
     for (const h of humans()) addPlayer(match, h.seat, h.name);
     for (let i = 0; i < botCount; i++) {
       const seat = 1 + i;
@@ -219,7 +221,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       case 'boost': if (e.kind === 'ring' || e.kind === 'stream') bump(e.seat, e.kind === 'ring' ? 'rings' : 'streams'); if (e.gold) bump(e.seat, 'goldRings'); break;
       case 'tree': bump(e.seat, 'parkHits'); break;
       case 'hit': if (inPark) bump(e.seat, 'parkHits'); break;
-      case 'crumple': bump(e.seat, 'crumples'); break;
+      case 'crumple': bump(e.seat, 'crumples'); matchCrumples.set(e.seat, (matchCrumples.get(e.seat) || 0) + 1); break;
+      case 'item': bump(e.seat, `item_${e.kind}`); break;
       case 'parkwind':
         if (e.phase === 'dive') bump(e.seat, 'park');
         else if (!(raceStats.get(e.seat)?.parkHits)) bump(e.seat, 'parkClean');
@@ -259,6 +262,22 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         const lvs = SLOTS.map(sl => (pl?.loadout?.[sl.id] ? pl.parts?.[pl.loadout[sl.id]] || 0 : 0));
         if (lvs.some(x => x >= MAX_LEVEL)) st.mk5 = 1;
         if (lvs.every(x => x >= 3)) st.loaded = 1;
+        // Hard feats
+        const p = race.planes.find(q => q.seat === h.seat);
+        const farTier = Math.max(...race.floor.zones.map(z => z.tier));
+        if (p?.zone && !p.crumpled && p.zone.tier === farTier) {
+          st.farTarget = 1;
+          if (p.zone.ring === 0) st.farBullseye = 1;
+          if (row.parFactor >= 1) st.farUnderPar = 1;
+        }
+        const tricks = row.trickList || [];
+        if (new Set(tricks.map(t => t.id)).size >= 8) st.trick8 = 1;
+        if (tricks.filter(t => t.id === 'rung').length >= 3) st.ladder3 = 1;
+        if (Object.keys(st).filter(k => k.startsWith('item_')).length >= 4) st.items4 = 1;
+        if (row.cleanStreak >= 5) st.clean5 = 1;
+        // Clean Sweep: the last race on this floor, and won every one of them
+        const R = match.racesPerFloor || 1, hist = pl?.history || [];
+        if (R >= 3 && legOf(match) === R && hist.length >= R && hist.slice(-R).every(x => x.place === 1 && x.floor === race.floor.id)) st.floorSweep = 1;
       }
       sendTo(h.seat, 'fx', { kind: 'stats', s: st });
     }
@@ -545,7 +564,10 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   function showFinal() {
     finalRows = finalStandings(match);
     const champ = finalRows[0];
-    if (champ && humans().some(h => h.seat === champ.seat)) sendTo(champ.seat, 'fx', { kind: 'stats', s: { matchWins: 1 } });
+    if (champ && humans().some(h => h.seat === champ.seat)) {
+      const flawless = match.floors.length >= 9 && !matchCrumples.get(champ.seat);
+      sendTo(champ.seat, 'fx', { kind: 'stats', s: { matchWins: 1, ...(flawless ? { flawlessWin: 1 } : {}) } });
+    }
     setPhase('final');
     sfx.fanfare();
     hud.setHint('');
