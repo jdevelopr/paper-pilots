@@ -14,7 +14,7 @@ import { sfx, setWind } from './audio.js';
 import { TIER_COLORS } from '../shared/colors.js';
 import { cleanPlaced, randomStickers } from '../shared/stickers.js';
 
-const INTRO_FIRST_MS = 6500;
+const INTRO_FIRST_MS = 13000;   // the first race's intro also shows the How to play card
 const INTRO_MS = 5000;
 const RESULTS_MS = 7500;
 const BOT_NAMES = ['Dot Matrix', 'Ms. Memo', 'Stapler', 'Intern Ivy'];
@@ -105,7 +105,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
       if (label === 'GO!') { sfx.go(); hud.flash('go'); renderer.punch(10); renderer.shake(0.25); }
       else sfx.tick();
     });
-    hud.setHint(match.round > 0 ? 'Enter to skip' : '');
+    hud.setHint('Enter to skip');
     scheduleGo();
     sendMeAll();
   }
@@ -117,7 +117,7 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
   }
 
   function skip() {
-    if (phase === 'intro' && match.round > 0 && startsAt - Date.now() > 3100) {
+    if (phase === 'intro' && startsAt - Date.now() > 3100) {
       startsAt = Date.now() + 3000;
       broadcastPhase();
       scheduleGo();

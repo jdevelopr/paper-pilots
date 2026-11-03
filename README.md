@@ -46,6 +46,10 @@ After every race, players spend their paper clips in the **Supply closet**. Poin
 
 On the host screen, **Enter** (or Space) skips the floor intro and the results screen.
 
+**Tutorial (every match, skippable):** new players get hint cards pinned beside the real controls on their own screen. During the first floor intro a card explains the goal; while you get set, a card and an animated finger show how to pull back on the pad (or hold Space) and let go on GO; once you're flying, a card and finger show the steering (it closes by itself after a few seconds); and in the first shop a card explains the plane's 5 part slots. Each card has **Got it** (close this one) and **Skip tutorial** (close them all until the next match). On a desktop the panel stays out while the steering card is up. Before the first race the host screen also shows a **How to play** card beside the elevator (the first intro is longer, and Enter skips it).
+
+**Control options in the hangar:** the shop has a **Controls** button that opens the handedness and up/down settings, so you can change them between races.
+
 **Inverted up/down:** the Controls settings (solo screen and phone lobby) have an **Up/down** choice. *Inverted* makes the joystick and the up/down keys work like a flight sim: pull down (or press down) to climb, push up to dive. It's saved on each device.
 
 **Don't wait too long on the desk:** 9 seconds after GO, a plane that hasn't been thrown gets a weak toss automatically. The aim screen shows an "Auto-throw in N" countdown from GO (it turns red for the last 3 seconds and the phone buzzes), and the host screen shows the last 5 seconds on that plane's name tag and racer card.

@@ -664,8 +664,8 @@ body:not(.solo) .floaters .trick.edge { right: 30px; }
    whole screen is flight. Steering stays on the keyboard (WASD / arrows);
    the panel slides back for landing, results and the shop. */
 body.solo #controller { transition: transform var(--t-slow) var(--ease-out), opacity var(--t-slow); }
-body.solo #controller[data-view="fly"] { transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; transition: transform var(--t-slow) var(--ease-in), opacity var(--t-slow); }
-body.solo:has(#controller[data-view="fly"]) #hud { right: 0; }
+body.solo #controller[data-view="fly"]:not(.tut-fly) { transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; transition: transform var(--t-slow) var(--ease-in), opacity var(--t-slow); }
+body.solo:has(#controller[data-view="fly"]:not(.tut-fly)) #hud { right: 0; }
 
 /* Target zones: ring name under the zone label */
 .landed-card .zl small { display: block; font-family: var(--body); font-size: 22px; font-weight: 400; color: var(--ink-soft); }
@@ -903,3 +903,65 @@ body.pv-touch .hud-watch { font-size: 18px; top: 64px; }
   background: var(--danger); color: #fff8e6; border-radius: 50%; font-size: 16px; vertical-align: 1px; }
 .tag .auto[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .auto-throw.tick b { animation: none; } }
+
+/* -------------------------------------------------------------- tutorial --- */
+/* Host: a How to play card beside the elevator before the first race */
+.intro:has(.howto) { grid-auto-flow: column; align-content: center; justify-content: center; gap: 28px; }
+.intro .count { grid-column: 1 / -1; }
+.howto { width: min(460px, 40vw); padding: 18px 26px 20px; transform: rotate(1deg); animation: drop-in 700ms var(--ease-paper) 300ms backwards; }
+.howto h3 { margin: 0 0 6px; font-size: 44px; }
+.howto ol { margin: 0; padding-left: 26px; display: grid; gap: 10px; font-family: var(--body); font-size: 22px; line-height: 1.25; }
+.howto b { font-family: var(--display); font-size: 1.15em; }
+@media (max-width: 1100px) { .intro:has(.howto) { grid-auto-flow: row; } .howto { width: min(560px, 90vw); } .howto ol { font-size: 19px; } }
+
+/* Players: hint cards pinned beside the real controls */
+.tut { position: absolute; left: 50%; top: 52px; transform: translateX(-50%) rotate(-1deg); z-index: 5; width: min(440px, calc(100% - 20px));
+  padding: 10px 14px 10px; background: #fff7c2; border: 2.5px solid var(--ink); border-radius: var(--wob-2); box-shadow: 3px 5px 0 rgba(44,36,22,.45);
+  font-family: var(--body); font-size: 19px; line-height: 1.25; color: var(--ink); pointer-events: none; animation: drop-in 500ms var(--ease-paper) backwards; }
+.tut[hidden] { display: none; }
+.tut b { font-family: var(--display); font-size: 1.12em; }
+.tut-b { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.tut-b button { pointer-events: auto; font: 700 18px var(--display); padding: 3px 12px; border: 2px solid var(--ink); border-radius: 8px 11px 7px 10px; background: var(--paper); color: var(--ink); cursor: pointer; }
+.tut-b .tut-ok { background: var(--mustard); box-shadow: 1px 2px 0 var(--ink); }
+.tut-b .tut-skip { background: transparent; border-color: transparent; text-decoration: underline; color: var(--ink-soft); }
+/* the throw card sits low, under the get-set countdown and the auto-throw chip */
+.cv[data-v="aim"] .tut { top: auto; bottom: 12px; }
+.cv[data-v="intro"] .tut { top: 12px; }
+.hg-stage .tut { top: auto; bottom: 10px; transform: translateX(-50%) rotate(1deg); }
+.hg-stage .tut::after { content: ""; position: absolute; left: 50%; bottom: -16px; border: 9px solid transparent; border-top-color: var(--ink); transform: translateX(-50%); }
+
+/* A finger dot that shows the move: pull back and release on the pad, and
+   sweep around the stick. Only while that card is up. */
+.tut-hand { display: none; position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; pointer-events: none; z-index: 3;
+  background: rgba(255,255,255,.75); border: 3px solid var(--ink); box-shadow: 0 0 0 6px rgba(224,165,38,.45); }
+#controller.tut-aim .tut-hand.pull, .tut-aim .tut-hand.pull { display: block; left: 50%; top: 42%; animation: tut-pull 2.2s var(--ease-out) infinite; }
+#controller.tut-fly .tut-hand.steer, .tut-fly .tut-hand.steer { display: block; left: 50%; top: 50%; animation: tut-steer 4s ease-in-out infinite; }
+@keyframes tut-pull {
+  0% { transform: translateY(0) scale(1.15); opacity: 0; }
+  12% { transform: translateY(0) scale(1); opacity: 1; }
+  60% { transform: translateY(110px); opacity: 1; }
+  70% { transform: translateY(110px) scale(1.25); opacity: 0; }
+  100% { transform: translateY(110px); opacity: 0; }
+}
+@keyframes tut-steer {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(0, -70px); }
+  40% { transform: translate(0, 70px); }
+  60% { transform: translate(-70px, 0); }
+  80% { transform: translate(70px, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .tut-hand { animation: none !important; } }
+
+/* Control options in the hangar */
+.hg-ctl.on { background: var(--mustard); }
+.hg-prefs { padding: 10px 14px; background: rgba(44,36,22,.22); border-radius: 14px; animation: drop-in 300ms var(--ease-out); }
+.hg-prefs[hidden] { display: none; }
+.hg-prefs .seg legend { color: #fff8e6; text-shadow: 0 1px 0 rgba(44,36,22,.6); }
+@media (max-width: 860px) {
+  .cv[data-v="shop"] .chead { gap: 6px; }
+  .cv[data-v="shop"] .chead .btn.small { font-size: 17px; padding: 2px 8px; min-height: 0; }
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  body.pv-touch .cv[data-v="aim"] .tut { left: 42%; width: min(380px, 46vw); }
+  body.pv-touch.lefty .cv[data-v="aim"] .tut { left: 58%; }
+}

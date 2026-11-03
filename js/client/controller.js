@@ -5,7 +5,7 @@
 // Touch: pull back on the pad to throw (slingshot), joystick to fly.
 // Keyboard: arrows aim, up/down angle, hold Space to throw; WASD/arrows to fly.
 
-import { esc, clipIcon, planeIcon, vibrate, keepAwake, getInvertY } from '../ui.js';
+import { esc, clipIcon, planeIcon, vibrate, keepAwake, getInvertY, mountPrefs } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
 import { RANK_UNLOCKS } from '../shared/ranks.js';
 import { recordStats, placed, onBookChange } from '../shared/stickers.js';
@@ -19,10 +19,11 @@ const ITEM_NAMES = { donut: 'Donut: thrust', card: 'Index Card: invincible', glu
 export function mountController(root, link, { solo = false, onAgain = null, onMenu = null } = {}) {
   root.innerHTML = `
     <div class="cv" data-v="wait"><div class="cfill"><div><h3 class="w-t">Watch the screen</h3></div></div></div>
-    <div class="cv" data-v="intro"><div class="cfill"><div><div class="csub i-floor"></div><h3 class="i-name"></h3><div class="cbig i-count"></div></div></div></div>
+    <div class="cv" data-v="intro"><div class="cfill"><div><div class="csub i-floor"></div><h3 class="i-name"></h3><div class="cbig i-count"></div></div></div><div class="tut" data-tip="goal" hidden><div class="tut-t"></div><div class="tut-b"><button class="tut-skip">Skip tutorial</button><button class="tut-ok">Got it</button></div></div></div>
     <div class="cv" data-v="aim">
       <div class="aim-count" aria-live="assertive"></div>
       <div class="auto-throw" hidden aria-live="polite">Auto-throw in <b>9</b></div>
+      <div class="tut" data-tip="throw" hidden><div class="tut-t"></div><div class="tut-b"><button class="tut-skip">Skip tutorial</button><button class="tut-ok">Got it</button></div></div>
       <div class="chead"><span class="cname"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
       <div class="aim">
         <div class="angle"><span class="ang-v">12°</span><input class="vrange" type="range" min="0" max="34" step="1" value="12" aria-label="Throw angle"><span>Angle</span></div>
@@ -31,6 +32,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
           <svg class="band" aria-hidden="true"><line class="b1" stroke="#2c2416" stroke-width="3"/><line class="b2" stroke="#2c2416" stroke-width="3"/></svg>
           <svg class="pplane" viewBox="0 0 64 64" aria-hidden="true"><use href="#i-plane"/></svg>
           <div class="padlbl">Pull back, let go</div>
+          <div class="tut-hand pull" aria-hidden="true"></div>
         </div>
       </div>
     </div>
@@ -40,8 +42,9 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
         <div class="hpbar"><i></i></div>
         <div class="stick" aria-label="Steer: drag up to climb, down to dive, left and right to turn">
           <svg class="arrows" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 7l-7 8h14zM50 93l-7-8h14zM7 50l8-7v14zM93 50l-8-7v14z"/></svg>
-          <span class="lbl u">climb</span><span class="lbl d">dive</span><div class="thumb"></div></div>
+          <span class="lbl u">climb</span><span class="lbl d">dive</span><div class="thumb"></div><div class="tut-hand steer" aria-hidden="true"></div></div>
       </div>
+      <div class="tut" data-tip="steer" hidden><div class="tut-t"></div><div class="tut-b"><button class="tut-skip">Skip tutorial</button><button class="tut-ok">Got it</button></div></div>
     </div>
     <div class="cv" data-v="landed">
       <div class="chead"><span class="cname"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
@@ -53,10 +56,11 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
       <div class="crank"><span class="ck-t"></span><i><b></b></i></div>
     </div>
     <div class="cv" data-v="shop">
-      <div class="chead"><span class="cname"></span><span class="hg-title">Hangar</span><button class="btn small hg-stk" aria-label="Sticker book">Stickers</button><span class="ctimer"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
+      <div class="chead"><span class="cname"></span><span class="hg-title">Hangar</span><button class="btn small hg-stk" aria-label="Sticker book">Stickers</button><button class="btn small hg-ctl" aria-expanded="false" aria-label="Control options">Controls</button><span class="ctimer"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
       <div class="crank"><span class="ck-t"></span><i><b></b></i></div>
+      <div class="hg-prefs prefs" hidden></div>
       <div class="hangar">
-        <div class="hg-stage"><canvas class="hg-canvas" aria-label="Your plane, drag to spin"></canvas><span class="hg-tip">Drag to spin</span><span class="hg-build"></span></div>
+        <div class="hg-stage"><canvas class="hg-canvas" aria-label="Your plane, drag to spin"></canvas><span class="hg-tip">Drag to spin</span><span class="hg-build"></span><div class="tut" data-tip="parts" hidden><div class="tut-t"></div><div class="tut-b"><button class="tut-skip">Skip tutorial</button><button class="tut-ok">Got it</button></div></div></div>
         <div class="hg-slots" role="tablist" aria-label="Plane slots"></div>
         <div class="hg-side">
           <div class="stats"></div>
@@ -87,7 +91,60 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     qa('.cv').forEach(el => el.classList.toggle('on', el.dataset.v === v));
     if (v === 'aim') resetAim();
     if (v === 'fly') resetStick();
+    paintTutorial();
   }
+
+  /* --------------------------------------------------------- tutorial --- */
+  // Hint cards pinned to the real controls, shown every match: the goal during
+  // the floor intro, the slingshot while you get set, the stick once you're
+  // flying, and the five plane slots in the first shop. "Got it" closes one
+  // card; "Skip tutorial" closes them all until the next match.
+  const touch = () => document.body.classList.contains('pv-touch');
+  const TIPS = {
+    goal: () => '<b>The goal:</b> throw your paper plane down the office floor and land it on a target. Targets farther away pay more points and clips.',
+    throw: () => touch()
+      ? '<b>Throw:</b> put your thumb on the pad, <b>pull back</b>, and <b>let go on GO!</b> Pull farther for a harder throw. Drag sideways to aim, and use the slider for the angle.'
+      : '<b>Throw:</b> <b>hold Space</b> to pull back, and <b>let go on GO!</b> Hold longer for a harder throw. Left and Right aim, Up and Down set the angle.',
+    steer: () => {
+      const inv = getInvertY();
+      const up = inv ? 'down' : 'up', dn = inv ? 'up' : 'down';
+      return touch()
+        ? `<b>Steer:</b> drag the stick <b>${up} to climb</b> and <b>${dn} to dive</b>, left and right to turn. Diving builds speed; climbing too hard stalls you.`
+        : `<b>Steer:</b> arrow keys or WASD. <b>${up[0].toUpperCase() + up.slice(1)} climbs</b>, <b>${dn} dives</b>, left and right turn. Diving builds speed; climbing too hard stalls you.`;
+    },
+    parts: () => `<b>Your plane has 5 parts:</b> ${SLOTS.map(s => s.name).join(', ')}. Tap a slot below to see its parts, then buy one to fit it. Each slot holds one part, and parts you've bought stay yours to swap back for free.`,
+  };
+  let tut = { on: true, done: {}, flyAt: 0 };
+  function tutorialFor() {
+    if (!tut.on) return null;
+    if (view === 'intro' && phase.round === 0) return 'goal';
+    if (view === 'aim' && !tut.done.throw) return 'throw';
+    if (view === 'fly' && !tut.done.steer) return 'steer';
+    if (view === 'shop' && !tut.done.parts) return 'parts';
+    return null;
+  }
+  function paintTutorial() {
+    const want = tut.done[tutorialFor()] ? null : tutorialFor();
+    for (const el of qa('.tut')) {
+      const on = el.dataset.tip === want;
+      if (on && el.hidden) el.querySelector('.tut-t').innerHTML = TIPS[want]();
+      el.hidden = !on;
+    }
+    root.classList.toggle('tut-aim', want === 'throw');
+    root.classList.toggle('tut-fly', want === 'steer');
+    // the steering card goes away by itself once you've been flying a while
+    if (want === 'steer') {
+      tut.flyAt ||= performance.now();
+      clearTimeout(tut.flyTimer);
+      tut.flyTimer = setTimeout(() => { tut.done.steer = true; paintTutorial(); }, Math.max(0, 9000 - (performance.now() - tut.flyAt)));
+    }
+  }
+  function resetTutorial() { clearTimeout(tut.flyTimer); tut = { on: true, done: {}, flyAt: 0 }; paintTutorial(); }
+  for (const el of qa('.tut')) {
+    el.querySelector('.tut-ok').onclick = () => { tut.done[el.dataset.tip] = true; if (el.dataset.tip === 'goal') tut.done.goal = true; vibrate(8); paintTutorial(); };
+    el.querySelector('.tut-skip').onclick = () => { tut.on = false; vibrate(8); paintTutorial(); };
+  }
+  document.addEventListener('pp-invert', () => { const el = q('.tut[data-tip="steer"]'); if (!el.hidden) el.querySelector('.tut-t').innerHTML = TIPS.steer(); });
 
   function paintHeader() {
     const c = colorFor(me.seat);
@@ -230,6 +287,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
       if (goAt() - performance.now() < 350) {
         // let go right on the beat: it flies the moment the race starts
         pendingThrow = { yaw: +aim.yaw.toFixed(3), pitch: +aim.pitch.toFixed(3), power: +aim.power.toFixed(3) };
+        tut.done.throw = true; paintTutorial();
         return;
       }
       phoneToast('Wait for GO!');
@@ -241,6 +299,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     if (aim.power < 0.08) { resetAim(); sendAim(true); return; }
     link.input({ k: 'throw', yaw: +aim.yaw.toFixed(3), pitch: +aim.pitch.toFixed(3), power: +aim.power.toFixed(3) });
     vibrate([15, 30, 25]);
+    tut.done.throw = true;
     me.state = 'fly';          // optimistic: switch to the stick immediately
     decide();
   }
@@ -572,6 +631,16 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
   const sendStickers = () => link.input({ k: 'stickers', list: placed() });
   onBookChange(() => { sendStickers(); paintPreview(); });
   if (solo) sendStickers();
+  // Control options (handedness, up/down) right in the hangar, so you can
+  // change them between races; they apply from the next flight.
+  const ctlBtn = q('.hg-ctl'), ctlBox = q('.hg-prefs');
+  ctlBtn.onclick = () => {
+    if (ctlBox.hidden) mountPrefs(ctlBox, { gfx: false });   // fresh, in case they changed in the lobby
+    ctlBox.hidden = !ctlBox.hidden;
+    ctlBtn.setAttribute('aria-expanded', String(!ctlBox.hidden));
+    ctlBtn.classList.toggle('on', !ctlBox.hidden);
+    vibrate(8);
+  };
   q('.hg-stk').onclick = () => { vibrate(8); openStickerBook({ seat: me.seat, owned: me.owned || [], rank: me.rank?.level ?? 0 }); };
 
   link.on('event', msg => {
@@ -586,9 +655,10 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
       case 'phase': {
         const prev = phase.phase;
         if (prev !== d.phase) sendStickers();
+        if (prev === 'shop' && d.phase !== 'shop') tut.done.parts = true;   // the parts card shows in one shop per match
         phase = d;
         phaseAt = performance.now();
-        if (d.phase === 'intro') { lastCount = null; landed = null; runIntro(); keepAwake(); }
+        if (d.phase === 'intro') { lastCount = null; landed = null; runIntro(); keepAwake(); if (d.round === 0 && prev !== 'intro') resetTutorial(); }
         if (d.phase === 'shop') {
           if (prev !== 'shop') { shopDone = false; doneBtn.textContent = 'Done'; list.style.opacity = 1; list.innerHTML = ''; }
           renderShop(true); shopTimer();

@@ -330,6 +330,15 @@ export function createHud(root) {
 
   /* ------------------------------------------------------------ intro --- */
   let countRaf = 0;
+  // Before the first race of a match: a How to play card for everyone watching
+  const HOWTO = `<div class="howto note">
+      <h3>How to play</h3>
+      <ol>
+        <li><b>The goal:</b> throw your paper plane down the floor and land it on a target. Farther targets pay more.</li>
+        <li><b>Throw:</b> pull back on the slingshot pad (or hold Space) and <b>let go on GO!</b></li>
+        <li><b>Steer:</b> the joystick or arrow keys. Up climbs, down dives, left and right turn.</li>
+      </ol>
+    </div>`;
   function showIntro({ floor: f, round, rounds, leg, legs, players, startsAt }, onTick) {
     cancelAnimationFrame(countRaf);
     race.hidden = true;
@@ -342,12 +351,13 @@ export function createHud(root) {
         <div class="stakes">Race ${leg} of ${legs} · ${esc(f.stakes)}</div>
         <div class="callin">${players.map((p, i) => `<span style="--c:${colorFor(p.seat)};--i:${i}">${esc(p.name)}<small>${esc(p.rank || '')}</small></span>`).join('')}</div>
       </div>
+      ${round === 0 && !document.body.classList.contains('solo') && !document.body.classList.contains('solo-touch') ? HOWTO : ''}
       <div class="count" hidden></div>`;
-    const panel = intro.querySelector('.elevator'), count = intro.querySelector('.count');
+    const panel = intro.querySelector('.elevator'), count = intro.querySelector('.count'), howto = intro.querySelector('.howto');
     let last = null;
     const tick = () => {
       const left = startsAt() - Date.now();
-      if (left <= 3000 && !panel.hidden) { panel.hidden = true; count.hidden = false; }
+      if (left <= 3000 && !panel.hidden) { panel.hidden = true; if (howto) howto.hidden = true; count.hidden = false; }
       const label = left <= 0 ? 'GO!' : left <= 3000 ? String(Math.ceil(left / 1000)) : null;
       if (label && label !== last) {
         last = label;
