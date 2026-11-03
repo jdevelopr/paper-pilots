@@ -478,7 +478,10 @@ function flyStep(race, p, dt, pz = p.z) {
   const dv = (-SIM.G * Math.sin(p.pitch) - D * p.v * p.v) * dt;
   p.v += buffOn(race, p, 'bubble') ? Math.max(0, dv) : dv;
   // Race mode: the building's air keeps you moving at a cruising speed
-  if (race.mode === 'race' && p.v < RACE.cruise && !p.crumpled) p.v += RACE.cruiseAccel * dt;
+  // (p.catchup: extra cruise the host gives computer racers who've fallen
+  // behind the human players, kart-style)
+  const cruise = RACE.cruise + (p.catchup || 0);
+  if (race.mode === 'race' && p.v < cruise && !p.crumpled) p.v += RACE.cruiseAccel * dt;
   p.v = clamp(p.v, 0.5, 40);
 
   const sinkRatio = clamp((vRef / Math.max(p.v, 0.5)) ** 2, 0.55, 5 * st.stallDrop);

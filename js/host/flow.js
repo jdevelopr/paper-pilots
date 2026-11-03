@@ -84,7 +84,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     const floor = layout = makeFloor(currentFloor(match), seed, match.mode);
     raceSeats = Object.keys(match.players).map(Number).sort((a, b) => a - b);
     race = createRace(floor, raceSeats.map(seat => ({ seat, owned: match.players[seat].owned })));
-    for (const [seat, b] of bots) b.brain = createBot(seat, b.skill, rng);
+    // Race mode: sharper computer racers (they also buy race builds)
+    for (const [seat, b] of bots) { b.brain = createBot(seat, isRace() ? Math.min(0.97, 0.8 + b.skill * 0.18) : b.skill, rng); b.brain.race = isRace(); }
     raceOverAt = null;
     hitStop = 0;
     raceStats = new Map();
@@ -141,12 +142,14 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
     broadcastPhase();
     // Bots wind up and throw after a short human-looking delay
     for (const [seat, b] of bots) {
-      later(b.brain.throwAt * 1000, () => {
+      // (race bots let go right on GO, like a player who's ready)
+      later((isRace() ? 0.05 + b.brain.rng() * 0.2 : b.brain.throwAt) * 1000, () => {
         if (phase !== 'race') return;
         const p = race.planes.find(q => q.seat === seat);
         const aim = botAim(b.brain, race.floor, p);
         aimPlane(race, seat, aim);
-        later(500, () => phase === 'race' && throwPlane(race, seat, aim));
+        if (isRace()) throwPlane(race, seat, aim);
+        else later(500, () => phase === 'race' && throwPlane(race, seat, aim));
       });
     }
   }
@@ -186,6 +189,12 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         for (const [seat, b] of bots) {
           const p = race.planes.find(q => q.seat === seat);
           if (p && p.state === 'fly') { const s = botSteer(b.brain, race, p); steer(race, seat, s.x, s.y); }
+          // Race mode catch-up: a computer racer well behind the leading human
+          // gets a little extra cruising speed (up to +3), so the pack stays close
+          if (p && isRace()) {
+            const lead = Math.max(...humans().map(h => race.planes.find(q => q.seat === h.seat)?.maxZ ?? 0));
+            p.catchup = Math.max(0, Math.min(3, (lead - p.z - 25) / 30));
+          }
         }
         stepRace(race);
         acc -= SIM.dt;

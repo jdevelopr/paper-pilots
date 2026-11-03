@@ -3,7 +3,7 @@
 // steers around furniture with a short look-ahead, and dives onto the target.
 // Pure: given race state, it returns stick input. `rng` is passed in.
 
-import { stepPlane, createRace, throwPlane, SIM } from './sim.js';
+import { stepPlane, createRace, throwPlane, SIM, itemReady, buffOn } from './sim.js';
 import { moverBox, treeAt, treeTop, groundAt } from './floors.js';
 import { partState } from '../shared/upgrades.js';
 
@@ -127,6 +127,55 @@ function scoreLanding(q, tg) {
   return s;
 }
 
+// Race mode: go for whatever makes you faster that's close to your line (thrust
+// items, a repair when hurt, wall vents, floor vents), otherwise hold a middle
+// height along the lane. Better bots look further ahead and commit more.
+const RACE_ITEMS = { donut: 3, coffee: 3, bubble: 2, card: 1, glue: 0.5, chipclip: 0.5 };
+function raceSteer(bot, race, p, laneSteer, hall) {
+  const f = race.floor, look = 30 + bot.skill * 55, g = groundAt(f, p.z);
+  let x = laneSteer;
+  let y = clamp((Math.min(f.height * 0.45, 6) + g - p.y) * 0.22 + (p.v - 15) * 0.05, -1, 1);
+  if (hall) return { x, y };
+  // a hallway coming up: line up with its entrance instead of chasing boosts
+  const soon = inHall(f, p.z + 10 + p.v * 1.2, 4);
+  if (soon) {
+    const ez = p.z + 10 + p.v * 1.2;
+    return { x: clamp(steerToward(p, laneX(f, ez), ez) * 1.3, -1, 1), y };
+  }
+  const hurt = p.hp < p.maxHp * 0.6;
+  let best = null, bestSc = 0;
+  const consider = (tx, ty, tz, value, reach = 0.45) => {
+    const dz = tz - p.z;
+    if (dz < 2 || dz > look) return;
+    const lx = laneX(f, tz);
+    if (Math.abs(tx - lx) > 6 + bot.skill * 8) return;          // too far off the line
+    if (Math.abs(tx - p.x) > dz * reach + 2) return;            // can't turn that hard in time
+    if (inHall(f, tz, 25)) return;                              // not right by a hallway
+    if (ty != null && Math.abs(ty - p.y) > dz * 0.35 + 1.5) return;
+    // only if the straight line there is clear
+    const yy = ty ?? p.y;
+    for (const k of [0.25, 0.5, 0.75, 1]) if (blocked(f, p.x + (tx - p.x) * k, p.y + (yy - p.y) * k, p.z + dz * k, race.t + dz * k / Math.max(p.v, 1))) return;
+    const sc = value / (1 + dz / 25);
+    if (sc > bestSc) { bestSc = sc; best = { x: tx, y: ty, z: tz }; }
+  };
+  for (const it of race.items || []) {
+    if (!itemReady(race, it)) continue;
+    let v = RACE_ITEMS[it.kind] ?? 0;
+    if (it.kind === 'eraser') v = hurt ? 3 : 0.2;
+    if ((it.kind === 'donut' || it.kind === 'coffee') && (buffOn(race, p, 'donut') || buffOn(race, p, 'coffee'))) v *= 0.4;
+    if (v > 0) consider(it.x, it.y, it.z, v);
+  }
+  // wall vents are narrow slots: only go for one that's already nearly lined up
+  for (const wv of f.wallVents || []) if (Math.abs(wv.x - p.x) < 2 + bot.skill * 3 && wv.z - p.z > 15) consider(wv.x, (wv.y0 + wv.y1) / 2, wv.z, 3.5, 0.25);
+  for (const vn of f.vents || []) if (p.y - groundAt(f, vn.z) < f.height * 0.6) consider(vn.x, null, vn.z, 1.2);
+  if (best && !bot.rp?.noSeek) {
+    x = steerToward(p, best.x, best.z);
+    if (best.y != null) y = clamp((best.y - p.y) * 0.3, -1, 1);
+    else y = clamp((g + 3 - p.y) * 0.15, -0.6, 0.6);           // low over a vent: it lifts you the most
+  }
+  return { x, y };
+}
+
 export function botSteer(bot, race, p) {
   const f = race.floor;
   let tg = bot.target;
@@ -136,7 +185,7 @@ export function botSteer(bot, race, p) {
   while (bot.ways.length && (p.z > bot.ways[0].z + 1 || Math.hypot(bot.ways[0].z - p.z, bot.ways[0].x - p.x) > (p.y - groundAt(f, p.z) + Math.max(0, p.v - 11) * 0.6) * 8.5 + 6 || (p.y > f.height * 0.72 && p.z > bot.ways[0].z - 3))) bot.ways.shift();
   // Inside a hallway: forget vents and just thread the corridor.
   const hall = inHall(f, p.z, 45);
-  const way = hall ? null : bot.ways[0];
+  const way = hall || tg.race ? null : bot.ways[0];
 
   let x, y;
   if (way) {
@@ -147,19 +196,23 @@ export function botSteer(bot, race, p) {
     y = clamp((p.v - (Math.hypot(way.x - p.x, way.z - p.z) < way.vent.r ? 9 : 11.5)) * 0.28, -1, 1);
   } else if (hall || tg.z - p.z > 45 || tg.race) {
     // Far from the target (or in a hallway): follow the clear lane at an efficient speed.
-    const ahead = p.z + (hall ? 7 : 12);
-    x = steerToward(p, laneX(f, ahead), ahead);
+    const rp = bot.rp || {};
+    const ahead = p.z + (hall ? (tg.race ? (rp.ha ?? 4) + p.v * (rp.hv ?? 0.25) : 7) : 12);
+    x = steerToward(p, laneX(f, ahead), ahead) * (hall && tg.race ? (rp.hg ?? 1.4) : 1);
+    x = clamp(x, -1, 1);
     y = clamp((p.v - 11.5) * 0.28, -1, 1);
     // Race mode: speed matters more than glide; hold a middle height and let
     // the dives build speed
-    if (tg.race) y = clamp((Math.min(f.height * 0.45, 6) - p.y) * 0.22 + (p.v - 15) * 0.05, -1, 1);
+    if (tg.race) { const r = raceSteer(bot, race, p, x, hall); x = r.x; y = r.y; }
     // A doorway ahead: get under the lintel in time.
-    const door = (f.doors || []).find(d => d.z > p.z - 1 && d.z - p.z < 45);
+    // (race bots take whichever doorway in the wall is closest to their line)
+    const doorsAhead = (f.doors || []).filter(d => d.z > p.z - 1 && d.z - p.z < (tg.race ? 60 : 45));
+    const door = tg.race && doorsAhead.length ? doorsAhead.filter(d => Math.abs(d.z - doorsAhead[0].z) < 1).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x))[0] : doorsAhead[0];
     if (door) {
       const want = door.h - 1.6;
       if (p.y > want - 0.3) y = clamp(-(p.y - want) * 0.35, -1, 0.2);
       else if (p.y < want - 2.5) y = Math.max(y, 0.3);
-      if (door.z - p.z < 10) x = steerToward(p, door.x, door.z + 2);
+      if (door.z - p.z < (tg.race ? 12 + p.v * 2.2 : 10)) x = clamp(steerToward(p, door.x, door.z + 2) * (tg.race ? 1.4 : 1), -1, 1);
     }
   } else {
     x = steerToward(p, tg.x, tg.z);
@@ -197,8 +250,29 @@ export function botSteer(bot, race, p) {
     y = clamp((p.v - 11.5) * 0.3 + (wantY - p.y) * 0.14 * clamp((p.v - 8) / 3, 0, 1), -1, 1);
   }
 
-  // Look ahead along the heading and swerve around tall things.
-  for (const s of [3, 6, 9]) {
+  // Look ahead along the heading and swerve around tall things (race bots
+  // look further at speed and choose over, under or around).
+  if (tg.race && !bot.rp?.oldAvoid) {
+    const k = Math.max(1, p.v / 12) * (0.8 + bot.skill * 0.5);
+    for (const s0 of [2.5, 5, 8, 12, 16]) {
+      const s = s0 * k;
+      const hx = p.x + Math.sin(p.yaw) * s, hz = p.z + Math.cos(p.yaw) * s;
+      const hy = p.y + Math.sin(p.pitch) * s;
+      const tt = race.t + s / Math.max(p.v, 1);
+      const b = blocked(f, hx, hy, hz, tt);
+      if (!b) continue;
+      if (b === true) { x = hx > 0 ? -1 : 1; if (hy > f.height - 1) y = -0.7; break; }
+      const over = !blocked(f, hx, hy + 2.5, hz, tt) && (b.y1 ?? 99) + 1.5 < f.height - 1;
+      const under = b.y0 != null && b.y0 > groundAt(f, hz) + 2 && !blocked(f, hx, b.y0 - 1.2, hz, tt);
+      const l = !blocked(f, p.x + Math.sin(p.yaw - 0.55) * s, hy, p.z + Math.cos(p.yaw - 0.55) * s, tt);
+      const r = !blocked(f, p.x + Math.sin(p.yaw + 0.55) * s, hy, p.z + Math.cos(p.yaw + 0.55) * s, tt);
+      if (under && (b.y0 - p.y) > -3) y = Math.min(y, -0.7);
+      else if (over && (b.y1 - p.y) < 3) y = Math.max(y, 0.75);
+      else if (l || r) x = l && r ? (laneX(f, hz) > p.x ? 1 : -1) : r ? 1 : -1;
+      else y = over ? 0.8 : -0.8;
+      break;
+    }
+  } else for (const s of [3, 6, 9]) {
     const hx = p.x + Math.sin(p.yaw) * s, hz = p.z + Math.cos(p.yaw) * s;
     const hy = p.y + Math.sin(p.pitch) * s;
     const b = blocked(f, hx, hy, hz, race.t + s / Math.max(p.v, 1));
@@ -210,7 +284,14 @@ export function botSteer(bot, race, p) {
     break;
   }
 
-  const w = (1 - bot.skill) * 0.2 * Math.sin(race.t * 2.3 + bot.wobble);
+  // Race mode: not getting anywhere (wedged on something)? Back off toward
+  // the lane centre and climb for a moment.
+  if (tg.race) {
+    if (bot.progZ == null || p.z > bot.progZ + 6) { bot.progZ = p.z; bot.progT = race.t; }
+    else if (race.t - bot.progT > 2.5) { bot.unstickUntil = race.t + 1.5; bot.progZ = p.z; bot.progT = race.t; }
+    if (race.t < (bot.unstickUntil ?? -1)) { x = steerToward(p, laneX(f, p.z + 10), p.z + 10); y = p.y < f.height - 3 ? 0.6 : -0.3; }
+  }
+  const w = (1 - bot.skill) * (tg.race ? 0.08 : 0.2) * Math.sin(race.t * 2.3 + bot.wobble);
   return { x: clamp(x + w, -1, 1), y: clamp(y, -1, 1) };
 }
 
@@ -228,8 +309,19 @@ const BUILDS = [
   const order = [...new Set(list)];
   return [...list.slice(0, 10), order[0], ...list.slice(10), ...order.slice(1), ...order];
 });
+// Race mode builds: toughness (fewer crumples, so fewer janitor stops), speed
+// from tricks and items, and sharp turning for the hallways.
+const RACE_BUILDS = [
+  ['cardstock', 'needle', 'staple', 'flaps', 'afterburner'],
+  ['glossy', 'needle', 'pencil', 'bookmark', 'highlighter'],
+  ['cardstock', 'stunt', 'staple', 'flaps', 'tape'],
+  ['vellum', 'needle', 'noseclip', 'bookmark', 'afterburner'],
+].map(([a, b, c, d, e]) => {
+  const list = [a, b, a, c, d, a, b, e, c, b, d, e, c, d, e];
+  return [...list.slice(0, 10), a, ...list.slice(10), b, c, d, e, a, b, c, d, e];
+});
 export function botShop(bot, clips, parts = {}, rank = Infinity) {
-  const wish = BUILDS[bot.seat % BUILDS.length];
+  const wish = (bot.race ? RACE_BUILDS : BUILDS)[bot.seat % BUILDS.length];
   const have = { ...parts };
   const buys = [];
   let left = clips;
