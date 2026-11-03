@@ -115,7 +115,7 @@ export function createHud(root) {
       const tag = document.createElement('div');
       tag.className = 'tag';
       tag.style.setProperty('--c', colorFor(p.seat));
-      tag.innerHTML = `<svg class="crown" viewBox="0 0 24 16" aria-hidden="true"><path d="M2 14 L4 4 L9 9 L12 2 L15 9 L20 4 L22 14 Z" fill="#f2c94c" stroke="#2c2416" stroke-width="1.6" stroke-linejoin="round"/></svg>${esc(p.name)}`;
+      tag.innerHTML = `<svg class="crown" viewBox="0 0 24 16" aria-hidden="true"><path d="M2 14 L4 4 L9 9 L12 2 L15 9 L20 4 L22 14 Z" fill="#f2c94c" stroke="#2c2416" stroke-width="1.6" stroke-linejoin="round"/></svg>${esc(p.name)}<b class="auto" hidden></b>`;
       tags.appendChild(tag);
       tagEls.set(p.seat, tag);
 
@@ -161,6 +161,10 @@ export function createHud(root) {
       hp.classList.toggle('low', p.hp / p.maxHp < 0.35);
       let sub = STATE_LABEL[p.state] || '';
       if (p.state === 'landed') sub = p.crumpled ? 'Crumpled' : p.zone ? `${p.zone.label} +${p.zone.pay}` : 'Missed';
+      // Still on the desk after GO: count down the last seconds before the auto-throw
+      const autoLeft = p.state === 'held' && raceState.t > 0 ? Math.ceil(SIM.throwWindow - raceState.t) : null;
+      const autoShow = autoLeft != null && autoLeft <= 5 && autoLeft > 0;
+      if (autoShow) sub = `Auto-throw in ${autoLeft}`;
       el.querySelector('.sub').textContent = el.dataset.rank ? `${el.dataset.rank} · ${sub}` : sub;
       const shown = shownClips.get(p.seat);
       if (shown !== p.clips) {
@@ -170,6 +174,9 @@ export function createHud(root) {
       el.classList.toggle('gone', players?.[p.seat]?.connected === false);
 
       const tag = tagEls.get(p.seat);
+      const ab = tag.querySelector('.auto');
+      if (ab.hidden === autoShow) ab.hidden = !autoShow;
+      if (autoShow && ab.textContent !== String(autoLeft)) ab.textContent = autoLeft;
       const s = project(p.x, p.y + 0.9, p.z);
       tag.style.display = s.visible ? '' : 'none';
       tag.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, -100%)`;

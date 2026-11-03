@@ -887,3 +887,19 @@ body.pv-touch .hud-watch { font-size: 18px; top: 64px; }
 @media (prefers-reduced-motion: reduce) {
   .upg.m-silver, .upg.m-gold, .hg-slot.m-silver, .hg-slot.m-gold { animation: none; }
 }
+
+/* ------------------------------------------------ auto-throw countdown --- */
+/* A plane still on the desk after GO gets thrown for you when the throw window
+   runs out. The player's aim screen counts it down (urgent for the last 3 s);
+   the host shows the last 5 s on the plane's name tag and racer card. */
+.auto-throw { position: absolute; left: 50%; top: 56px; transform: translateX(-50%) rotate(-1.5deg); z-index: 3; pointer-events: none;
+  max-width: calc(100% - 16px); padding: 2px 12px; background: var(--paper); border: 2.5px solid var(--ink); border-radius: var(--wob-2); box-shadow: 2px 3px 0 var(--ink);
+  font-family: var(--display); font-size: 22px; font-weight: 700; white-space: nowrap; }
+.auto-throw b { font-size: 1.2em; }
+.auto-throw b { display: inline-block; min-width: 1ch; text-align: center; }
+.auto-throw.urgent { background: var(--danger); color: #fff8e6; }
+.auto-throw.tick b { animation: pop var(--t-base) var(--ease-back); }
+.tag .auto { display: inline-grid; place-items: center; min-width: 22px; height: 22px; margin-left: 6px; padding: 0 4px;
+  background: var(--danger); color: #fff8e6; border-radius: 50%; font-size: 16px; vertical-align: 1px; }
+.tag .auto[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .auto-throw.tick b { animation: none; } }

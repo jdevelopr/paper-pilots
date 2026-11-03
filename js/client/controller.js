@@ -5,7 +5,7 @@
 // Touch: pull back on the pad to throw (slingshot), joystick to fly.
 // Keyboard: arrows aim, up/down angle, hold Space to throw; WASD/arrows to fly.
 
-import { esc, clipIcon, planeIcon, vibrate, keepAwake } from '../ui.js';
+import { esc, clipIcon, planeIcon, vibrate, keepAwake, getInvertY } from '../ui.js';
 import { colorFor } from '../shared/colors.js';
 import { RANK_UNLOCKS } from '../shared/ranks.js';
 import { recordStats, placed, onBookChange } from '../shared/stickers.js';
@@ -21,6 +21,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     <div class="cv" data-v="intro"><div class="cfill"><div><div class="csub i-floor"></div><h3 class="i-name"></h3><div class="cbig i-count"></div></div></div></div>
     <div class="cv" data-v="aim">
       <div class="aim-count" aria-live="assertive"></div>
+      <div class="auto-throw" hidden aria-live="polite">Auto-throw in <b>9</b></div>
       <div class="chead"><span class="cname"></span><span class="cclips">${clipIcon}<span class="n">0</span></span></div>
       <div class="aim">
         <div class="angle"><span class="ang-v">12°</span><input class="vrange" type="range" min="0" max="34" step="1" value="12" aria-label="Throw angle"><span>Angle</span></div>
@@ -152,6 +153,40 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     step();
   }
 
+  /* ------------------------------------------------------ auto-throw --- */
+  // A plane still on the desk after GO gets thrown for you (a weak toss) when
+  // the throw window runs out. The host sends how long is left; we count it
+  // down smoothly here, and it turns urgent for the last few seconds.
+  const autoEl = q('.auto-throw'), autoN = autoEl.querySelector('b');
+  let autoAt = null, autoRaf = 0, autoShown = null;
+  function syncAutoThrow() {
+    if (phase.phase === 'race' && me.state === 'held' && Number.isFinite(me.autoIn)) {
+      const at = performance.now() + me.autoIn * 1000;
+      // keep the local clock unless it has drifted (messages arrive every ~0.12 s)
+      if (autoAt == null || Math.abs(at - autoAt) > 400) autoAt = at;
+      if (!autoRaf) autoRaf = requestAnimationFrame(paintAutoThrow);
+    } else stopAutoThrow();
+  }
+  function stopAutoThrow() {
+    autoAt = null; autoShown = null;
+    autoEl.hidden = true; autoEl.classList.remove('urgent');
+    cancelAnimationFrame(autoRaf); autoRaf = 0;
+  }
+  function paintAutoThrow() {
+    autoRaf = 0;
+    if (autoAt == null || view !== 'aim' || phase.phase !== 'race') { stopAutoThrow(); return; }
+    const left = Math.max(0, Math.ceil((autoAt - performance.now()) / 1000));
+    autoEl.hidden = false;
+    if (left !== autoShown) {
+      autoShown = left;
+      autoN.textContent = left;
+      autoEl.classList.toggle('urgent', left <= 3);
+      autoEl.classList.remove('tick'); void autoEl.offsetWidth; autoEl.classList.add('tick');
+      if (left <= 3 && left > 0) vibrate(20);
+    }
+    autoRaf = requestAnimationFrame(paintAutoThrow);
+  }
+
   /* -------------------------------------------------------------- aim --- */
   const pad = q('.pad'), pplane = q('.pplane'), pw = q('.pw i'), b1 = q('.b1'), b2 = q('.b2');
   const range = q('.vrange'), angV = q('.ang-v');
@@ -248,8 +283,22 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
     if (!force && now - stickSentAt < 50) return;
     if (!force && Math.abs(st.x - sentX) < 0.02 && Math.abs(st.y - sentY) < 0.02) return;
     stickSentAt = now; sentX = st.x; sentY = st.y;
-    if (enabled) link.input({ k: 'stick', x: +st.x.toFixed(2), y: +st.y.toFixed(2) });
+    // Inverted up/down (a setting): the stick and keys feel like a flight sim,
+    // pull down to climb. The thumb still follows your finger.
+    const y = invertY ? -st.y : st.y;
+    if (enabled) link.input({ k: 'stick', x: +st.x.toFixed(2), y: +y.toFixed(2) });
   }
+  let invertY = getInvertY();
+  function paintInvert() {
+    invertY = getInvertY();
+    q('.stick .lbl.u').textContent = invertY ? 'dive' : 'climb';
+    q('.stick .lbl.d').textContent = invertY ? 'climb' : 'dive';
+    q('.stick').setAttribute('aria-label', invertY
+      ? 'Steer (inverted): drag down to climb, up to dive, left and right to turn'
+      : 'Steer: drag up to climb, down to dive, left and right to turn');
+  }
+  paintInvert();
+  document.addEventListener('pp-invert', paintInvert);
   function stickFrom(e) {
     const r = stick.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -559,6 +608,7 @@ export function mountController(root, link, { solo = false, onAgain = null, onMe
         // Ignore a stale 'held' that arrives right after we threw
         if (view === 'fly' && d.state === 'held') d.state = 'fly';
         me = d;
+        syncAutoThrow();
         paintHeader();
         paintRank();
         hpbar.style.transform = `scaleX(${clamp(d.hp / d.maxHp, 0, 1)})`;

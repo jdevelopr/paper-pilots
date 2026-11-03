@@ -76,11 +76,13 @@ export async function keepAwake() {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && lock) keepAwake(); });
 
 /* ---------------------------------------------------- player settings --- */
-// Handedness (which side the joystick and slingshot sit on) and graphics
-// quality, both remembered on this device.
+// Handedness (which side the joystick and slingshot sit on), inverted
+// up/down steering and graphics quality, all remembered on this device.
 const getPref = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
 const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 export const getHand = () => getPref('hand', 'right');
+// Inverted steering: pull the stick down (or press up) to climb, like a flight sim
+export const getInvertY = () => getPref('invertY', 'off') === 'on';
 export function applyHand(h = getHand()) { document.body.classList.toggle('lefty', h === 'left'); }
 applyHand();
 
@@ -89,12 +91,16 @@ let prefN = 0;
 // A little settings block: handedness (for players) and graphics
 export function mountPrefs(el, { hand = true, gfx = true } = {}) {
   if (!el) return;
-  const n = ++prefN, h = getHand(), g = getPref('gfx', 'auto');
+  const n = ++prefN, h = getHand(), g = getPref('gfx', 'auto'), inv = getInvertY();
   el.innerHTML = `${hand ? `<fieldset class="seg prefs-seg"><legend>Controls</legend>
       <label><input type="radio" name="hand${n}" value="right" ${h === 'right' ? 'checked' : ''}><span>Right-handed</span></label>
-      <label><input type="radio" name="hand${n}" value="left" ${h === 'left' ? 'checked' : ''}><span>Left-handed</span></label></fieldset>` : ''}
+      <label><input type="radio" name="hand${n}" value="left" ${h === 'left' ? 'checked' : ''}><span>Left-handed</span></label></fieldset>
+    <fieldset class="seg prefs-seg"><legend>Up/down</legend>
+      <label><input type="radio" name="inv${n}" value="off" ${!inv ? 'checked' : ''}><span>Up climbs</span></label>
+      <label><input type="radio" name="inv${n}" value="on" ${inv ? 'checked' : ''}><span>Inverted</span></label></fieldset>` : ''}
     ${gfx ? `<fieldset class="seg prefs-seg"><legend>Graphics</legend>
       ${GFX.map(([v, t]) => `<label><input type="radio" name="gfx${n}" value="${v}" ${g === v ? 'checked' : ''}><span>${t}</span></label>`).join('')}</fieldset>` : ''}`;
   for (const r of el.querySelectorAll(`input[name="hand${n}"]`)) r.onchange = () => { setPref('hand', r.value); applyHand(r.value); vibrate(8); };
+  for (const r of el.querySelectorAll(`input[name="inv${n}"]`)) r.onchange = () => { setPref('invertY', r.value); document.dispatchEvent(new Event('pp-invert')); vibrate(8); };
   for (const r of el.querySelectorAll(`input[name="gfx${n}"]`)) r.onchange = () => { setPref('gfx', r.value); window.__ppGfx?.(r.value); vibrate(8); };
 }

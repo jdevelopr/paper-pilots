@@ -458,6 +458,8 @@ export function createFlow({ link, renderer, hud, solo = false, botCount = 0, on
         run: (p?.clips ?? 0) + (p?.tr?.clips ?? 0), chain: p?.tr?.chain ?? 0, crumpled: !!p?.crumpled, zone: p?.zone ?? null,
         dist: p ? Math.round(p.z) : 0, best: Math.round(pl.best[currentFloor(match).id] ?? 0),
         rank: rankOf(pl.career),
+        // seconds until a plane still on the desk gets thrown for you
+        autoIn: phase === 'race' && p?.state === 'held' ? Math.max(0, Math.round((SIM.throwWindow - race.t) * 10) / 10) : null,
       });
     }
   }
